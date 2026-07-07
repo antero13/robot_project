@@ -11,10 +11,10 @@ setup(
     packages=find_packages(exclude=["test"]),
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
-        (f"share/{package_name}", ["package.xml"]),
+        (f"share/{package_name}", ["package.xml", "requirements.txt"]),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
     ],
-    install_requires=["setuptools"],
+    install_requires=["setuptools", "opencv-python", "ultralytics"],
     zip_safe=True,
     maintainer="AI ROBOT",
     maintainer_email="user@example.com",

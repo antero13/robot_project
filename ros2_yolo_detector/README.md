@@ -77,7 +77,8 @@ ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \
   gain:=20
 ```
 
-The YOLO node subscribes to `/image_raw` by default in this launch file.
+The YOLO node subscribes to `/image_raw` by default in this launch file. It also starts
+`detections_to_target_node` by default so mission nodes can consume `/target_object`.
 
 ## Run with direct OpenCV camera
 
@@ -104,6 +105,8 @@ ros2 launch ros2_yolo_detector yolo_camera.launch.py \
 ## Published topics
 
 - `/yolo/detections`: `std_msgs/msg/String`, JSON detection result
+- `/target_object`: `geometry_msgs/msg/PointStamped`, normalized target center and area
+- `/target_label`: `std_msgs/msg/String`, selected target class name
 - `/yolo/annotated_image`: `sensor_msgs/msg/Image`, image with boxes drawn
 - `/camera/image_raw`: optional raw camera image when `publish_raw:=true`
 
@@ -124,4 +127,5 @@ Detection JSON example:
 }
 ```
 
-Motor-control nodes should subscribe to `/yolo/detections` and use the class, confidence, and bounding-box center.
+Mission nodes can subscribe to `/target_object`; lower-level consumers can subscribe to
+`/yolo/detections` for the full class, confidence, and bounding-box payload.

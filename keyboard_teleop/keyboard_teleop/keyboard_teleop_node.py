@@ -204,6 +204,11 @@ class KeyboardTeleop(Node):
 
 class TerminalKeyboard:
     def __init__(self):
+        if not sys.stdin.isatty():
+            raise RuntimeError(
+                'keyboard_teleop requires an interactive terminal. '
+                'Run it with ros2 run, or launch it in a terminal emulator.'
+            )
         self.settings = termios.tcgetattr(sys.stdin)
 
     def __enter__(self):
@@ -242,6 +247,8 @@ def main(args=None):
                 if key is not None:
                     node.handle_key(key)
                 rclpy.spin_once(node, timeout_sec=0.0)
+    except RuntimeError as exc:
+        node.get_logger().error(str(exc))
     finally:
         node.stop()
         node.destroy_node()
