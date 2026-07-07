@@ -1,7 +1,8 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def as_bool(value):
@@ -145,7 +146,12 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('model_path', default_value='best.pt'),
+        DeclareLaunchArgument(
+            'model_path',
+            default_value=PathJoinSubstitution(
+                [FindPackageShare('ros2_yolo_detector'), 'models', 'best.pt']
+            ),
+        ),
         DeclareLaunchArgument('input_mode', default_value='topic'),
         DeclareLaunchArgument('image_topic', default_value='/camera/image_raw'),
         DeclareLaunchArgument(

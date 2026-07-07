@@ -13,6 +13,7 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml", "requirements.txt"]),
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
+        (os.path.join("share", package_name, "models"), glob("models/*")),
     ],
     install_requires=["setuptools", "opencv-python", "ultralytics"],
     zip_safe=True,

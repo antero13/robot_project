@@ -1,12 +1,18 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('model_path', default_value='~/ros2_ws/src/yolo/train/weights/best.pt'),
+        DeclareLaunchArgument(
+            'model_path',
+            default_value=PathJoinSubstitution(
+                [FindPackageShare('ros2_yolo_detector'), 'models', 'best.pt']
+            ),
+        ),
         DeclareLaunchArgument('target_class', default_value=''),
         DeclareLaunchArgument('camera_index', default_value='0'),
         DeclareLaunchArgument('device', default_value='cuda:0'),

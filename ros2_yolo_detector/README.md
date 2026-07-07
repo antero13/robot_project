@@ -32,13 +32,16 @@ colcon build --packages-select ros2_yolo_detector
 source install/setup.bash
 ```
 
-## Recommended model path
+## Included model path
 
-Place your model somewhere outside the source code, for example:
+The default launch files use the model included in this package:
 
-```bash
-/home/jetson/models/best.pt
+```text
+ros2_yolo_detector/models/best.pt
 ```
+
+After `colcon build`, the model is installed under the package share directory, so
+you do not need to pass `model_path` unless you want to use a different model.
 
 ## Run with USB camera
 
@@ -63,7 +66,6 @@ Use this launch file to start both `v4l2_camera` and YOLO:
 
 ```bash
 ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \
-  model_path:=/home/jetson/models/best.pt \
   video_device:=/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0 \
   image_width:=1280 \
   image_height:=720 \
@@ -86,7 +88,6 @@ This mode is still available, but the `v4l2_camera` launch above is preferred wh
 
 ```bash
 ros2 launch ros2_yolo_detector yolo_camera.launch.py \
-  model_path:=/home/jetson/models/best.pt \
   input_mode:=camera \
   camera_index:=0
 ```
@@ -97,7 +98,6 @@ Use this if another camera driver is already publishing images:
 
 ```bash
 ros2 launch ros2_yolo_detector yolo_camera.launch.py \
-  model_path:=/home/jetson/models/best.pt \
   input_mode:=topic \
   image_topic:=/camera/image_raw
 ```

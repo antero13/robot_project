@@ -1,15 +1,21 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
     return LaunchDescription(
         [
-            DeclareLaunchArgument("model_path", default_value="best.pt"),
+            DeclareLaunchArgument(
+                "model_path",
+                default_value=PathJoinSubstitution(
+                    [FindPackageShare("ros2_yolo_detector"), "models", "best.pt"]
+                ),
+            ),
             DeclareLaunchArgument(
                 "video_device",
                 default_value="/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0",
