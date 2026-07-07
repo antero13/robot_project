@@ -1,0 +1,121 @@
+# mission_manager
+
+First mission state-machine package for the AI Robot Challenge robot.
+
+This node publishes `/cmd_vel` from a mission sequence. In `SEARCH_OBJECT` and
+`APPROACH_OBJECT`, it follows `/target_object` detections from the camera
+detector in real time.
+
+## Topics
+
+Subscribed:
+
+- `/mission_control` (`std_msgs/msg/String`)
+- `/target_object` (`geometry_msgs/msg/PointStamped`)
+
+Published:
+
+- `/cmd_vel` (`geometry_msgs/msg/Twist`)
+- `/mission_state` (`std_msgs/msg/String`)
+- `/ros_robot_controller/pwm_servo/set_state` (`ros_robot_controller_msgs/msg/SetPWMServoState`)
+
+## Commands
+
+```bash
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'start'}"
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'stop'}"
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'reset'}"
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'open'}"
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'close'}"
+```
+
+`start` runs this first demo mission:
+
+```text
+SEARCH_OBJECT -> APPROACH_OBJECT -> GRAB_OBJECT -> MOVE_TO_STORAGE -> RELEASE_OBJECT -> BACK_OUT -> DONE
+```
+
+`/target_object` format:
+
+```text
+point.x = normalized horizontal error, -1.0 left to +1.0 right
+point.y = bounding box area ratio, bigger means closer
+point.z = detection confidence
+```
+
+During `APPROACH_OBJECT`, the robot turns until `point.x` is near 0, moves
+forward while centered, and transitions to `GRAB_OBJECT` when `point.y` reaches
+`grab_area_ratio`.
+
+## Build
+
+Copy these packages into the Jetson workspace:
+
+```bash
+cp -r yolo_target_detector ~/ros2_ws/src/
+cp -r mission_manager ~/ros2_ws/src/
+cd ~/ros2_ws
+colcon build --symlink-install --packages-select yolo_target_detector mission_manager
+source install/setup.bash
+```
+
+The workspace must already contain `ros_robot_controller_msgs`.
+
+## Run
+
+Use three terminals at first:
+
+Terminal 1:
+
+```bash
+ros2 launch ros_robot_controller ros_robot_controller.launch.xml
+```
+
+Terminal 2:
+
+```bash
+ros2 launch cmd_vel_to_motor cmd_vel_to_motor.launch.py
+```
+
+Terminal 3:
+
+```bash
+ros2 launch mission_manager mission_manager.launch.py
+```
+
+Or run the camera detector and mission manager together:
+
+```bash
+ros2 launch mission_manager camera_mission.launch.py target_class:=apple
+```
+
+Start the demo:
+
+```bash
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'start'}"
+```
+
+Emergency stop:
+
+```bash
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'stop'}"
+ros2 topic pub -1 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0}, angular: {z: 0.0}}"
+```
+
+## Watch state
+
+```bash
+ros2 topic echo /mission_state
+```
+
+## Tuning
+
+Tune these values in `launch/mission_manager.launch.py` or
+`launch/camera_mission.launch.py`:
+
+```text
+center_tolerance: how centered the target must be before moving forward
+grab_area_ratio: how large the bounding box must be before grabbing
+approach_angular_gain: how strongly the robot turns toward the target
+approach_max_linear_x: maximum approach speed
+```
