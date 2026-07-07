@@ -48,7 +48,7 @@ This matches:
 
 ```bash
 ros2 run v4l2_camera v4l2_camera_node --ros-args \
-  -p video_device:=/dev/video0 \
+  -p video_device:=/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0 \
   -p image_size:="[1280,720]" \
   -p time_per_frame:="[1,10]" \
   -p pixel_format:=YUYV \
@@ -64,7 +64,7 @@ Use this launch file to start both `v4l2_camera` and YOLO:
 ```bash
 ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \
   model_path:=/home/jetson/models/best.pt \
-  video_device:=/dev/video0 \
+  video_device:=/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0 \
   image_width:=1280 \
   image_height:=720 \
   time_per_frame_numerator:=1 \

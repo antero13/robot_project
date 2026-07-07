@@ -10,7 +10,10 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("model_path", default_value="best.pt"),
-            DeclareLaunchArgument("video_device", default_value="/dev/video0"),
+            DeclareLaunchArgument(
+                "video_device",
+                default_value="/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0",
+            ),
             DeclareLaunchArgument("image_topic", default_value="/image_raw"),
             DeclareLaunchArgument("image_width", default_value="1280"),
             DeclareLaunchArgument("image_height", default_value="720"),

@@ -148,7 +148,10 @@ def generate_launch_description():
         DeclareLaunchArgument('model_path', default_value='best.pt'),
         DeclareLaunchArgument('input_mode', default_value='topic'),
         DeclareLaunchArgument('image_topic', default_value='/camera/image_raw'),
-        DeclareLaunchArgument('video_device', default_value='/dev/video0'),
+        DeclareLaunchArgument(
+            'video_device',
+            default_value='/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0',
+        ),
         DeclareLaunchArgument('camera_index', default_value='0'),
         DeclareLaunchArgument('camera_width', default_value='640'),
         DeclareLaunchArgument('camera_height', default_value='480'),
