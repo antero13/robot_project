@@ -133,7 +133,12 @@ final_forward_linear_x: straight driving speed after visual approach
 final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
-avoid_area_ratio: minimum obstacle box-bottom y before avoidance can trigger
-avoid_center_band: how close to the camera center an obstacle must be
-avoid_closer_ratio: how much lower the obstacle must appear than the target
+avoid_area_ratio: obstacle box-bottom y where avoidance can trigger, default 0.45
+avoid_center_band: horizontal band where obstacles count, default 0.85
+avoid_closer_ratio: how much lower the obstacle must appear than the target, default 0.90
+avoid_turn_duration_s: first turn-only avoidance duration, default 0.65
+avoid_forward_duration_s: curved forward avoidance duration, default 1.0
 ```
+
+Lower `avoid_area_ratio` to avoid earlier. Raise `avoid_center_band` to give
+the gripper more side clearance.
