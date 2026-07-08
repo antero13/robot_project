@@ -208,7 +208,7 @@ def generate_launch_description():
         DeclareLaunchArgument('raw_topic', default_value='/camera/image_raw'),
         DeclareLaunchArgument('target_classes', default_value=''),
         DeclareLaunchArgument('avoid_classes', default_value=''),
-        DeclareLaunchArgument('gripper_enabled', default_value='false'),
+        DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),
         DeclareLaunchArgument('gripper_servo_id', default_value='1'),
         DeclareLaunchArgument('gripper_open_position', default_value='500'),

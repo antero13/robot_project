@@ -71,7 +71,7 @@ def generate_launch_description():
                 'grab_duration_s': 1.0,
                 'back_out_duration_s': 1.5,
 
-                'gripper_enabled': False,
+                'gripper_enabled': True,
                 'gripper_type': 'pwm',
                 'gripper_servo_id': 1,
                 'gripper_open_position': 1500,

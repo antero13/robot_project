@@ -40,7 +40,9 @@ LEAVE_START -> SEARCH -> ALIGN_TARGET -> APPROACH_TARGET -> OPEN_GRIPPER -> FINA
 ```
 
 At `start`, the gripper is commanded closed and stays closed while the robot
-searches, aligns, and approaches the target.
+searches, aligns, and approaches the target. The default launch files enable
+the gripper, so the robot starts the mission with a close command unless
+`gripper_enabled:=false` is passed explicitly.
 
 If close obstacles are detected, the manager builds a small 5-bin horizontal
 histogram from `/avoid_objects`, compares the left/right danger cost, then

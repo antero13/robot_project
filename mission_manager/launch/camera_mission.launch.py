@@ -88,7 +88,7 @@ def generate_launch_description():
                 'move_to_storage_duration_s': 4.0,
                 'release_duration_s': 1.0,
                 'back_out_duration_s': 1.5,
-                'gripper_enabled': False,
+                'gripper_enabled': True,
             }],
         ),
     ])

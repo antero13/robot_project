@@ -92,7 +92,7 @@ class MissionManager(Node):
         self.declare_parameter('reacquire_duration_s', 3.0)
         self.declare_parameter('reacquire_angular_z', 0.30)
 
-        self.declare_parameter('gripper_enabled', False)
+        self.declare_parameter('gripper_enabled', True)
         self.declare_parameter('gripper_type', 'pwm')
         self.declare_parameter('gripper_servo_id', 1)
         self.declare_parameter('gripper_open_position', 1500)
