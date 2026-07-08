@@ -22,6 +22,7 @@ def launch_setup(context, *args, **kwargs):
     confidence = float(arg(context, 'confidence'))
     tracker_enabled = as_bool(arg(context, 'tracker_enabled'))
     tracker_persist = as_bool(arg(context, 'tracker_persist'))
+    stable_tracking_enabled = as_bool(arg(context, 'stable_tracking_enabled'))
     publish_raw = as_bool(arg(context, 'publish_raw'))
     publish_annotated = as_bool(arg(context, 'publish_annotated'))
     gripper_enabled = as_bool(arg(context, 'gripper_enabled'))
@@ -67,6 +68,10 @@ def launch_setup(context, *args, **kwargs):
                 'tracker_enabled': tracker_enabled,
                 'tracker_config': arg(context, 'tracker_config'),
                 'tracker_persist': tracker_persist,
+                'stable_tracking_enabled': stable_tracking_enabled,
+                'stable_track_timeout_s': float(arg(context, 'stable_track_timeout_s')),
+                'stable_track_iou_threshold': float(arg(context, 'stable_track_iou_threshold')),
+                'stable_track_center_ratio': float(arg(context, 'stable_track_center_ratio')),
                 'detections_topic': '/yolo/detections',
                 'annotated_topic': '/yolo/annotated_image',
                 'raw_topic': arg(context, 'raw_topic'),
@@ -138,6 +143,15 @@ def launch_setup(context, *args, **kwargs):
                 'avoid_center_band': 0.75,
                 'avoid_center_corridor': 0.30,
                 'avoid_path_margin': 0.30,
+                'avoid_roi_enabled': True,
+                'avoid_roi_left_near_x': -0.27,
+                'avoid_roi_left_near_y': 0.80,
+                'avoid_roi_left_far_x': -0.75,
+                'avoid_roi_left_far_y': 0.42,
+                'avoid_roi_right_near_x': 0.11,
+                'avoid_roi_right_near_y': 0.80,
+                'avoid_roi_right_far_x': 0.62,
+                'avoid_roi_right_far_y': 0.42,
                 'avoid_emergency_ratio': 0.75,
                 'avoid_only_if_closer_than_target': True,
                 'avoid_closer_ratio': 1.00,
@@ -219,6 +233,10 @@ def generate_launch_description():
         DeclareLaunchArgument('tracker_enabled', default_value='true'),
         DeclareLaunchArgument('tracker_config', default_value='bytetrack.yaml'),
         DeclareLaunchArgument('tracker_persist', default_value='true'),
+        DeclareLaunchArgument('stable_tracking_enabled', default_value='true'),
+        DeclareLaunchArgument('stable_track_timeout_s', default_value='1.0'),
+        DeclareLaunchArgument('stable_track_iou_threshold', default_value='0.15'),
+        DeclareLaunchArgument('stable_track_center_ratio', default_value='0.75'),
         DeclareLaunchArgument('publish_raw', default_value='true'),
         DeclareLaunchArgument('publish_annotated', default_value='false'),
         DeclareLaunchArgument('raw_topic', default_value='/camera/image_raw'),

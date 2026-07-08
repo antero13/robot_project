@@ -74,14 +74,16 @@ without backing away.
 ```json
 {
   "objects": [
-    {"class_name": "person", "x": 0.25, "y": 0.62, "confidence": 0.88}
+    {"class_name": "person", "x": 0.25, "y": 0.62, "center_y": 0.48, "confidence": 0.88}
   ]
 }
 ```
 
-The manager treats `y` as closeness, squares it into a danger score, adds the
-danger into five screen sectors, and chooses the lower-cost side. The previous
-`/avoid_object` single-point topic still works as a fallback.
+The manager treats `y` as closeness from the box bottom. It uses `center_y`,
+the normalized bounding-box center y, with `x` to check whether the box center
+is inside the rear-camera trapezoid ROI before avoidance can trigger. Objects
+outside that trapezoid are ignored. The previous `/avoid_object` single-point
+topic still works as a fallback, using `y` as both closeness and center y.
 
 When the target is close and centered, avoid detections at nearly the same
 screen position are treated as duplicate detections of the target and ignored.
@@ -163,13 +165,16 @@ final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
 avoid_area_ratio: obstacle box-bottom y where avoidance can trigger, default 0.45
-avoid_center_band: widest horizontal band where obstacles can count, default 0.75
-avoid_center_corridor: center gripper path that always counts for normal avoidance, default 0.30
-avoid_path_margin: extra width around the current target path where obstacles count, default 0.30
+avoid_roi_enabled: require the avoid box center to be inside the trapezoid ROI, default true
+avoid_roi_left_far_x/y: upper-left ROI point, default -0.75 / 0.42
+avoid_roi_right_far_x/y: upper-right ROI point, default 0.62 / 0.42
+avoid_roi_left_near_x/y: lower-left ROI point, default -0.27 / 0.80
+avoid_roi_right_near_x/y: lower-right ROI point, default 0.11 / 0.80
 avoid_emergency_ratio: y threshold that can trigger avoidance even if the target is also close, default 0.75
 avoid_closer_ratio: how much lower the obstacle must appear than the target, default 1.00
 avoid_turn_duration_s: first turn-only avoidance duration, default 0.45
 avoid_forward_duration_s: curved forward avoidance duration, default 0.75
+avoid_center_band: width used only for VFH center danger weighting, default 0.75
 avoid_vfh_center_weight: extra danger for obstacles near the gripper center line, default 1.5
 avoid_vfh_target_weight: small bias toward the target side when both avoid sides are similar, default 0.60
 avoid_vfh_switch_penalty: penalty for rapidly switching avoid direction, default 0.25
@@ -181,8 +186,7 @@ avoid_ignore_target_x_margin: max x gap between close target and duplicate avoid
 avoid_ignore_target_y_margin: max y gap between close target and duplicate avoid, default 0.20
 ```
 
-Lower `avoid_area_ratio` to avoid earlier. Raise `avoid_center_band`,
-`avoid_center_corridor`, or `avoid_path_margin` to give the gripper more side
-clearance. Lower them if the robot avoids objects that are not on the way to
-the target. Raise `avoid_vfh_switch_penalty` or `avoid_direction_hold_s` if the
-robot oscillates between left and right.
+Lower `avoid_area_ratio` to avoid earlier. Widen the ROI x points if the robot
+misses obstacles near the gripper path, or narrow them if side objects still
+interrupt target pickup. Raise `avoid_vfh_switch_penalty` or
+`avoid_direction_hold_s` if the robot oscillates between left and right.

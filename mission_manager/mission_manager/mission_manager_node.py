@@ -1,8 +1,9 @@
 import json
 from enum import Enum
+from types import SimpleNamespace
 
 import rclpy
-from geometry_msgs.msg import Point, PointStamped, Twist
+from geometry_msgs.msg import PointStamped, Twist
 from rclpy.node import Node
 from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
 from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
@@ -71,6 +72,15 @@ class MissionManager(Node):
         self.declare_parameter('avoid_center_band', 0.75)
         self.declare_parameter('avoid_center_corridor', 0.30)
         self.declare_parameter('avoid_path_margin', 0.30)
+        self.declare_parameter('avoid_roi_enabled', True)
+        self.declare_parameter('avoid_roi_left_near_x', -0.27)
+        self.declare_parameter('avoid_roi_left_near_y', 0.80)
+        self.declare_parameter('avoid_roi_left_far_x', -0.75)
+        self.declare_parameter('avoid_roi_left_far_y', 0.42)
+        self.declare_parameter('avoid_roi_right_near_x', 0.11)
+        self.declare_parameter('avoid_roi_right_near_y', 0.80)
+        self.declare_parameter('avoid_roi_right_far_x', 0.62)
+        self.declare_parameter('avoid_roi_right_far_y', 0.42)
         self.declare_parameter('avoid_emergency_ratio', 0.75)
         self.declare_parameter('avoid_only_if_closer_than_target', True)
         self.declare_parameter('avoid_closer_ratio', 1.00)
@@ -174,7 +184,7 @@ class MissionManager(Node):
             self.last_target_direction = 1.0 if x_error > 0.0 else -1.0
 
     def avoid_callback(self, msg):
-        self.latest_avoid = msg.point
+        self.latest_avoid = self.make_avoid_point(msg.point.x, msg.point.y, msg.point.z, msg.point.y)
         self.latest_avoid_time = self.get_clock().now()
 
     def avoid_objects_callback(self, msg):
@@ -201,16 +211,24 @@ class MissionManager(Node):
             if not isinstance(raw, dict):
                 continue
             try:
-                point = Point()
-                point.x = self.clamp(float(raw.get('x', raw.get('point_x', 0.0))), -1.0, 1.0)
-                point.y = self.clamp(float(raw.get('y', raw.get('point_y', 0.0))), 0.0, 1.0)
-                point.z = max(0.0, float(raw.get('confidence', raw.get('z', 1.0))))
+                x = float(raw.get('x', raw.get('point_x', 0.0)))
+                y = float(raw.get('y', raw.get('point_y', 0.0)))
+                confidence = float(raw.get('confidence', raw.get('z', 1.0)))
+                center_y = float(raw.get('center_y', raw.get('bbox_center_y', y)))
             except (TypeError, ValueError):
                 continue
-            points.append(point)
+            points.append(self.make_avoid_point(x, y, confidence, center_y))
 
         self.latest_avoid_objects = points
         self.latest_avoid_objects_time = self.get_clock().now()
+
+    def make_avoid_point(self, x, bottom_y, confidence, center_y):
+        return SimpleNamespace(
+            x=self.clamp(float(x), -1.0, 1.0),
+            y=self.clamp(float(bottom_y), 0.0, 1.0),
+            z=max(0.0, float(confidence)),
+            center_y=self.clamp(float(center_y), 0.0, 1.0),
+        )
 
     def control_callback(self, msg):
         command = msg.data.strip().lower()
@@ -402,13 +420,10 @@ class MissionManager(Node):
             return False
 
         for point in avoid_points:
-            x_error = abs(float(point.x))
             closeness = float(point.y)
-            if x_error > self.get_float('avoid_center_band'):
+            if not self.avoid_is_inside_roi(point):
                 continue
             if self.avoid_matches_locked_target(point):
-                continue
-            if not self.avoid_is_on_active_path(point, closeness):
                 continue
             if closeness >= self.get_float('avoid_emergency_ratio'):
                 return True
@@ -471,11 +486,9 @@ class MissionManager(Node):
             closeness = self.clamp(float(point.y), 0.0, 1.0)
             if closeness < min_closeness:
                 continue
-            if abs(x) > center_band:
+            if not self.avoid_is_inside_roi(point):
                 continue
             if self.avoid_matches_locked_target(point):
-                continue
-            if not self.avoid_is_on_active_path(point, closeness):
                 continue
 
             confidence = self.clamp(float(point.z), 0.0, 1.0)
@@ -485,6 +498,40 @@ class MissionManager(Node):
             bins[bin_index] += danger
 
         return bins
+
+    def avoid_is_inside_roi(self, point):
+        if not bool(self.get_parameter('avoid_roi_enabled').value):
+            return True
+
+        x = self.clamp(float(point.x), -1.0, 1.0)
+        y = self.clamp(float(getattr(point, 'center_y', point.y)), 0.0, 1.0)
+
+        left_far_x = self.get_float('avoid_roi_left_far_x')
+        left_far_y = self.get_float('avoid_roi_left_far_y')
+        left_near_x = self.get_float('avoid_roi_left_near_x')
+        left_near_y = self.get_float('avoid_roi_left_near_y')
+        right_far_x = self.get_float('avoid_roi_right_far_x')
+        right_far_y = self.get_float('avoid_roi_right_far_y')
+        right_near_x = self.get_float('avoid_roi_right_near_x')
+        right_near_y = self.get_float('avoid_roi_right_near_y')
+
+        min_y = min(left_far_y, left_near_y, right_far_y, right_near_y)
+        max_y = max(left_far_y, left_near_y, right_far_y, right_near_y)
+        if y < min_y or y > max_y:
+            return False
+
+        left_x = self.interpolate_roi_x(y, left_far_x, left_far_y, left_near_x, left_near_y)
+        right_x = self.interpolate_roi_x(y, right_far_x, right_far_y, right_near_x, right_near_y)
+        if left_x > right_x:
+            left_x, right_x = right_x, left_x
+        return left_x <= x <= right_x
+
+    @staticmethod
+    def interpolate_roi_x(y, x1, y1, x2, y2):
+        if abs(y2 - y1) < 1e-6:
+            return (x1 + x2) * 0.5
+        t = (y - y1) / (y2 - y1)
+        return x1 + t * (x2 - x1)
 
     def avoid_matches_locked_target(self, point):
         if not bool(self.get_parameter('avoid_ignore_near_target_enabled').value):

@@ -43,6 +43,10 @@ def generate_launch_description():
             DeclareLaunchArgument("tracker_enabled", default_value="true"),
             DeclareLaunchArgument("tracker_config", default_value="bytetrack.yaml"),
             DeclareLaunchArgument("tracker_persist", default_value="true"),
+            DeclareLaunchArgument("stable_tracking_enabled", default_value="true"),
+            DeclareLaunchArgument("stable_track_timeout_s", default_value="1.0"),
+            DeclareLaunchArgument("stable_track_iou_threshold", default_value="0.15"),
+            DeclareLaunchArgument("stable_track_center_ratio", default_value="0.75"),
             DeclareLaunchArgument("camera_index", default_value="0"),
             DeclareLaunchArgument("camera_width", default_value="0"),
             DeclareLaunchArgument("camera_height", default_value="0"),
@@ -77,6 +81,22 @@ def generate_launch_description():
                         "tracker_persist": ParameterValue(
                             LaunchConfiguration("tracker_persist"),
                             value_type=bool,
+                        ),
+                        "stable_tracking_enabled": ParameterValue(
+                            LaunchConfiguration("stable_tracking_enabled"),
+                            value_type=bool,
+                        ),
+                        "stable_track_timeout_s": ParameterValue(
+                            LaunchConfiguration("stable_track_timeout_s"),
+                            value_type=float,
+                        ),
+                        "stable_track_iou_threshold": ParameterValue(
+                            LaunchConfiguration("stable_track_iou_threshold"),
+                            value_type=float,
+                        ),
+                        "stable_track_center_ratio": ParameterValue(
+                            LaunchConfiguration("stable_track_center_ratio"),
+                            value_type=float,
                         ),
                         "camera_index": ParameterValue(LaunchConfiguration("camera_index"), value_type=int),
                         "camera_width": ParameterValue(LaunchConfiguration("camera_width"), value_type=int),

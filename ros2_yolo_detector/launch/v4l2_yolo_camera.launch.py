@@ -37,6 +37,10 @@ def generate_launch_description():
             DeclareLaunchArgument("tracker_enabled", default_value="true"),
             DeclareLaunchArgument("tracker_config", default_value="bytetrack.yaml"),
             DeclareLaunchArgument("tracker_persist", default_value="true"),
+            DeclareLaunchArgument("stable_tracking_enabled", default_value="true"),
+            DeclareLaunchArgument("stable_track_timeout_s", default_value="1.0"),
+            DeclareLaunchArgument("stable_track_iou_threshold", default_value="0.15"),
+            DeclareLaunchArgument("stable_track_center_ratio", default_value="0.75"),
             DeclareLaunchArgument("publish_annotated", default_value="false"),
             DeclareLaunchArgument("detections_topic", default_value="/yolo/detections"),
             DeclareLaunchArgument("target_topic", default_value="/target_object"),
@@ -106,6 +110,22 @@ def generate_launch_description():
                         "tracker_persist": ParameterValue(
                             LaunchConfiguration("tracker_persist"),
                             value_type=bool,
+                        ),
+                        "stable_tracking_enabled": ParameterValue(
+                            LaunchConfiguration("stable_tracking_enabled"),
+                            value_type=bool,
+                        ),
+                        "stable_track_timeout_s": ParameterValue(
+                            LaunchConfiguration("stable_track_timeout_s"),
+                            value_type=float,
+                        ),
+                        "stable_track_iou_threshold": ParameterValue(
+                            LaunchConfiguration("stable_track_iou_threshold"),
+                            value_type=float,
+                        ),
+                        "stable_track_center_ratio": ParameterValue(
+                            LaunchConfiguration("stable_track_center_ratio"),
+                            value_type=float,
                         ),
                         "detections_topic": LaunchConfiguration("detections_topic"),
                         "publish_annotated": ParameterValue(

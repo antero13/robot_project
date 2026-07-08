@@ -95,11 +95,11 @@ class DetectionsToTargetNode(Node):
             if converted is None:
                 continue
 
-            class_name, class_keys, point_msg, bbox_xyxy, track_id = converted
+            class_name, class_keys, point_msg, bbox_xyxy, track_id, center_y_ratio = converted
             if self.is_target(class_keys):
-                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id))
+                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id, center_y_ratio))
             elif self.is_avoid(class_keys):
-                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id))
+                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id, center_y_ratio))
 
         avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
         target_candidate = self.select_target_candidate(target_candidates)
@@ -113,7 +113,7 @@ class DetectionsToTargetNode(Node):
         image_width: float,
         image_height: float,
         header,
-    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float], int | None] | None:
+    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float], int | None, float] | None:
         class_name = str(detection.get("class_name", detection.get("class_id", "")))
         class_id = detection.get("class_id", "")
         class_keys = {class_name, str(class_id)}
@@ -136,16 +136,18 @@ class DetectionsToTargetNode(Node):
             return None
 
         bbox_center_x = (x1 + x2) * 0.5
+        bbox_center_y = (y1 + y2) * 0.5
         image_center_x = image_width * 0.5
         normalized_x_error = (bbox_center_x - image_center_x) / image_center_x
         bottom_y_ratio = y2 / image_height
+        center_y_ratio = self.clamp(bbox_center_y / image_height, 0.0, 1.0)
 
         out = PointStamped()
         out.header = header
         out.point.x = self.clamp(normalized_x_error, -1.0, 1.0)
         out.point.y = self.clamp(bottom_y_ratio, 0.0, 1.0)
         out.point.z = confidence
-        return class_name, class_keys, out, (x1, y1, x2, y2), self.parse_track_id(detection)
+        return class_name, class_keys, out, (x1, y1, x2, y2), self.parse_track_id(detection), center_y_ratio
 
     def filter_overlapping_avoid_candidates(self, avoid_candidates, target_candidates):
         threshold = self.avoid_target_iou_threshold
@@ -190,7 +192,7 @@ class DetectionsToTargetNode(Node):
         return max(candidates, key=self.target_candidate_score)
 
     def target_candidate_score(self, candidate):
-        _, _, point_msg, _, _ = candidate
+        _, _, point_msg, _, _, _ = candidate
         closeness = float(point_msg.point.y)
         x_error = abs(float(point_msg.point.x))
         return closeness - self.target_center_weight * x_error
@@ -212,7 +214,7 @@ class DetectionsToTargetNode(Node):
         if self.locked_target_bbox is None or self.locked_target_point is None:
             return False
 
-        _, _, point_msg, bbox_xyxy, track_id = candidate
+        _, _, point_msg, bbox_xyxy, track_id, _ = candidate
         if track_id is not None and track_id == self.locked_target_track_id:
             return True
 
@@ -242,7 +244,7 @@ class DetectionsToTargetNode(Node):
         if candidate is None:
             return None
 
-        _, _, point_msg, bbox_xyxy, track_id = candidate
+        _, _, point_msg, bbox_xyxy, track_id, _ = candidate
         self.locked_target_track_id = track_id
         self.locked_target_bbox = bbox_xyxy
         self.locked_target_point = (float(point_msg.point.x), float(point_msg.point.y))
@@ -265,7 +267,7 @@ class DetectionsToTargetNode(Node):
         if candidate is None:
             return
 
-        _, class_name, point_msg, _, _ = candidate
+        _, class_name, point_msg, _, _, _ = candidate
         point_pub.publish(point_msg)
 
         label_msg = String()
@@ -284,6 +286,7 @@ class DetectionsToTargetNode(Node):
                     "class_name": class_name,
                     "x": float(point_msg.point.x),
                     "y": float(point_msg.point.y),
+                    "center_y": float(center_y_ratio),
                     "confidence": float(point_msg.point.z),
                     "track_id": track_id,
                     "bbox_xyxy": {
@@ -293,7 +296,7 @@ class DetectionsToTargetNode(Node):
                         "y2": float(bbox_xyxy[3]),
                     },
                 }
-                for _, class_name, point_msg, bbox_xyxy, track_id in sorted(
+                for _, class_name, point_msg, bbox_xyxy, track_id, center_y_ratio in sorted(
                     candidates,
                     key=lambda item: item[0],
                     reverse=True,
@@ -341,7 +344,7 @@ class DetectionsToTargetNode(Node):
 
     @staticmethod
     def parse_track_id(detection: dict[str, Any]) -> int | None:
-        value = detection.get("track_id")
+        value = detection.get("stable_track_id", detection.get("track_id"))
         if value is None:
             return None
         try:

@@ -105,7 +105,7 @@ ros2 launch ros2_yolo_detector yolo_camera.launch.py \
 ## Published topics
 
 - `/yolo/detections`: `std_msgs/msg/String`, JSON detection result
-- `/target_object`: `geometry_msgs/msg/PointStamped`, normalized target center and area
+- `/target_object`: `geometry_msgs/msg/PointStamped`, normalized target center x and box-bottom y closeness
 - `/target_label`: `std_msgs/msg/String`, selected target class name
 - `/avoid_object`: `geometry_msgs/msg/PointStamped`, closest selected avoid object
 - `/avoid_objects`: `std_msgs/msg/String`, JSON list of all selected avoid objects for VFH-lite avoidance
@@ -120,6 +120,7 @@ Detection JSON example:
   "frame_id": "camera",
   "detections": [
     {
+      "stable_track_id": 3,
       "track_id": 7,
       "class_id": 0,
       "class_name": "target",
@@ -130,8 +131,10 @@ Detection JSON example:
 }
 ```
 
-Mission nodes can subscribe to `/target_object` and `/avoid_objects`;
-lower-level consumers can subscribe to `/yolo/detections` for the full class,
+Mission nodes can subscribe to `/target_object` and `/avoid_objects`.
+`/avoid_objects` includes `x`, box-bottom `y`, bbox-center `center_y`,
+confidence, tracking ID, and bounding-box payload for each avoid object.
+Lower-level consumers can subscribe to `/yolo/detections` for the full class,
 confidence, tracking ID, and bounding-box payload.
 
 ByteTrack is enabled by default in `yolo_camera_node` through Ultralytics:
@@ -140,14 +143,24 @@ ByteTrack is enabled by default in `yolo_camera_node` through Ultralytics:
 tracker_enabled: true
 tracker_config: bytetrack.yaml
 tracker_persist: true
+stable_tracking_enabled: true
+stable_track_timeout_s: 1.0
+stable_track_iou_threshold: 0.15
+stable_track_center_ratio: 0.75
 ```
+
+`track_id` is the raw ByteTrack ID. It can change when detection briefly drops
+or the box moves abruptly. `stable_track_id` is an extra package-level ID that
+matches by raw track ID first, then by box overlap and center distance. Mission
+target locking uses this stable ID when available.
 
 When multiple target objects are visible, `detections_to_target_node` keeps a
 short target lock so the published `/target_object` does not switch left and
-right every frame. If ByteTrack provides a `track_id`, that ID is used first.
-Otherwise, the selected target is kept while its box still overlaps the previous
-target or stays near the previous normalized x/y position. A new target can take
-over only when it is clearly closer or has a much better center-weighted score.
+right every frame. If a `stable_track_id` or ByteTrack `track_id` is available,
+that ID is used first. Otherwise, the selected target is kept while its box still
+overlaps the previous target or stays near the previous normalized x/y position.
+A new target can take over only when it is clearly closer or has a much better
+center-weighted score.
 
 Target lock defaults:
 
