@@ -13,6 +13,7 @@ class MissionState(str, Enum):
     LEAVE_START = 'LEAVE_START'
     SEARCH_OBJECT = 'SEARCH_OBJECT'
     APPROACH_OBJECT = 'APPROACH_OBJECT'
+    FINAL_FORWARD = 'FINAL_FORWARD'
     GRAB_OBJECT = 'GRAB_OBJECT'
     BACK_OUT = 'BACK_OUT'
     DONE = 'DONE'
@@ -50,6 +51,8 @@ class MissionManager(Node):
         self.declare_parameter('center_tolerance', 0.18)
         self.declare_parameter('grab_area_ratio', 0.10)
         self.declare_parameter('target_timeout_s', 1.5)
+        self.declare_parameter('final_forward_linear_x', 0.06)
+        self.declare_parameter('final_forward_duration_s', 0.8)
         self.declare_parameter('back_out_linear_x', -0.08)
         self.declare_parameter('grab_duration_s', 1.0)
         self.declare_parameter('back_out_duration_s', 1.5)
@@ -140,6 +143,8 @@ class MissionManager(Node):
             self.run_search()
         elif self.state == MissionState.APPROACH_OBJECT:
             self.run_approach()
+        elif self.state == MissionState.FINAL_FORWARD:
+            self.run_final_forward()
         elif self.state == MissionState.GRAB_OBJECT:
             self.run_grab()
         elif self.state == MissionState.BACK_OUT:
@@ -197,7 +202,7 @@ class MissionManager(Node):
 
         if area_ratio >= self.get_float('grab_area_ratio') and abs(x_error) <= self.get_float('center_tolerance'):
             self.publish_cmd_vel()
-            self.change_state(MissionState.GRAB_OBJECT)
+            self.change_state(MissionState.FINAL_FORWARD)
             return
 
         angular_z = -self.get_float('approach_angular_gain') * x_error
@@ -216,6 +221,10 @@ class MissionManager(Node):
             linear_x = max(min_linear, max_linear * (1.0 - area_scale))
 
         self.publish_cmd_vel(linear_x=linear_x, angular_z=angular_z)
+
+    def run_final_forward(self):
+        self.publish_cmd_vel(linear_x=self.get_float('final_forward_linear_x'))
+        self.advance_after('final_forward_duration_s', MissionState.GRAB_OBJECT)
 
     def run_grab(self):
         self.publish_cmd_vel()

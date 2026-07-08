@@ -32,7 +32,7 @@ ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'close'}"
 `start` runs this first demo mission:
 
 ```text
-SEARCH_OBJECT -> APPROACH_OBJECT -> GRAB_OBJECT -> MOVE_TO_STORAGE -> RELEASE_OBJECT -> BACK_OUT -> DONE
+LEAVE_START -> SEARCH_OBJECT -> APPROACH_OBJECT -> FINAL_FORWARD -> GRAB_OBJECT -> BACK_OUT -> DONE
 ```
 
 `/target_object` format:
@@ -44,8 +44,9 @@ point.z = detection confidence
 ```
 
 During `APPROACH_OBJECT`, the robot turns until `point.x` is near 0, moves
-forward while centered, and transitions to `GRAB_OBJECT` when `point.y` reaches
-`grab_area_ratio`.
+forward while centered, and transitions to `FINAL_FORWARD` when `point.y`
+reaches `grab_area_ratio`. `FINAL_FORWARD` drives straight for a short fixed
+time so the object reaches the gripper before `GRAB_OBJECT` closes the servo.
 
 ## Build
 
@@ -116,6 +117,8 @@ Tune these values in `launch/mission_manager.launch.py` or
 ```text
 center_tolerance: how centered the target must be before moving forward
 grab_area_ratio: how large the bounding box must be before grabbing
+final_forward_linear_x: straight driving speed after visual approach
+final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
 ```

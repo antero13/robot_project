@@ -51,6 +51,8 @@ def generate_launch_description():
                 'center_tolerance': 0.12,
                 'grab_area_ratio': 0.10,
                 'target_timeout_s': 0.5,
+                'final_forward_linear_x': 0.06,
+                'final_forward_duration_s': 0.8,
                 'storage_linear_x': 0.10,
                 'back_out_linear_x': -0.08,
                 'search_duration_s': 30.0,

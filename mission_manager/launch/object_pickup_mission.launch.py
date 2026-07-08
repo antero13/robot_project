@@ -26,6 +26,8 @@ def launch_setup(context, *args, **kwargs):
     gripper_servo_id = int(arg(context, 'gripper_servo_id'))
     gripper_open_position = int(arg(context, 'gripper_open_position'))
     gripper_closed_position = int(arg(context, 'gripper_closed_position'))
+    final_forward_linear_x = float(arg(context, 'final_forward_linear_x'))
+    final_forward_duration_s = float(arg(context, 'final_forward_duration_s'))
 
     return [
         Node(
@@ -111,6 +113,8 @@ def launch_setup(context, *args, **kwargs):
                 'center_tolerance': 0.18,
                 'grab_area_ratio': 0.10,
                 'target_timeout_s': 1.5,
+                'final_forward_linear_x': final_forward_linear_x,
+                'final_forward_duration_s': final_forward_duration_s,
                 'back_out_linear_x': -0.08,
                 'grab_duration_s': 1.0,
                 'back_out_duration_s': 1.5,
@@ -179,5 +183,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gripper_servo_id', default_value='1'),
         DeclareLaunchArgument('gripper_open_position', default_value='500'),
         DeclareLaunchArgument('gripper_closed_position', default_value='750'),
+        DeclareLaunchArgument('final_forward_linear_x', default_value='0.06'),
+        DeclareLaunchArgument('final_forward_duration_s', default_value='0.8'),
         OpaqueFunction(function=launch_setup),
     ])

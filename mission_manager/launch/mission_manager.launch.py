@@ -36,6 +36,8 @@ def generate_launch_description():
                 'center_tolerance': 0.18,
                 'grab_area_ratio': 0.10,
                 'target_timeout_s': 1.5,
+                'final_forward_linear_x': 0.06,
+                'final_forward_duration_s': 0.8,
                 'back_out_linear_x': -0.08,
 
                 'grab_duration_s': 1.0,
