@@ -54,7 +54,7 @@ class MissionManager(Node):
         self.declare_parameter('approach_angular_gain', 0.8)
         self.declare_parameter('approach_max_angular_z', 0.45)
         self.declare_parameter('center_tolerance', 0.12)
-        self.declare_parameter('grab_area_ratio', 0.10)
+        self.declare_parameter('grab_area_ratio', 0.82)
         self.declare_parameter('target_timeout_s', 0.5)
         self.declare_parameter('final_forward_linear_x', 0.06)
         self.declare_parameter('final_forward_duration_s', 0.8)
@@ -64,10 +64,10 @@ class MissionManager(Node):
 
         self.declare_parameter('avoid_enabled', True)
         self.declare_parameter('avoid_timeout_s', 0.5)
-        self.declare_parameter('avoid_area_ratio', 0.04)
+        self.declare_parameter('avoid_area_ratio', 0.60)
         self.declare_parameter('avoid_center_band', 0.65)
         self.declare_parameter('avoid_only_if_closer_than_target', True)
-        self.declare_parameter('avoid_closer_ratio', 1.15)
+        self.declare_parameter('avoid_closer_ratio', 1.05)
         self.declare_parameter('avoid_turn_duration_s', 0.45)
         self.declare_parameter('avoid_turn_angular_z', 0.45)
         self.declare_parameter('avoid_forward_duration_s', 0.8)
@@ -270,21 +270,21 @@ class MissionManager(Node):
             return
 
         x_error = float(self.latest_target.x)
-        area_ratio = float(self.latest_target.y)
+        closeness = float(self.latest_target.y)
 
         if abs(x_error) > self.get_float('center_tolerance'):
             self.change_state(MissionState.ALIGN_TARGET)
             return
 
-        if area_ratio >= self.get_float('grab_area_ratio'):
+        if closeness >= self.get_float('grab_area_ratio'):
             self.publish_cmd_vel()
             self.change_state(MissionState.FINAL_FORWARD)
             return
 
-        area_scale = max(0.0, min(1.0, area_ratio / self.get_float('grab_area_ratio')))
+        closeness_scale = max(0.0, min(1.0, closeness / self.get_float('grab_area_ratio')))
         max_linear = self.get_float('approach_max_linear_x')
         min_linear = self.get_float('approach_min_linear_x')
-        linear_x = max(min_linear, max_linear * (1.0 - area_scale))
+        linear_x = max(min_linear, max_linear * (1.0 - closeness_scale))
         angular_z = self.target_turn_command(x_error)
         self.publish_cmd_vel(linear_x=linear_x, angular_z=angular_z)
 
@@ -328,23 +328,23 @@ class MissionManager(Node):
             return False
 
         x_error = abs(float(self.latest_avoid.x))
-        area_ratio = float(self.latest_avoid.y)
-        if area_ratio < self.get_float('avoid_area_ratio'):
+        closeness = float(self.latest_avoid.y)
+        if closeness < self.get_float('avoid_area_ratio'):
             return False
         if x_error > self.get_float('avoid_center_band'):
             return False
-        if not self.avoid_is_closer_than_target(area_ratio):
+        if not self.avoid_is_closer_than_target(closeness):
             return False
         return True
 
-    def avoid_is_closer_than_target(self, avoid_area_ratio):
+    def avoid_is_closer_than_target(self, avoid_closeness):
         if not bool(self.get_parameter('avoid_only_if_closer_than_target').value):
             return True
         if not self.has_recent_target():
             return True
 
-        target_area_ratio = float(self.latest_target.y)
-        return avoid_area_ratio >= target_area_ratio * self.get_float('avoid_closer_ratio')
+        target_closeness = float(self.latest_target.y)
+        return avoid_closeness >= target_closeness * self.get_float('avoid_closer_ratio')
 
     def compute_avoid_turn_direction(self):
         if not self.has_recent_avoid():

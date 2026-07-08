@@ -47,15 +47,16 @@ AVOID_TURN -> AVOID_FORWARD -> REACQUIRE_TARGET
 
 ```text
 point.x = normalized horizontal error, -1.0 left to +1.0 right
-point.y = bounding box area ratio, bigger means closer
+point.y = normalized bounding-box bottom y, 0.0 top to 1.0 bottom
 point.z = detection confidence
 ```
 
 `/avoid_object` uses the same point format. During `ALIGN_TARGET`, the robot
 turns until `point.x` is near 0. During `APPROACH_TARGET`, it moves forward
 while centered and transitions to `FINAL_FORWARD` when `point.y` reaches
-`grab_area_ratio`. `FINAL_FORWARD` drives straight briefly so the object reaches
-the gripper before `GRAB_OBJECT` closes the servo.
+`grab_area_ratio`. Despite the legacy parameter name, this threshold is now a
+camera y-position closeness score. `FINAL_FORWARD` drives straight briefly so
+the object reaches the gripper before `GRAB_OBJECT` closes the servo.
 
 ## Build
 
@@ -127,12 +128,12 @@ Tune these values in `launch/mission_manager.launch.py` or
 
 ```text
 center_tolerance: how centered the target must be before moving forward
-grab_area_ratio: how large the bounding box must be before grabbing
+grab_area_ratio: how low the box bottom must be before grabbing, 0.0 top to 1.0 bottom
 final_forward_linear_x: straight driving speed after visual approach
 final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
-avoid_area_ratio: minimum obstacle size before avoidance can trigger
+avoid_area_ratio: minimum obstacle box-bottom y before avoidance can trigger
 avoid_center_band: how close to the camera center an obstacle must be
-avoid_closer_ratio: how much larger the obstacle must be than the target
+avoid_closer_ratio: how much lower the obstacle must appear than the target
 ```

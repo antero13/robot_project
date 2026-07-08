@@ -110,12 +110,12 @@ class DetectionsToTargetNode(Node):
         bbox_center_x = (x1 + x2) * 0.5
         image_center_x = image_width * 0.5
         normalized_x_error = (bbox_center_x - image_center_x) / image_center_x
-        area_ratio = (bbox_width * bbox_height) / (image_width * image_height)
+        bottom_y_ratio = y2 / image_height
 
         out = PointStamped()
         out.header = header
         out.point.x = self.clamp(normalized_x_error, -1.0, 1.0)
-        out.point.y = self.clamp(area_ratio, 0.0, 1.0)
+        out.point.y = self.clamp(bottom_y_ratio, 0.0, 1.0)
         out.point.z = confidence
         return class_name, class_keys, out
 
