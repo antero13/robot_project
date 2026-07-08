@@ -24,6 +24,9 @@ class YoloCameraNode(Node):
         self.declare_parameter("confidence", 0.25)
         self.declare_parameter("iou", 0.45)
         self.declare_parameter("device", "")
+        self.declare_parameter("tracker_enabled", True)
+        self.declare_parameter("tracker_config", "bytetrack.yaml")
+        self.declare_parameter("tracker_persist", True)
         self.declare_parameter("publish_annotated", True)
         self.declare_parameter("publish_raw", False)
         self.declare_parameter("queue_size", 1)
@@ -46,6 +49,9 @@ class YoloCameraNode(Node):
         self.confidence = self.get_parameter("confidence").get_parameter_value().double_value
         self.iou = self.get_parameter("iou").get_parameter_value().double_value
         self.device = self.get_parameter("device").get_parameter_value().string_value
+        self.tracker_enabled = self.get_parameter("tracker_enabled").get_parameter_value().bool_value
+        self.tracker_config = self.get_parameter("tracker_config").get_parameter_value().string_value
+        self.tracker_persist = self.get_parameter("tracker_persist").get_parameter_value().bool_value
         self.publish_annotated = self.get_parameter("publish_annotated").get_parameter_value().bool_value
         self.publish_raw = self.get_parameter("publish_raw").get_parameter_value().bool_value
         queue_size = self.get_parameter("queue_size").get_parameter_value().integer_value
@@ -95,6 +101,8 @@ class YoloCameraNode(Node):
             raise ValueError("input_mode must be either 'topic' or 'camera'")
 
         self.get_logger().info(f"YOLO model loaded: {self.model_path}")
+        if self.tracker_enabled:
+            self.get_logger().info(f"ByteTrack enabled: tracker={self.tracker_config}")
         self.get_logger().info(f"Publishing detections: {self.detections_topic}")
         if self.annotated_pub is not None:
             self.get_logger().info(f"Publishing annotated images: {self.annotated_topic}")
@@ -199,16 +207,21 @@ class YoloCameraNode(Node):
     def _run_inference(self, frame: Any, header: Header) -> None:
         image_height, image_width = frame.shape[:2]
         try:
-            predict_kwargs = {
+            inference_kwargs = {
                 "source": frame,
                 "conf": self.confidence,
                 "iou": self.iou,
                 "verbose": False,
             }
             if self.device:
-                predict_kwargs["device"] = self.device
+                inference_kwargs["device"] = self.device
 
-            results = self.model.predict(**predict_kwargs)
+            if self.tracker_enabled:
+                inference_kwargs["persist"] = self.tracker_persist
+                inference_kwargs["tracker"] = self.tracker_config
+                results = self.model.track(**inference_kwargs)
+            else:
+                results = self.model.predict(**inference_kwargs)
         except Exception as exc:
             self.get_logger().error(f"YOLO inference failed: {exc}")
             return
@@ -241,21 +254,36 @@ class YoloCameraNode(Node):
             xyxy = box.xyxy[0].detach().cpu().tolist()
             class_id = int(box.cls[0].detach().cpu().item())
             confidence = float(box.conf[0].detach().cpu().item())
-            detections.append(
-                {
-                    "class_id": class_id,
-                    "class_name": names.get(class_id, str(class_id)),
-                    "confidence": confidence,
-                    "bbox_xyxy": {
-                        "x1": float(xyxy[0]),
-                        "y1": float(xyxy[1]),
-                        "x2": float(xyxy[2]),
-                        "y2": float(xyxy[3]),
-                    },
-                }
-            )
+            detection = {
+                "class_id": class_id,
+                "class_name": names.get(class_id, str(class_id)),
+                "confidence": confidence,
+                "bbox_xyxy": {
+                    "x1": float(xyxy[0]),
+                    "y1": float(xyxy[1]),
+                    "x2": float(xyxy[2]),
+                    "y2": float(xyxy[3]),
+                },
+            }
+
+            track_id = self._box_track_id(box)
+            if track_id is not None:
+                detection["track_id"] = track_id
+
+            detections.append(detection)
 
         return detections
+
+    @staticmethod
+    def _box_track_id(box: Any) -> int | None:
+        track_id = getattr(box, "id", None)
+        if track_id is None:
+            return None
+
+        try:
+            return int(track_id[0].detach().cpu().item())
+        except (AttributeError, IndexError, TypeError, ValueError):
+            return None
 
     def _publish_detections(
         self,

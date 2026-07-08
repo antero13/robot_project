@@ -20,6 +20,8 @@ def launch_setup(context, *args, **kwargs):
     camera_fps = float(arg(context, 'camera_fps'))
     time_per_frame_denominator = max(1, int(round(camera_fps)))
     confidence = float(arg(context, 'confidence'))
+    tracker_enabled = as_bool(arg(context, 'tracker_enabled'))
+    tracker_persist = as_bool(arg(context, 'tracker_persist'))
     publish_raw = as_bool(arg(context, 'publish_raw'))
     publish_annotated = as_bool(arg(context, 'publish_annotated'))
     gripper_enabled = as_bool(arg(context, 'gripper_enabled'))
@@ -62,6 +64,9 @@ def launch_setup(context, *args, **kwargs):
                 'camera_height': camera_height,
                 'camera_fps': camera_fps,
                 'confidence': confidence,
+                'tracker_enabled': tracker_enabled,
+                'tracker_config': arg(context, 'tracker_config'),
+                'tracker_persist': tracker_persist,
                 'detections_topic': '/yolo/detections',
                 'annotated_topic': '/yolo/annotated_image',
                 'raw_topic': arg(context, 'raw_topic'),
@@ -211,6 +216,9 @@ def generate_launch_description():
         DeclareLaunchArgument('exposure_time_absolute', default_value='200'),
         DeclareLaunchArgument('gain', default_value='20'),
         DeclareLaunchArgument('confidence', default_value='0.25'),
+        DeclareLaunchArgument('tracker_enabled', default_value='true'),
+        DeclareLaunchArgument('tracker_config', default_value='bytetrack.yaml'),
+        DeclareLaunchArgument('tracker_persist', default_value='true'),
         DeclareLaunchArgument('publish_raw', default_value='true'),
         DeclareLaunchArgument('publish_annotated', default_value='false'),
         DeclareLaunchArgument('raw_topic', default_value='/camera/image_raw'),

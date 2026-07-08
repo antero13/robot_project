@@ -120,6 +120,7 @@ Detection JSON example:
   "frame_id": "camera",
   "detections": [
     {
+      "track_id": 7,
       "class_id": 0,
       "class_name": "target",
       "confidence": 0.91,
@@ -131,14 +132,22 @@ Detection JSON example:
 
 Mission nodes can subscribe to `/target_object` and `/avoid_objects`;
 lower-level consumers can subscribe to `/yolo/detections` for the full class,
-confidence, and bounding-box payload.
+confidence, tracking ID, and bounding-box payload.
+
+ByteTrack is enabled by default in `yolo_camera_node` through Ultralytics:
+
+```text
+tracker_enabled: true
+tracker_config: bytetrack.yaml
+tracker_persist: true
+```
 
 When multiple target objects are visible, `detections_to_target_node` keeps a
 short target lock so the published `/target_object` does not switch left and
-right every frame. The selected target is kept while its box still overlaps the
-previous target or stays near the previous normalized x/y position. A new target
-can take over only when it is clearly closer or has a much better center-weighted
-score.
+right every frame. If ByteTrack provides a `track_id`, that ID is used first.
+Otherwise, the selected target is kept while its box still overlaps the previous
+target or stays near the previous normalized x/y position. A new target can take
+over only when it is clearly closer or has a much better center-weighted score.
 
 Target lock defaults:
 

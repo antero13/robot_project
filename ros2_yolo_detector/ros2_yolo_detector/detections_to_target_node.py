@@ -50,6 +50,7 @@ class DetectionsToTargetNode(Node):
         self.avoid_target_iou_threshold = float(self.get_parameter("avoid_target_iou_threshold").value)
         self.target_classes = self.parse_class_list(self.get_parameter("target_classes").value)
         self.avoid_classes = self.parse_class_list(self.get_parameter("avoid_classes").value)
+        self.locked_target_track_id = None
         self.locked_target_bbox = None
         self.locked_target_point = None
         self.locked_target_time = None
@@ -94,11 +95,11 @@ class DetectionsToTargetNode(Node):
             if converted is None:
                 continue
 
-            class_name, class_keys, point_msg, bbox_xyxy = converted
+            class_name, class_keys, point_msg, bbox_xyxy, track_id = converted
             if self.is_target(class_keys):
-                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy))
+                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id))
             elif self.is_avoid(class_keys):
-                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy))
+                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id))
 
         avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
         target_candidate = self.select_target_candidate(target_candidates)
@@ -112,7 +113,7 @@ class DetectionsToTargetNode(Node):
         image_width: float,
         image_height: float,
         header,
-    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float]] | None:
+    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float], int | None] | None:
         class_name = str(detection.get("class_name", detection.get("class_id", "")))
         class_id = detection.get("class_id", "")
         class_keys = {class_name, str(class_id)}
@@ -144,7 +145,7 @@ class DetectionsToTargetNode(Node):
         out.point.x = self.clamp(normalized_x_error, -1.0, 1.0)
         out.point.y = self.clamp(bottom_y_ratio, 0.0, 1.0)
         out.point.z = confidence
-        return class_name, class_keys, out, (x1, y1, x2, y2)
+        return class_name, class_keys, out, (x1, y1, x2, y2), self.parse_track_id(detection)
 
     def filter_overlapping_avoid_candidates(self, avoid_candidates, target_candidates):
         threshold = self.avoid_target_iou_threshold
@@ -189,7 +190,7 @@ class DetectionsToTargetNode(Node):
         return max(candidates, key=self.target_candidate_score)
 
     def target_candidate_score(self, candidate):
-        _, _, point_msg, _ = candidate
+        _, _, point_msg, _, _ = candidate
         closeness = float(point_msg.point.y)
         x_error = abs(float(point_msg.point.x))
         return closeness - self.target_center_weight * x_error
@@ -211,7 +212,10 @@ class DetectionsToTargetNode(Node):
         if self.locked_target_bbox is None or self.locked_target_point is None:
             return False
 
-        _, _, point_msg, bbox_xyxy = candidate
+        _, _, point_msg, bbox_xyxy, track_id = candidate
+        if track_id is not None and track_id == self.locked_target_track_id:
+            return True
+
         if self.bbox_iou(bbox_xyxy, self.locked_target_bbox) >= self.target_lock_iou_threshold:
             return True
 
@@ -238,13 +242,15 @@ class DetectionsToTargetNode(Node):
         if candidate is None:
             return None
 
-        _, _, point_msg, bbox_xyxy = candidate
+        _, _, point_msg, bbox_xyxy, track_id = candidate
+        self.locked_target_track_id = track_id
         self.locked_target_bbox = bbox_xyxy
         self.locked_target_point = (float(point_msg.point.x), float(point_msg.point.y))
         self.locked_target_time = self.get_clock().now()
         return candidate
 
     def clear_target_lock(self):
+        self.locked_target_track_id = None
         self.locked_target_bbox = None
         self.locked_target_point = None
         self.locked_target_time = None
@@ -259,7 +265,7 @@ class DetectionsToTargetNode(Node):
         if candidate is None:
             return
 
-        _, class_name, point_msg, _ = candidate
+        _, class_name, point_msg, _, _ = candidate
         point_pub.publish(point_msg)
 
         label_msg = String()
@@ -279,6 +285,7 @@ class DetectionsToTargetNode(Node):
                     "x": float(point_msg.point.x),
                     "y": float(point_msg.point.y),
                     "confidence": float(point_msg.point.z),
+                    "track_id": track_id,
                     "bbox_xyxy": {
                         "x1": float(bbox_xyxy[0]),
                         "y1": float(bbox_xyxy[1]),
@@ -286,7 +293,7 @@ class DetectionsToTargetNode(Node):
                         "y2": float(bbox_xyxy[3]),
                     },
                 }
-                for _, class_name, point_msg, bbox_xyxy in sorted(
+                for _, class_name, point_msg, bbox_xyxy, track_id in sorted(
                     candidates,
                     key=lambda item: item[0],
                     reverse=True,
@@ -331,6 +338,16 @@ class DetectionsToTargetNode(Node):
         if isinstance(value, (list, tuple)):
             return {str(item).strip() for item in value if str(item).strip()}
         return {item.strip() for item in str(value).split(",") if item.strip()}
+
+    @staticmethod
+    def parse_track_id(detection: dict[str, Any]) -> int | None:
+        value = detection.get("track_id")
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def clamp(value: float, min_value: float, max_value: float) -> float:

@@ -34,6 +34,9 @@ def generate_launch_description():
             DeclareLaunchArgument("confidence", default_value="0.25"),
             DeclareLaunchArgument("iou", default_value="0.45"),
             DeclareLaunchArgument("device", default_value=""),
+            DeclareLaunchArgument("tracker_enabled", default_value="true"),
+            DeclareLaunchArgument("tracker_config", default_value="bytetrack.yaml"),
+            DeclareLaunchArgument("tracker_persist", default_value="true"),
             DeclareLaunchArgument("publish_annotated", default_value="false"),
             DeclareLaunchArgument("detections_topic", default_value="/yolo/detections"),
             DeclareLaunchArgument("target_topic", default_value="/target_object"),
@@ -95,6 +98,15 @@ def generate_launch_description():
                         "confidence": ParameterValue(LaunchConfiguration("confidence"), value_type=float),
                         "iou": ParameterValue(LaunchConfiguration("iou"), value_type=float),
                         "device": LaunchConfiguration("device"),
+                        "tracker_enabled": ParameterValue(
+                            LaunchConfiguration("tracker_enabled"),
+                            value_type=bool,
+                        ),
+                        "tracker_config": LaunchConfiguration("tracker_config"),
+                        "tracker_persist": ParameterValue(
+                            LaunchConfiguration("tracker_persist"),
+                            value_type=bool,
+                        ),
                         "detections_topic": LaunchConfiguration("detections_topic"),
                         "publish_annotated": ParameterValue(
                             LaunchConfiguration("publish_annotated"),
