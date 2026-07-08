@@ -150,7 +150,7 @@ Tune these values in `launch/mission_manager.launch.py` or
 
 ```text
 center_tolerance: how centered the target must be before moving forward
-grab_area_ratio: how low the box bottom must be before grabbing, 0.0 top to 1.0 bottom
+grab_area_ratio: how low the box bottom must be before grabbing, 0.0 top to 1.0 bottom, default 0.50
 final_forward_linear_x: straight driving speed after visual approach
 final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target

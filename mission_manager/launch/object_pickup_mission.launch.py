@@ -114,7 +114,7 @@ def launch_setup(context, *args, **kwargs):
                 'approach_angular_gain': 0.8,
                 'approach_max_angular_z': 0.45,
                 'center_tolerance': 0.12,
-                'grab_area_ratio': 0.70,
+                'grab_area_ratio': 0.50,
                 'target_timeout_s': 0.5,
                 'final_forward_linear_x': final_forward_linear_x,
                 'final_forward_duration_s': final_forward_duration_s,

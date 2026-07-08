@@ -57,7 +57,7 @@ class MissionManager(Node):
         self.declare_parameter('approach_angular_gain', 0.8)
         self.declare_parameter('approach_max_angular_z', 0.45)
         self.declare_parameter('center_tolerance', 0.12)
-        self.declare_parameter('grab_area_ratio', 0.70)
+        self.declare_parameter('grab_area_ratio', 0.50)
         self.declare_parameter('target_timeout_s', 0.5)
         self.declare_parameter('final_forward_linear_x', 0.06)
         self.declare_parameter('final_forward_duration_s', 0.8)
