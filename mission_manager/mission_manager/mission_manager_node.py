@@ -14,6 +14,7 @@ class MissionState(str, Enum):
     SEARCH = 'SEARCH'
     ALIGN_TARGET = 'ALIGN_TARGET'
     APPROACH_TARGET = 'APPROACH_TARGET'
+    OPEN_GRIPPER = 'OPEN_GRIPPER'
     FINAL_FORWARD = 'FINAL_FORWARD'
     AVOID_TURN = 'AVOID_TURN'
     AVOID_FORWARD = 'AVOID_FORWARD'
@@ -101,6 +102,7 @@ class MissionManager(Node):
         self.latest_avoid_time = None
         self.last_target_direction = self.search_direction()
         self.avoid_turn_direction = self.search_direction()
+        self.open_command_sent = False
         self.grab_command_sent = False
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
@@ -171,8 +173,9 @@ class MissionManager(Node):
             self.get_logger().warn(f'Unknown mission command: {msg.data}')
 
     def start_mission(self):
+        self.open_command_sent = False
         self.grab_command_sent = False
-        self.command_gripper(open_gripper=True)
+        self.command_gripper(open_gripper=False)
         self.change_state(MissionState.LEAVE_START)
 
     def tick(self):
@@ -188,6 +191,8 @@ class MissionManager(Node):
             self.run_align_target()
         elif self.state == MissionState.APPROACH_TARGET:
             self.run_approach_target()
+        elif self.state == MissionState.OPEN_GRIPPER:
+            self.run_open_gripper()
         elif self.state == MissionState.FINAL_FORWARD:
             self.run_final_forward()
         elif self.state == MissionState.AVOID_TURN:
@@ -278,7 +283,7 @@ class MissionManager(Node):
 
         if closeness >= self.get_float('grab_area_ratio'):
             self.publish_cmd_vel()
-            self.change_state(MissionState.FINAL_FORWARD)
+            self.change_state(MissionState.OPEN_GRIPPER)
             return
 
         closeness_scale = max(0.0, min(1.0, closeness / self.get_float('grab_area_ratio')))
@@ -287,6 +292,13 @@ class MissionManager(Node):
         linear_x = max(min_linear, max_linear * (1.0 - closeness_scale))
         angular_z = self.target_turn_command(x_error)
         self.publish_cmd_vel(linear_x=linear_x, angular_z=angular_z)
+
+    def run_open_gripper(self):
+        self.publish_cmd_vel()
+        if not self.open_command_sent:
+            self.command_gripper(open_gripper=True)
+            self.open_command_sent = True
+        self.advance_after('gripper_move_duration_s', MissionState.FINAL_FORWARD)
 
     def run_final_forward(self):
         self.publish_cmd_vel(linear_x=self.get_float('final_forward_linear_x'))
@@ -393,6 +405,8 @@ class MissionManager(Node):
         self.state = next_state
         self.state_started_at = self.get_clock().now()
 
+        if next_state == MissionState.OPEN_GRIPPER:
+            self.open_command_sent = False
         if next_state == MissionState.GRAB_OBJECT:
             self.grab_command_sent = False
 

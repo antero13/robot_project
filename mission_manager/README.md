@@ -34,8 +34,11 @@ ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'close'}"
 `start` runs this first demo mission:
 
 ```text
-LEAVE_START -> SEARCH -> ALIGN_TARGET -> APPROACH_TARGET -> FINAL_FORWARD -> GRAB_OBJECT -> BACK_OUT -> DONE
+LEAVE_START -> SEARCH -> ALIGN_TARGET -> APPROACH_TARGET -> OPEN_GRIPPER -> FINAL_FORWARD -> GRAB_OBJECT -> BACK_OUT -> DONE
 ```
+
+At `start`, the gripper is commanded closed and stays closed while the robot
+searches, aligns, and approaches the target.
 
 If a close obstacle is detected, the manager inserts:
 
@@ -53,10 +56,11 @@ point.z = detection confidence
 
 `/avoid_object` uses the same point format. During `ALIGN_TARGET`, the robot
 turns until `point.x` is near 0. During `APPROACH_TARGET`, it moves forward
-while centered and transitions to `FINAL_FORWARD` when `point.y` reaches
+while centered and transitions to `OPEN_GRIPPER` when `point.y` reaches
 `grab_area_ratio`. Despite the legacy parameter name, this threshold is now a
-camera y-position closeness score. `FINAL_FORWARD` drives straight briefly so
-the object reaches the gripper before `GRAB_OBJECT` closes the servo.
+camera y-position closeness score. `OPEN_GRIPPER` opens the servo, then
+`FINAL_FORWARD` drives straight briefly so the object enters the gripper before
+`GRAB_OBJECT` closes the servo.
 
 ## Build
 
