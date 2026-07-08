@@ -164,18 +164,20 @@ final_forward_linear_x: straight driving speed after visual approach
 final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
-avoid_area_ratio: obstacle box-bottom y where avoidance can trigger, default 0.45
+avoid_area_ratio: obstacle box-bottom y where avoidance can trigger, default 0.38
 avoid_roi_enabled: require the avoid box center to be inside the trapezoid ROI, default true
 avoid_roi_left_far_x/y: upper-left ROI point, default -0.75 / 0.42
 avoid_roi_right_far_x/y: upper-right ROI point, default 0.62 / 0.42
 avoid_roi_left_near_x/y: lower-left ROI point, default -0.27 / 0.80
 avoid_roi_right_near_x/y: lower-right ROI point, default 0.11 / 0.80
-avoid_emergency_ratio: y threshold that can trigger avoidance even if the target is also close, default 0.75
-avoid_closer_ratio: how much lower the obstacle must appear than the target, default 1.00
-avoid_turn_duration_s: first turn-only avoidance duration, default 0.45
-avoid_forward_duration_s: curved forward avoidance duration, default 0.75
+avoid_emergency_ratio: y threshold that can trigger avoidance even if the target is also close, default 0.68
+avoid_closer_ratio: how much lower the obstacle must appear than the target, default 0.85
+avoid_turn_duration_s: first turn-only avoidance duration, default 0.55
+avoid_turn_angular_z: first turn-only avoidance angular speed, default 0.65
+avoid_forward_duration_s: curved forward avoidance duration, default 0.85
+avoid_forward_angular_z: curved forward avoidance angular speed, default 0.25
 avoid_center_band: width used only for VFH center danger weighting, default 0.75
-avoid_vfh_center_weight: extra danger for obstacles near the gripper center line, default 1.5
+avoid_vfh_center_weight: extra danger for obstacles near the gripper center line, default 2.0
 avoid_vfh_target_weight: small bias toward the target side when both avoid sides are similar, default 0.60
 avoid_vfh_switch_penalty: penalty for rapidly switching avoid direction, default 0.25
 avoid_direction_hold_s: seconds to prefer the previous avoid direction, default 0.8
