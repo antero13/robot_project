@@ -132,3 +132,8 @@ Detection JSON example:
 Mission nodes can subscribe to `/target_object` and `/avoid_objects`;
 lower-level consumers can subscribe to `/yolo/detections` for the full class,
 confidence, and bounding-box payload.
+
+`detections_to_target_node` removes avoid candidates whose bounding boxes
+overlap target candidates by `avoid_target_iou_threshold` or more. The default
+threshold is `0.35`, which helps prevent the same close object from being
+published as both target and avoid.

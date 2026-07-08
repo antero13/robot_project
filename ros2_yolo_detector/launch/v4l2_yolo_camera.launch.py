@@ -43,6 +43,7 @@ def generate_launch_description():
             DeclareLaunchArgument("avoid_objects_topic", default_value="/avoid_objects"),
             DeclareLaunchArgument("target_classes", default_value=""),
             DeclareLaunchArgument("avoid_classes", default_value=""),
+            DeclareLaunchArgument("avoid_target_iou_threshold", default_value="0.35"),
             DeclareLaunchArgument("publish_target", default_value="true"),
             Node(
                 package="v4l2_camera",
@@ -110,6 +111,10 @@ def generate_launch_description():
                         "avoid_objects_topic": LaunchConfiguration("avoid_objects_topic"),
                         "target_classes": LaunchConfiguration("target_classes"),
                         "avoid_classes": LaunchConfiguration("avoid_classes"),
+                        "avoid_target_iou_threshold": ParameterValue(
+                            LaunchConfiguration("avoid_target_iou_threshold"),
+                            value_type=float,
+                        ),
                         "min_confidence": ParameterValue(LaunchConfiguration("confidence"), value_type=float),
                         "image_width": ParameterValue(LaunchConfiguration("image_width"), value_type=float),
                         "image_height": ParameterValue(LaunchConfiguration("image_height"), value_type=float),

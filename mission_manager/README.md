@@ -80,6 +80,10 @@ The manager treats `y` as closeness, squares it into a danger score, adds the
 danger into five screen sectors, and chooses the lower-cost side. The previous
 `/avoid_object` single-point topic still works as a fallback.
 
+When the target is close and centered, avoid detections at nearly the same
+screen position are treated as duplicate detections of the target and ignored.
+This prevents the robot from suddenly avoiding the object it is about to grab.
+
 ## Build
 
 Copy these packages into the Jetson workspace:
@@ -156,17 +160,26 @@ final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
 avoid_area_ratio: obstacle box-bottom y where avoidance can trigger, default 0.45
-avoid_center_band: horizontal band where obstacles count, default 0.85
+avoid_center_band: widest horizontal band where obstacles can count, default 0.75
+avoid_center_corridor: center gripper path that always counts for normal avoidance, default 0.30
+avoid_path_margin: extra width around the current target path where obstacles count, default 0.30
 avoid_emergency_ratio: y threshold that can trigger avoidance even if the target is also close, default 0.75
-avoid_closer_ratio: how much lower the obstacle must appear than the target, default 0.90
-avoid_turn_duration_s: first turn-only avoidance duration, default 0.65
-avoid_forward_duration_s: curved forward avoidance duration, default 1.0
+avoid_closer_ratio: how much lower the obstacle must appear than the target, default 1.00
+avoid_turn_duration_s: first turn-only avoidance duration, default 0.45
+avoid_forward_duration_s: curved forward avoidance duration, default 0.75
 avoid_vfh_center_weight: extra danger for obstacles near the gripper center line, default 1.5
-avoid_vfh_target_weight: small bias toward the target side when both avoid sides are similar, default 0.25
+avoid_vfh_target_weight: small bias toward the target side when both avoid sides are similar, default 0.60
 avoid_vfh_switch_penalty: penalty for rapidly switching avoid direction, default 0.25
-avoid_direction_hold_s: seconds to prefer the previous avoid direction, default 1.2
+avoid_direction_hold_s: seconds to prefer the previous avoid direction, default 0.8
+avoid_ignore_near_target_enabled: ignore avoid detections that look like the close locked target, default true
+avoid_ignore_target_min_y: target y where duplicate-avoid ignoring can start, default 0.35
+avoid_ignore_target_center_band: target must be this close to center before duplicate-avoid ignoring, default 0.25
+avoid_ignore_target_x_margin: max x gap between close target and duplicate avoid, default 0.25
+avoid_ignore_target_y_margin: max y gap between close target and duplicate avoid, default 0.20
 ```
 
-Lower `avoid_area_ratio` to avoid earlier. Raise `avoid_center_band` to give
-the gripper more side clearance. Raise `avoid_vfh_switch_penalty` or
-`avoid_direction_hold_s` if the robot oscillates between left and right.
+Lower `avoid_area_ratio` to avoid earlier. Raise `avoid_center_band`,
+`avoid_center_corridor`, or `avoid_path_margin` to give the gripper more side
+clearance. Lower them if the robot avoids objects that are not on the way to
+the target. Raise `avoid_vfh_switch_penalty` or `avoid_direction_hold_s` if the
+robot oscillates between left and right.

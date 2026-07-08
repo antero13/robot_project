@@ -20,6 +20,7 @@ class DetectionsToTargetNode(Node):
         self.declare_parameter("target_classes", "")
         self.declare_parameter("avoid_classes", "")
         self.declare_parameter("min_confidence", 0.25)
+        self.declare_parameter("avoid_target_iou_threshold", 0.35)
         self.declare_parameter("image_width", 640.0)
         self.declare_parameter("image_height", 480.0)
 
@@ -30,6 +31,7 @@ class DetectionsToTargetNode(Node):
         self.avoid_label_topic = self.get_parameter("avoid_label_topic").value
         self.avoid_objects_topic = self.get_parameter("avoid_objects_topic").value
         self.min_confidence = float(self.get_parameter("min_confidence").value)
+        self.avoid_target_iou_threshold = float(self.get_parameter("avoid_target_iou_threshold").value)
         self.target_classes = self.parse_class_list(self.get_parameter("target_classes").value)
         self.avoid_classes = self.parse_class_list(self.get_parameter("avoid_classes").value)
 
@@ -73,12 +75,13 @@ class DetectionsToTargetNode(Node):
             if converted is None:
                 continue
 
-            class_name, class_keys, point_msg = converted
+            class_name, class_keys, point_msg, bbox_xyxy = converted
             if self.is_target(class_keys):
-                target_candidates.append((point_msg.point.y, class_name, point_msg))
+                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy))
             elif self.is_avoid(class_keys):
-                avoid_candidates.append((point_msg.point.y, class_name, point_msg))
+                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy))
 
+        avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
         self.publish_best(target_candidates, self.target_pub, self.target_label_pub)
         self.publish_best(avoid_candidates, self.avoid_pub, self.avoid_label_pub)
         self.publish_avoid_objects(avoid_candidates, header)
@@ -89,7 +92,7 @@ class DetectionsToTargetNode(Node):
         image_width: float,
         image_height: float,
         header,
-    ) -> tuple[str, set[str], PointStamped] | None:
+    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float]] | None:
         class_name = str(detection.get("class_name", detection.get("class_id", "")))
         class_id = detection.get("class_id", "")
         class_keys = {class_name, str(class_id)}
@@ -121,13 +124,29 @@ class DetectionsToTargetNode(Node):
         out.point.x = self.clamp(normalized_x_error, -1.0, 1.0)
         out.point.y = self.clamp(bottom_y_ratio, 0.0, 1.0)
         out.point.z = confidence
-        return class_name, class_keys, out
+        return class_name, class_keys, out, (x1, y1, x2, y2)
+
+    def filter_overlapping_avoid_candidates(self, avoid_candidates, target_candidates):
+        threshold = self.avoid_target_iou_threshold
+        if threshold <= 0.0 or not avoid_candidates or not target_candidates:
+            return avoid_candidates
+
+        filtered = []
+        for avoid_candidate in avoid_candidates:
+            avoid_bbox = avoid_candidate[3]
+            overlaps_target = any(
+                self.bbox_iou(avoid_bbox, target_candidate[3]) >= threshold
+                for target_candidate in target_candidates
+            )
+            if not overlaps_target:
+                filtered.append(avoid_candidate)
+        return filtered
 
     def publish_best(self, candidates, point_pub, label_pub) -> None:
         if not candidates:
             return
 
-        _, class_name, point_msg = max(candidates, key=lambda item: item[0])
+        _, class_name, point_msg, _ = max(candidates, key=lambda item: item[0])
         point_pub.publish(point_msg)
 
         label_msg = String()
@@ -147,8 +166,18 @@ class DetectionsToTargetNode(Node):
                     "x": float(point_msg.point.x),
                     "y": float(point_msg.point.y),
                     "confidence": float(point_msg.point.z),
+                    "bbox_xyxy": {
+                        "x1": float(bbox_xyxy[0]),
+                        "y1": float(bbox_xyxy[1]),
+                        "x2": float(bbox_xyxy[2]),
+                        "y2": float(bbox_xyxy[3]),
+                    },
                 }
-                for _, class_name, point_msg in sorted(candidates, key=lambda item: item[0], reverse=True)
+                for _, class_name, point_msg, bbox_xyxy in sorted(
+                    candidates,
+                    key=lambda item: item[0],
+                    reverse=True,
+                )
             ],
         }
 
@@ -193,6 +222,29 @@ class DetectionsToTargetNode(Node):
     @staticmethod
     def clamp(value: float, min_value: float, max_value: float) -> float:
         return max(min_value, min(max_value, value))
+
+    @staticmethod
+    def bbox_iou(
+        first: tuple[float, float, float, float],
+        second: tuple[float, float, float, float],
+    ) -> float:
+        first_x1, first_y1, first_x2, first_y2 = first
+        second_x1, second_y1, second_x2, second_y2 = second
+
+        intersection_x1 = max(first_x1, second_x1)
+        intersection_y1 = max(first_y1, second_y1)
+        intersection_x2 = min(first_x2, second_x2)
+        intersection_y2 = min(first_y2, second_y2)
+        intersection_width = max(0.0, intersection_x2 - intersection_x1)
+        intersection_height = max(0.0, intersection_y2 - intersection_y1)
+        intersection_area = intersection_width * intersection_height
+
+        first_area = max(0.0, first_x2 - first_x1) * max(0.0, first_y2 - first_y1)
+        second_area = max(0.0, second_x2 - second_x1) * max(0.0, second_y2 - second_y1)
+        union_area = first_area + second_area - intersection_area
+        if union_area <= 0.0:
+            return 0.0
+        return intersection_area / union_area
 
 
 def main(args=None) -> None:

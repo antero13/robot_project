@@ -68,20 +68,27 @@ class MissionManager(Node):
         self.declare_parameter('avoid_enabled', True)
         self.declare_parameter('avoid_timeout_s', 0.5)
         self.declare_parameter('avoid_area_ratio', 0.45)
-        self.declare_parameter('avoid_center_band', 0.85)
+        self.declare_parameter('avoid_center_band', 0.75)
+        self.declare_parameter('avoid_center_corridor', 0.30)
+        self.declare_parameter('avoid_path_margin', 0.30)
         self.declare_parameter('avoid_emergency_ratio', 0.75)
         self.declare_parameter('avoid_only_if_closer_than_target', True)
-        self.declare_parameter('avoid_closer_ratio', 0.90)
-        self.declare_parameter('avoid_turn_duration_s', 0.65)
+        self.declare_parameter('avoid_closer_ratio', 1.00)
+        self.declare_parameter('avoid_turn_duration_s', 0.45)
         self.declare_parameter('avoid_turn_angular_z', 0.50)
-        self.declare_parameter('avoid_forward_duration_s', 1.0)
+        self.declare_parameter('avoid_forward_duration_s', 0.75)
         self.declare_parameter('avoid_forward_linear_x', 0.05)
-        self.declare_parameter('avoid_forward_angular_z', 0.25)
+        self.declare_parameter('avoid_forward_angular_z', 0.18)
         self.declare_parameter('avoid_turn_direction_sign', 1.0)
         self.declare_parameter('avoid_vfh_center_weight', 1.5)
-        self.declare_parameter('avoid_vfh_target_weight', 0.25)
+        self.declare_parameter('avoid_vfh_target_weight', 0.60)
         self.declare_parameter('avoid_vfh_switch_penalty', 0.25)
-        self.declare_parameter('avoid_direction_hold_s', 1.2)
+        self.declare_parameter('avoid_direction_hold_s', 0.8)
+        self.declare_parameter('avoid_ignore_near_target_enabled', True)
+        self.declare_parameter('avoid_ignore_target_min_y', 0.35)
+        self.declare_parameter('avoid_ignore_target_center_band', 0.25)
+        self.declare_parameter('avoid_ignore_target_x_margin', 0.25)
+        self.declare_parameter('avoid_ignore_target_y_margin', 0.20)
         self.declare_parameter('reacquire_duration_s', 3.0)
         self.declare_parameter('reacquire_angular_z', 0.30)
 
@@ -399,6 +406,10 @@ class MissionManager(Node):
             closeness = float(point.y)
             if x_error > self.get_float('avoid_center_band'):
                 continue
+            if self.avoid_matches_locked_target(point):
+                continue
+            if not self.avoid_is_on_active_path(point, closeness):
+                continue
             if closeness >= self.get_float('avoid_emergency_ratio'):
                 return True
             if closeness < self.get_float('avoid_area_ratio'):
@@ -462,6 +473,10 @@ class MissionManager(Node):
                 continue
             if abs(x) > center_band:
                 continue
+            if self.avoid_matches_locked_target(point):
+                continue
+            if not self.avoid_is_on_active_path(point, closeness):
+                continue
 
             confidence = self.clamp(float(point.z), 0.0, 1.0)
             centered = max(0.0, 1.0 - abs(x) / center_band)
@@ -470,6 +485,40 @@ class MissionManager(Node):
             bins[bin_index] += danger
 
         return bins
+
+    def avoid_matches_locked_target(self, point):
+        if not bool(self.get_parameter('avoid_ignore_near_target_enabled').value):
+            return False
+        if not self.has_recent_target():
+            return False
+
+        target_x = float(self.latest_target.x)
+        target_y = float(self.latest_target.y)
+        if target_y < self.get_float('avoid_ignore_target_min_y'):
+            return False
+        if abs(target_x) > self.get_float('avoid_ignore_target_center_band'):
+            return False
+
+        avoid_x = float(point.x)
+        avoid_y = float(point.y)
+        if abs(avoid_x - target_x) > self.get_float('avoid_ignore_target_x_margin'):
+            return False
+        return abs(avoid_y - target_y) <= self.get_float('avoid_ignore_target_y_margin')
+
+    def avoid_is_on_active_path(self, point, closeness):
+        x = float(point.x)
+        if abs(x) <= self.get_float('avoid_center_corridor'):
+            return True
+        if closeness >= self.get_float('avoid_emergency_ratio'):
+            return True
+        if not self.has_recent_target():
+            return True
+
+        target_x = float(self.latest_target.x)
+        margin = self.get_float('avoid_path_margin')
+        left_limit = min(0.0, target_x) - margin
+        right_limit = max(0.0, target_x) + margin
+        return left_limit <= x <= right_limit
 
     def target_direction_preference(self):
         if not self.has_recent_target():
