@@ -214,6 +214,6 @@ def generate_launch_description():
         DeclareLaunchArgument('gripper_open_position', default_value='500'),
         DeclareLaunchArgument('gripper_closed_position', default_value='750'),
         DeclareLaunchArgument('final_forward_linear_x', default_value='0.06'),
-        DeclareLaunchArgument('final_forward_duration_s', default_value='0.8'),
+        DeclareLaunchArgument('final_forward_duration_s', default_value='1.6'),
         OpaqueFunction(function=launch_setup),
     ])

@@ -54,7 +54,7 @@ def generate_launch_description():
                 'grab_area_ratio': 0.50,
                 'target_timeout_s': 0.5,
                 'final_forward_linear_x': 0.06,
-                'final_forward_duration_s': 0.8,
+                'final_forward_duration_s': 1.6,
                 'avoid_enabled': True,
                 'avoid_timeout_s': 0.5,
                 'avoid_area_ratio': 0.45,

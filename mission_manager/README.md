@@ -36,7 +36,7 @@ ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'close'}"
 `start` runs this first demo mission:
 
 ```text
-LEAVE_START -> SEARCH -> ALIGN_TARGET -> APPROACH_TARGET -> OPEN_GRIPPER -> FINAL_FORWARD -> GRAB_OBJECT -> BACK_OUT -> DONE
+LEAVE_START -> SEARCH -> ALIGN_TARGET -> APPROACH_TARGET -> OPEN_GRIPPER -> FINAL_FORWARD -> GRAB_OBJECT -> DONE
 ```
 
 At `start`, the gripper is commanded closed and stays closed while the robot
@@ -66,7 +66,8 @@ while centered and transitions to `OPEN_GRIPPER` when `point.y` reaches
 `grab_area_ratio`. Despite the legacy parameter name, this threshold is now a
 camera y-position closeness score. `OPEN_GRIPPER` opens the servo, then
 `FINAL_FORWARD` drives straight briefly so the object enters the gripper before
-`GRAB_OBJECT` closes the servo.
+`GRAB_OBJECT` closes the servo. After the gripper closes, the mission ends
+without backing away.
 
 `/avoid_objects` is preferred when available. It is a JSON message:
 

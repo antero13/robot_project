@@ -60,7 +60,7 @@ class MissionManager(Node):
         self.declare_parameter('grab_area_ratio', 0.50)
         self.declare_parameter('target_timeout_s', 0.5)
         self.declare_parameter('final_forward_linear_x', 0.06)
-        self.declare_parameter('final_forward_duration_s', 0.8)
+        self.declare_parameter('final_forward_duration_s', 1.6)
         self.declare_parameter('back_out_linear_x', -0.08)
         self.declare_parameter('grab_duration_s', 1.0)
         self.declare_parameter('back_out_duration_s', 1.5)
@@ -555,7 +555,7 @@ class MissionManager(Node):
         if not self.grab_command_sent:
             self.command_gripper(open_gripper=False)
             self.grab_command_sent = True
-        self.advance_after('grab_duration_s', MissionState.BACK_OUT)
+        self.advance_after('grab_duration_s', MissionState.DONE)
 
     def advance_after(self, duration_param, next_state):
         if self.state_age_s() >= self.get_float(duration_param):
