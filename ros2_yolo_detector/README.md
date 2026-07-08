@@ -107,6 +107,8 @@ ros2 launch ros2_yolo_detector yolo_camera.launch.py \
 - `/yolo/detections`: `std_msgs/msg/String`, JSON detection result
 - `/target_object`: `geometry_msgs/msg/PointStamped`, normalized target center and area
 - `/target_label`: `std_msgs/msg/String`, selected target class name
+- `/avoid_object`: `geometry_msgs/msg/PointStamped`, closest selected avoid object
+- `/avoid_objects`: `std_msgs/msg/String`, JSON list of all selected avoid objects for VFH-lite avoidance
 - `/yolo/annotated_image`: `sensor_msgs/msg/Image`, image with boxes drawn
 - `/camera/image_raw`: optional raw camera image when `publish_raw:=true`
 
@@ -127,5 +129,6 @@ Detection JSON example:
 }
 ```
 
-Mission nodes can subscribe to `/target_object`; lower-level consumers can subscribe to
-`/yolo/detections` for the full class, confidence, and bounding-box payload.
+Mission nodes can subscribe to `/target_object` and `/avoid_objects`;
+lower-level consumers can subscribe to `/yolo/detections` for the full class,
+confidence, and bounding-box payload.

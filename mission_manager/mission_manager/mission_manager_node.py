@@ -1,7 +1,8 @@
+import json
 from enum import Enum
 
 import rclpy
-from geometry_msgs.msg import PointStamped, Twist
+from geometry_msgs.msg import Point, PointStamped, Twist
 from rclpy.node import Node
 from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
 from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
@@ -34,6 +35,7 @@ class MissionManager(Node):
         self.declare_parameter('mission_state_topic', '/mission_state')
         self.declare_parameter('target_object_topic', '/target_object')
         self.declare_parameter('avoid_object_topic', '/avoid_object')
+        self.declare_parameter('avoid_objects_topic', '/avoid_objects')
         self.declare_parameter('pwm_servo_topic', '/ros_robot_controller/pwm_servo/set_state')
         self.declare_parameter('bus_servo_topic', '/ros_robot_controller/bus_servo/set_state')
 
@@ -67,6 +69,7 @@ class MissionManager(Node):
         self.declare_parameter('avoid_timeout_s', 0.5)
         self.declare_parameter('avoid_area_ratio', 0.45)
         self.declare_parameter('avoid_center_band', 0.85)
+        self.declare_parameter('avoid_emergency_ratio', 0.75)
         self.declare_parameter('avoid_only_if_closer_than_target', True)
         self.declare_parameter('avoid_closer_ratio', 0.90)
         self.declare_parameter('avoid_turn_duration_s', 0.65)
@@ -75,6 +78,10 @@ class MissionManager(Node):
         self.declare_parameter('avoid_forward_linear_x', 0.05)
         self.declare_parameter('avoid_forward_angular_z', 0.25)
         self.declare_parameter('avoid_turn_direction_sign', 1.0)
+        self.declare_parameter('avoid_vfh_center_weight', 1.5)
+        self.declare_parameter('avoid_vfh_target_weight', 0.25)
+        self.declare_parameter('avoid_vfh_switch_penalty', 0.25)
+        self.declare_parameter('avoid_direction_hold_s', 1.2)
         self.declare_parameter('reacquire_duration_s', 3.0)
         self.declare_parameter('reacquire_angular_z', 0.30)
 
@@ -90,6 +97,7 @@ class MissionManager(Node):
         self.mission_state_topic = self.get_parameter('mission_state_topic').value
         self.target_object_topic = self.get_parameter('target_object_topic').value
         self.avoid_object_topic = self.get_parameter('avoid_object_topic').value
+        self.avoid_objects_topic = self.get_parameter('avoid_objects_topic').value
         self.pwm_servo_topic = self.get_parameter('pwm_servo_topic').value
         self.bus_servo_topic = self.get_parameter('bus_servo_topic').value
 
@@ -100,8 +108,11 @@ class MissionManager(Node):
         self.latest_target_time = None
         self.latest_avoid = None
         self.latest_avoid_time = None
+        self.latest_avoid_objects = []
+        self.latest_avoid_objects_time = None
         self.last_target_direction = self.search_direction()
         self.avoid_turn_direction = self.search_direction()
+        self.last_avoid_direction_time = None
         self.open_command_sent = False
         self.grab_command_sent = False
 
@@ -127,6 +138,12 @@ class MissionManager(Node):
             self.avoid_callback,
             10,
         )
+        self.avoid_objects_sub = self.create_subscription(
+            String,
+            self.avoid_objects_topic,
+            self.avoid_objects_callback,
+            10,
+        )
 
         timer_rate_hz = float(self.get_parameter('timer_rate_hz').value)
         self.timer = self.create_timer(1.0 / timer_rate_hz, self.tick)
@@ -136,7 +153,8 @@ class MissionManager(Node):
             'start, demo, search, stop, reset, open, close'
         )
         self.get_logger().info(
-            f'Subscribing target={self.target_object_topic}, avoid={self.avoid_object_topic}; '
+            f'Subscribing target={self.target_object_topic}, avoid={self.avoid_object_topic}, '
+            f'avoid_objects={self.avoid_objects_topic}; '
             f'publishing cmd_vel={self.cmd_vel_topic}'
         )
 
@@ -151,6 +169,41 @@ class MissionManager(Node):
     def avoid_callback(self, msg):
         self.latest_avoid = msg.point
         self.latest_avoid_time = self.get_clock().now()
+
+    def avoid_objects_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().warning(f'Invalid avoid_objects JSON: {exc}')
+            return
+
+        if isinstance(payload, list):
+            raw_objects = payload
+        elif isinstance(payload, dict):
+            raw_objects = payload.get('objects', [])
+        else:
+            self.get_logger().warning('avoid_objects JSON must be an object or list.')
+            return
+
+        if not isinstance(raw_objects, list):
+            self.get_logger().warning("avoid_objects JSON has no list field named 'objects'.")
+            return
+
+        points = []
+        for raw in raw_objects:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                point = Point()
+                point.x = self.clamp(float(raw.get('x', raw.get('point_x', 0.0))), -1.0, 1.0)
+                point.y = self.clamp(float(raw.get('y', raw.get('point_y', 0.0))), 0.0, 1.0)
+                point.z = max(0.0, float(raw.get('confidence', raw.get('z', 1.0))))
+            except (TypeError, ValueError):
+                continue
+            points.append(point)
+
+        self.latest_avoid_objects = points
+        self.latest_avoid_objects_time = self.get_clock().now()
 
     def control_callback(self, msg):
         command = msg.data.strip().lower()
@@ -330,24 +383,30 @@ class MissionManager(Node):
             return False
 
         self.avoid_turn_direction = self.compute_avoid_turn_direction()
+        self.last_avoid_direction_time = self.get_clock().now()
         self.change_state(MissionState.AVOID_TURN)
         return True
 
     def should_avoid(self):
         if not bool(self.get_parameter('avoid_enabled').value):
             return False
-        if not self.has_recent_avoid():
+        avoid_points = self.recent_avoid_points()
+        if not avoid_points:
             return False
 
-        x_error = abs(float(self.latest_avoid.x))
-        closeness = float(self.latest_avoid.y)
-        if closeness < self.get_float('avoid_area_ratio'):
-            return False
-        if x_error > self.get_float('avoid_center_band'):
-            return False
-        if not self.avoid_is_closer_than_target(closeness):
-            return False
-        return True
+        for point in avoid_points:
+            x_error = abs(float(point.x))
+            closeness = float(point.y)
+            if x_error > self.get_float('avoid_center_band'):
+                continue
+            if closeness >= self.get_float('avoid_emergency_ratio'):
+                return True
+            if closeness < self.get_float('avoid_area_ratio'):
+                continue
+            if not self.avoid_is_closer_than_target(closeness):
+                continue
+            return True
+        return False
 
     def avoid_is_closer_than_target(self, avoid_closeness):
         if not bool(self.get_parameter('avoid_only_if_closer_than_target').value):
@@ -359,13 +418,80 @@ class MissionManager(Node):
         return avoid_closeness >= target_closeness * self.get_float('avoid_closer_ratio')
 
     def compute_avoid_turn_direction(self):
-        if not self.has_recent_avoid():
+        avoid_points = self.recent_avoid_points()
+        if not avoid_points:
             return self.search_direction()
 
-        avoid_x = float(self.latest_avoid.x)
-        direction = 1.0 if avoid_x >= 0.0 else -1.0
+        bins = self.build_avoid_histogram(avoid_points)
+        left_cost = (
+            bins[0] * 1.00
+            + bins[1] * 0.70
+            + bins[2] * 0.45
+            + bins[3] * 0.15
+        )
+        right_cost = (
+            bins[4] * 1.00
+            + bins[3] * 0.70
+            + bins[2] * 0.45
+            + bins[1] * 0.15
+        )
+
+        target_preference = self.target_direction_preference()
+        if target_preference > 0.0:
+            right_cost += self.get_float('avoid_vfh_target_weight')
+        elif target_preference < 0.0:
+            left_cost += self.get_float('avoid_vfh_target_weight')
+
+        left_cost += self.direction_switch_cost(1.0)
+        right_cost += self.direction_switch_cost(-1.0)
+
+        direction = 1.0 if left_cost <= right_cost else -1.0
         direction *= self.get_float('avoid_turn_direction_sign')
         return 1.0 if direction >= 0.0 else -1.0
+
+    def build_avoid_histogram(self, avoid_points):
+        bins = [0.0, 0.0, 0.0, 0.0, 0.0]
+        min_closeness = self.get_float('avoid_area_ratio')
+        center_band = max(0.05, self.get_float('avoid_center_band'))
+        center_weight = self.get_float('avoid_vfh_center_weight')
+
+        for point in avoid_points:
+            x = self.clamp(float(point.x), -1.0, 1.0)
+            closeness = self.clamp(float(point.y), 0.0, 1.0)
+            if closeness < min_closeness:
+                continue
+            if abs(x) > center_band:
+                continue
+
+            confidence = self.clamp(float(point.z), 0.0, 1.0)
+            centered = max(0.0, 1.0 - abs(x) / center_band)
+            danger = (closeness * closeness) * (0.5 + 0.5 * confidence) * (1.0 + center_weight * centered)
+            bin_index = min(4, max(0, int((x + 1.0) * 2.5)))
+            bins[bin_index] += danger
+
+        return bins
+
+    def target_direction_preference(self):
+        if not self.has_recent_target():
+            return 0.0
+
+        x_error = float(self.latest_target.x)
+        if abs(x_error) <= self.get_float('center_tolerance'):
+            return 0.0
+        return -1.0 if x_error > 0.0 else 1.0
+
+    def direction_switch_cost(self, candidate_direction):
+        if self.last_avoid_direction_time is None:
+            return 0.0
+
+        elapsed = self.get_clock().now() - self.last_avoid_direction_time
+        if elapsed.nanoseconds / 1_000_000_000.0 > self.get_float('avoid_direction_hold_s'):
+            return 0.0
+        signed_candidate = candidate_direction * self.get_float('avoid_turn_direction_sign')
+        signed_candidate = 1.0 if signed_candidate >= 0.0 else -1.0
+        if signed_candidate == self.avoid_turn_direction:
+            return 0.0
+        return self.get_float('avoid_vfh_switch_penalty')
 
     def target_turn_command(self, x_error):
         angular_z = -self.get_float('approach_angular_gain') * x_error
@@ -397,6 +523,19 @@ class MissionManager(Node):
             return False
         elapsed = self.get_clock().now() - self.latest_avoid_time
         return elapsed.nanoseconds / 1_000_000_000.0 <= self.get_float('avoid_timeout_s')
+
+    def has_recent_avoid_objects(self):
+        if self.latest_avoid_objects_time is None:
+            return False
+        elapsed = self.get_clock().now() - self.latest_avoid_objects_time
+        return elapsed.nanoseconds / 1_000_000_000.0 <= self.get_float('avoid_timeout_s')
+
+    def recent_avoid_points(self):
+        if self.has_recent_avoid_objects():
+            return list(self.latest_avoid_objects)
+        if self.has_recent_avoid():
+            return [self.latest_avoid]
+        return []
 
     def change_state(self, next_state):
         if self.state == next_state:

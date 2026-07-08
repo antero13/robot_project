@@ -16,6 +16,7 @@ class DetectionsToTargetNode(Node):
         self.declare_parameter("target_label_topic", "/target_label")
         self.declare_parameter("avoid_topic", "/avoid_object")
         self.declare_parameter("avoid_label_topic", "/avoid_label")
+        self.declare_parameter("avoid_objects_topic", "/avoid_objects")
         self.declare_parameter("target_classes", "")
         self.declare_parameter("avoid_classes", "")
         self.declare_parameter("min_confidence", 0.25)
@@ -27,6 +28,7 @@ class DetectionsToTargetNode(Node):
         self.target_label_topic = self.get_parameter("target_label_topic").value
         self.avoid_topic = self.get_parameter("avoid_topic").value
         self.avoid_label_topic = self.get_parameter("avoid_label_topic").value
+        self.avoid_objects_topic = self.get_parameter("avoid_objects_topic").value
         self.min_confidence = float(self.get_parameter("min_confidence").value)
         self.target_classes = self.parse_class_list(self.get_parameter("target_classes").value)
         self.avoid_classes = self.parse_class_list(self.get_parameter("avoid_classes").value)
@@ -35,6 +37,7 @@ class DetectionsToTargetNode(Node):
         self.target_label_pub = self.create_publisher(String, self.target_label_topic, 10)
         self.avoid_pub = self.create_publisher(PointStamped, self.avoid_topic, 10)
         self.avoid_label_pub = self.create_publisher(String, self.avoid_label_topic, 10)
+        self.avoid_objects_pub = self.create_publisher(String, self.avoid_objects_topic, 10)
         self.detections_sub = self.create_subscription(
             String,
             self.detections_topic,
@@ -78,6 +81,7 @@ class DetectionsToTargetNode(Node):
 
         self.publish_best(target_candidates, self.target_pub, self.target_label_pub)
         self.publish_best(avoid_candidates, self.avoid_pub, self.avoid_label_pub)
+        self.publish_avoid_objects(avoid_candidates, header)
 
     def convert_detection(
         self,
@@ -130,8 +134,32 @@ class DetectionsToTargetNode(Node):
         label_msg.data = class_name
         label_pub.publish(label_msg)
 
+    def publish_avoid_objects(self, candidates, header) -> None:
+        payload = {
+            "stamp": {
+                "sec": int(header.stamp.sec),
+                "nanosec": int(header.stamp.nanosec),
+            },
+            "frame_id": header.frame_id,
+            "objects": [
+                {
+                    "class_name": class_name,
+                    "x": float(point_msg.point.x),
+                    "y": float(point_msg.point.y),
+                    "confidence": float(point_msg.point.z),
+                }
+                for _, class_name, point_msg in sorted(candidates, key=lambda item: item[0], reverse=True)
+            ],
+        }
+
+        msg = String()
+        msg.data = json.dumps(payload, separators=(",", ":"))
+        self.avoid_objects_pub.publish(msg)
+
     def is_target(self, class_keys: set[str]) -> bool:
         if not self.target_classes:
+            if self.avoid_classes and bool(class_keys & self.avoid_classes):
+                return False
             return True
         return bool(class_keys & self.target_classes)
 
