@@ -27,6 +27,14 @@ def generate_launch_description():
             DeclareLaunchArgument("avoid_objects_topic", default_value="/avoid_objects"),
             DeclareLaunchArgument("target_classes", default_value=""),
             DeclareLaunchArgument("avoid_classes", default_value=""),
+            DeclareLaunchArgument("target_lock_enabled", default_value="true"),
+            DeclareLaunchArgument("target_lock_timeout_s", default_value="0.7"),
+            DeclareLaunchArgument("target_lock_iou_threshold", default_value="0.20"),
+            DeclareLaunchArgument("target_lock_x_margin", default_value="0.30"),
+            DeclareLaunchArgument("target_lock_y_margin", default_value="0.20"),
+            DeclareLaunchArgument("target_switch_y_margin", default_value="0.12"),
+            DeclareLaunchArgument("target_switch_score_margin", default_value="0.25"),
+            DeclareLaunchArgument("target_center_weight", default_value="0.25"),
             DeclareLaunchArgument("avoid_target_iou_threshold", default_value="0.35"),
             DeclareLaunchArgument("publish_target", default_value="true"),
             DeclareLaunchArgument("confidence", default_value="0.25"),
@@ -97,6 +105,38 @@ def generate_launch_description():
                         "avoid_objects_topic": LaunchConfiguration("avoid_objects_topic"),
                         "target_classes": LaunchConfiguration("target_classes"),
                         "avoid_classes": LaunchConfiguration("avoid_classes"),
+                        "target_lock_enabled": ParameterValue(
+                            LaunchConfiguration("target_lock_enabled"),
+                            value_type=bool,
+                        ),
+                        "target_lock_timeout_s": ParameterValue(
+                            LaunchConfiguration("target_lock_timeout_s"),
+                            value_type=float,
+                        ),
+                        "target_lock_iou_threshold": ParameterValue(
+                            LaunchConfiguration("target_lock_iou_threshold"),
+                            value_type=float,
+                        ),
+                        "target_lock_x_margin": ParameterValue(
+                            LaunchConfiguration("target_lock_x_margin"),
+                            value_type=float,
+                        ),
+                        "target_lock_y_margin": ParameterValue(
+                            LaunchConfiguration("target_lock_y_margin"),
+                            value_type=float,
+                        ),
+                        "target_switch_y_margin": ParameterValue(
+                            LaunchConfiguration("target_switch_y_margin"),
+                            value_type=float,
+                        ),
+                        "target_switch_score_margin": ParameterValue(
+                            LaunchConfiguration("target_switch_score_margin"),
+                            value_type=float,
+                        ),
+                        "target_center_weight": ParameterValue(
+                            LaunchConfiguration("target_center_weight"),
+                            value_type=float,
+                        ),
                         "avoid_target_iou_threshold": ParameterValue(
                             LaunchConfiguration("avoid_target_iou_threshold"),
                             value_type=float,

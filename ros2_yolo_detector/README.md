@@ -133,6 +133,26 @@ Mission nodes can subscribe to `/target_object` and `/avoid_objects`;
 lower-level consumers can subscribe to `/yolo/detections` for the full class,
 confidence, and bounding-box payload.
 
+When multiple target objects are visible, `detections_to_target_node` keeps a
+short target lock so the published `/target_object` does not switch left and
+right every frame. The selected target is kept while its box still overlaps the
+previous target or stays near the previous normalized x/y position. A new target
+can take over only when it is clearly closer or has a much better center-weighted
+score.
+
+Target lock defaults:
+
+```text
+target_lock_enabled: true
+target_lock_timeout_s: 0.7
+target_lock_iou_threshold: 0.20
+target_lock_x_margin: 0.30
+target_lock_y_margin: 0.20
+target_switch_y_margin: 0.12
+target_switch_score_margin: 0.25
+target_center_weight: 0.25
+```
+
 `detections_to_target_node` removes avoid candidates whose bounding boxes
 overlap target candidates by `avoid_target_iou_threshold` or more. The default
 threshold is `0.35`, which helps prevent the same close object from being

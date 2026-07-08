@@ -20,6 +20,14 @@ class DetectionsToTargetNode(Node):
         self.declare_parameter("target_classes", "")
         self.declare_parameter("avoid_classes", "")
         self.declare_parameter("min_confidence", 0.25)
+        self.declare_parameter("target_lock_enabled", True)
+        self.declare_parameter("target_lock_timeout_s", 0.7)
+        self.declare_parameter("target_lock_iou_threshold", 0.20)
+        self.declare_parameter("target_lock_x_margin", 0.30)
+        self.declare_parameter("target_lock_y_margin", 0.20)
+        self.declare_parameter("target_switch_y_margin", 0.12)
+        self.declare_parameter("target_switch_score_margin", 0.25)
+        self.declare_parameter("target_center_weight", 0.25)
         self.declare_parameter("avoid_target_iou_threshold", 0.35)
         self.declare_parameter("image_width", 640.0)
         self.declare_parameter("image_height", 480.0)
@@ -31,9 +39,20 @@ class DetectionsToTargetNode(Node):
         self.avoid_label_topic = self.get_parameter("avoid_label_topic").value
         self.avoid_objects_topic = self.get_parameter("avoid_objects_topic").value
         self.min_confidence = float(self.get_parameter("min_confidence").value)
+        self.target_lock_enabled = bool(self.get_parameter("target_lock_enabled").value)
+        self.target_lock_timeout_s = float(self.get_parameter("target_lock_timeout_s").value)
+        self.target_lock_iou_threshold = float(self.get_parameter("target_lock_iou_threshold").value)
+        self.target_lock_x_margin = float(self.get_parameter("target_lock_x_margin").value)
+        self.target_lock_y_margin = float(self.get_parameter("target_lock_y_margin").value)
+        self.target_switch_y_margin = float(self.get_parameter("target_switch_y_margin").value)
+        self.target_switch_score_margin = float(self.get_parameter("target_switch_score_margin").value)
+        self.target_center_weight = float(self.get_parameter("target_center_weight").value)
         self.avoid_target_iou_threshold = float(self.get_parameter("avoid_target_iou_threshold").value)
         self.target_classes = self.parse_class_list(self.get_parameter("target_classes").value)
         self.avoid_classes = self.parse_class_list(self.get_parameter("avoid_classes").value)
+        self.locked_target_bbox = None
+        self.locked_target_point = None
+        self.locked_target_time = None
 
         self.target_pub = self.create_publisher(PointStamped, self.target_topic, 10)
         self.target_label_pub = self.create_publisher(String, self.target_label_topic, 10)
@@ -82,7 +101,8 @@ class DetectionsToTargetNode(Node):
                 avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy))
 
         avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
-        self.publish_best(target_candidates, self.target_pub, self.target_label_pub)
+        target_candidate = self.select_target_candidate(target_candidates)
+        self.publish_candidate(target_candidate, self.target_pub, self.target_label_pub)
         self.publish_best(avoid_candidates, self.avoid_pub, self.avoid_label_pub)
         self.publish_avoid_objects(avoid_candidates, header)
 
@@ -142,11 +162,104 @@ class DetectionsToTargetNode(Node):
                 filtered.append(avoid_candidate)
         return filtered
 
+    def select_target_candidate(self, candidates):
+        if not candidates:
+            self.clear_expired_target_lock()
+            return None
+        if not self.target_lock_enabled:
+            return self.update_target_lock(self.best_target_candidate(candidates))
+
+        best_candidate = self.best_target_candidate(candidates)
+        if not self.has_active_target_lock():
+            return self.update_target_lock(best_candidate)
+
+        locked_candidates = [
+            candidate for candidate in candidates
+            if self.candidate_matches_locked_target(candidate)
+        ]
+        if not locked_candidates:
+            return self.update_target_lock(best_candidate)
+
+        locked_candidate = self.best_target_candidate(locked_candidates)
+        if self.should_switch_target(best_candidate, locked_candidate):
+            return self.update_target_lock(best_candidate)
+        return self.update_target_lock(locked_candidate)
+
+    def best_target_candidate(self, candidates):
+        return max(candidates, key=self.target_candidate_score)
+
+    def target_candidate_score(self, candidate):
+        _, _, point_msg, _ = candidate
+        closeness = float(point_msg.point.y)
+        x_error = abs(float(point_msg.point.x))
+        return closeness - self.target_center_weight * x_error
+
+    def should_switch_target(self, new_candidate, locked_candidate):
+        if new_candidate is locked_candidate:
+            return False
+
+        new_y = float(new_candidate[2].point.y)
+        locked_y = float(locked_candidate[2].point.y)
+        if new_y >= locked_y + self.target_switch_y_margin:
+            return True
+
+        new_score = self.target_candidate_score(new_candidate)
+        locked_score = self.target_candidate_score(locked_candidate)
+        return new_score >= locked_score + self.target_switch_score_margin
+
+    def candidate_matches_locked_target(self, candidate):
+        if self.locked_target_bbox is None or self.locked_target_point is None:
+            return False
+
+        _, _, point_msg, bbox_xyxy = candidate
+        if self.bbox_iou(bbox_xyxy, self.locked_target_bbox) >= self.target_lock_iou_threshold:
+            return True
+
+        locked_x, locked_y = self.locked_target_point
+        x_gap = abs(float(point_msg.point.x) - locked_x)
+        y_gap = abs(float(point_msg.point.y) - locked_y)
+        return x_gap <= self.target_lock_x_margin and y_gap <= self.target_lock_y_margin
+
+    def has_active_target_lock(self):
+        if self.locked_target_time is None:
+            return False
+
+        elapsed = self.get_clock().now() - self.locked_target_time
+        if elapsed.nanoseconds / 1_000_000_000.0 > self.target_lock_timeout_s:
+            self.clear_target_lock()
+            return False
+        return True
+
+    def clear_expired_target_lock(self):
+        if self.locked_target_time is not None:
+            self.has_active_target_lock()
+
+    def update_target_lock(self, candidate):
+        if candidate is None:
+            return None
+
+        _, _, point_msg, bbox_xyxy = candidate
+        self.locked_target_bbox = bbox_xyxy
+        self.locked_target_point = (float(point_msg.point.x), float(point_msg.point.y))
+        self.locked_target_time = self.get_clock().now()
+        return candidate
+
+    def clear_target_lock(self):
+        self.locked_target_bbox = None
+        self.locked_target_point = None
+        self.locked_target_time = None
+
     def publish_best(self, candidates, point_pub, label_pub) -> None:
         if not candidates:
             return
 
-        _, class_name, point_msg, _ = max(candidates, key=lambda item: item[0])
+        self.publish_candidate(max(candidates, key=lambda item: item[0]), point_pub, label_pub)
+
+    def publish_candidate(self, candidate, point_pub, label_pub) -> None:
+        if candidate is None:
+            return
+
+        _, class_name, point_msg, _ = candidate
         point_pub.publish(point_msg)
 
         label_msg = String()
