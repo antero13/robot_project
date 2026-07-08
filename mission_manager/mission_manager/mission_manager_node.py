@@ -11,9 +11,13 @@ from std_msgs.msg import String
 class MissionState(str, Enum):
     IDLE = 'IDLE'
     LEAVE_START = 'LEAVE_START'
-    SEARCH_OBJECT = 'SEARCH_OBJECT'
-    APPROACH_OBJECT = 'APPROACH_OBJECT'
+    SEARCH = 'SEARCH'
+    ALIGN_TARGET = 'ALIGN_TARGET'
+    APPROACH_TARGET = 'APPROACH_TARGET'
     FINAL_FORWARD = 'FINAL_FORWARD'
+    AVOID_TURN = 'AVOID_TURN'
+    AVOID_FORWARD = 'AVOID_FORWARD'
+    REACQUIRE_TARGET = 'REACQUIRE_TARGET'
     GRAB_OBJECT = 'GRAB_OBJECT'
     BACK_OUT = 'BACK_OUT'
     DONE = 'DONE'
@@ -28,6 +32,7 @@ class MissionManager(Node):
         self.declare_parameter('mission_control_topic', '/mission_control')
         self.declare_parameter('mission_state_topic', '/mission_state')
         self.declare_parameter('target_object_topic', '/target_object')
+        self.declare_parameter('avoid_object_topic', '/avoid_object')
         self.declare_parameter('pwm_servo_topic', '/ros_robot_controller/pwm_servo/set_state')
         self.declare_parameter('bus_servo_topic', '/ros_robot_controller/bus_servo/set_state')
 
@@ -46,16 +51,31 @@ class MissionManager(Node):
 
         self.declare_parameter('approach_max_linear_x', 0.10)
         self.declare_parameter('approach_min_linear_x', 0.03)
-        self.declare_parameter('approach_angular_gain', 0.35)
-        self.declare_parameter('approach_max_angular_z', 0.20)
-        self.declare_parameter('center_tolerance', 0.18)
+        self.declare_parameter('approach_angular_gain', 0.8)
+        self.declare_parameter('approach_max_angular_z', 0.45)
+        self.declare_parameter('center_tolerance', 0.12)
         self.declare_parameter('grab_area_ratio', 0.10)
-        self.declare_parameter('target_timeout_s', 1.5)
+        self.declare_parameter('target_timeout_s', 0.5)
         self.declare_parameter('final_forward_linear_x', 0.06)
         self.declare_parameter('final_forward_duration_s', 0.8)
         self.declare_parameter('back_out_linear_x', -0.08)
         self.declare_parameter('grab_duration_s', 1.0)
         self.declare_parameter('back_out_duration_s', 1.5)
+
+        self.declare_parameter('avoid_enabled', True)
+        self.declare_parameter('avoid_timeout_s', 0.5)
+        self.declare_parameter('avoid_area_ratio', 0.04)
+        self.declare_parameter('avoid_center_band', 0.65)
+        self.declare_parameter('avoid_only_if_closer_than_target', True)
+        self.declare_parameter('avoid_closer_ratio', 1.15)
+        self.declare_parameter('avoid_turn_duration_s', 0.45)
+        self.declare_parameter('avoid_turn_angular_z', 0.45)
+        self.declare_parameter('avoid_forward_duration_s', 0.8)
+        self.declare_parameter('avoid_forward_linear_x', 0.06)
+        self.declare_parameter('avoid_forward_angular_z', 0.18)
+        self.declare_parameter('avoid_turn_direction_sign', 1.0)
+        self.declare_parameter('reacquire_duration_s', 3.0)
+        self.declare_parameter('reacquire_angular_z', 0.30)
 
         self.declare_parameter('gripper_enabled', False)
         self.declare_parameter('gripper_type', 'pwm')
@@ -68,6 +88,7 @@ class MissionManager(Node):
         self.mission_control_topic = self.get_parameter('mission_control_topic').value
         self.mission_state_topic = self.get_parameter('mission_state_topic').value
         self.target_object_topic = self.get_parameter('target_object_topic').value
+        self.avoid_object_topic = self.get_parameter('avoid_object_topic').value
         self.pwm_servo_topic = self.get_parameter('pwm_servo_topic').value
         self.bus_servo_topic = self.get_parameter('bus_servo_topic').value
 
@@ -76,6 +97,10 @@ class MissionManager(Node):
         self.last_state_published = None
         self.latest_target = None
         self.latest_target_time = None
+        self.latest_avoid = None
+        self.latest_avoid_time = None
+        self.last_target_direction = self.search_direction()
+        self.avoid_turn_direction = self.search_direction()
         self.grab_command_sent = False
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
@@ -94,6 +119,12 @@ class MissionManager(Node):
             self.target_callback,
             10,
         )
+        self.avoid_sub = self.create_subscription(
+            PointStamped,
+            self.avoid_object_topic,
+            self.avoid_callback,
+            10,
+        )
 
         timer_rate_hz = float(self.get_parameter('timer_rate_hz').value)
         self.timer = self.create_timer(1.0 / timer_rate_hz, self.tick)
@@ -102,10 +133,22 @@ class MissionManager(Node):
             f'Mission manager ready. Send commands on {self.mission_control_topic}: '
             'start, demo, search, stop, reset, open, close'
         )
+        self.get_logger().info(
+            f'Subscribing target={self.target_object_topic}, avoid={self.avoid_object_topic}; '
+            f'publishing cmd_vel={self.cmd_vel_topic}'
+        )
 
     def target_callback(self, msg):
         self.latest_target = msg.point
         self.latest_target_time = self.get_clock().now()
+
+        x_error = float(msg.point.x)
+        if abs(x_error) > self.get_float('center_tolerance') * 0.5:
+            self.last_target_direction = 1.0 if x_error > 0.0 else -1.0
+
+    def avoid_callback(self, msg):
+        self.latest_avoid = msg.point
+        self.latest_avoid_time = self.get_clock().now()
 
     def control_callback(self, msg):
         command = msg.data.strip().lower()
@@ -113,7 +156,7 @@ class MissionManager(Node):
         if command in ('start', 'demo'):
             self.start_mission()
         elif command == 'search':
-            self.change_state(MissionState.SEARCH_OBJECT)
+            self.change_state(MissionState.SEARCH)
         elif command == 'stop':
             self.stop_robot()
             self.change_state(MissionState.STOPPED)
@@ -139,12 +182,20 @@ class MissionManager(Node):
             self.publish_cmd_vel()
         elif self.state == MissionState.LEAVE_START:
             self.run_leave_start()
-        elif self.state == MissionState.SEARCH_OBJECT:
+        elif self.state == MissionState.SEARCH:
             self.run_search()
-        elif self.state == MissionState.APPROACH_OBJECT:
-            self.run_approach()
+        elif self.state == MissionState.ALIGN_TARGET:
+            self.run_align_target()
+        elif self.state == MissionState.APPROACH_TARGET:
+            self.run_approach_target()
         elif self.state == MissionState.FINAL_FORWARD:
             self.run_final_forward()
+        elif self.state == MissionState.AVOID_TURN:
+            self.run_avoid_turn()
+        elif self.state == MissionState.AVOID_FORWARD:
+            self.run_avoid_forward()
+        elif self.state == MissionState.REACQUIRE_TARGET:
+            self.run_reacquire_target()
         elif self.state == MissionState.GRAB_OBJECT:
             self.run_grab()
         elif self.state == MissionState.BACK_OUT:
@@ -154,19 +205,23 @@ class MissionManager(Node):
             self.publish_cmd_vel()
 
     def run_leave_start(self):
+        if self.begin_avoid_if_needed():
+            return
         if self.has_recent_target():
-            self.change_state(MissionState.APPROACH_OBJECT)
+            self.change_state(MissionState.ALIGN_TARGET)
             return
 
         self.publish_cmd_vel(
             linear_x=self.get_float('leave_start_linear_x'),
             angular_z=self.get_float('leave_start_angular_z'),
         )
-        self.advance_after('leave_start_duration_s', MissionState.SEARCH_OBJECT)
+        self.advance_after('leave_start_duration_s', MissionState.SEARCH)
 
     def run_search(self):
+        if self.begin_avoid_if_needed():
+            return
         if self.has_recent_target():
-            self.change_state(MissionState.APPROACH_OBJECT)
+            self.change_state(MissionState.ALIGN_TARGET)
             return
 
         self.publish_search_command()
@@ -180,7 +235,7 @@ class MissionManager(Node):
         cycle_index = int(state_age / cycle_duration)
         phase_time = state_age % cycle_duration
 
-        direction = 1.0 if self.get_float('search_turn_direction') >= 0.0 else -1.0
+        direction = self.search_direction()
         if bool(self.get_parameter('search_alternate_turn_direction').value) and cycle_index % 2 == 1:
             direction *= -1.0
 
@@ -192,39 +247,121 @@ class MissionManager(Node):
         else:
             self.publish_cmd_vel(angular_z=direction * self.get_float('search_angular_z'))
 
-    def run_approach(self):
+    def run_align_target(self):
+        if self.begin_avoid_if_needed():
+            return
         if not self.has_recent_target():
-            self.change_state(MissionState.SEARCH_OBJECT)
+            self.change_state(MissionState.REACQUIRE_TARGET)
+            return
+
+        x_error = float(self.latest_target.x)
+        if abs(x_error) <= self.get_float('center_tolerance'):
+            self.publish_cmd_vel()
+            self.change_state(MissionState.APPROACH_TARGET)
+            return
+
+        self.publish_cmd_vel(angular_z=self.target_turn_command(x_error))
+
+    def run_approach_target(self):
+        if self.begin_avoid_if_needed():
+            return
+        if not self.has_recent_target():
+            self.change_state(MissionState.REACQUIRE_TARGET)
             return
 
         x_error = float(self.latest_target.x)
         area_ratio = float(self.latest_target.y)
 
-        if area_ratio >= self.get_float('grab_area_ratio') and abs(x_error) <= self.get_float('center_tolerance'):
+        if abs(x_error) > self.get_float('center_tolerance'):
+            self.change_state(MissionState.ALIGN_TARGET)
+            return
+
+        if area_ratio >= self.get_float('grab_area_ratio'):
             self.publish_cmd_vel()
             self.change_state(MissionState.FINAL_FORWARD)
             return
 
-        angular_z = -self.get_float('approach_angular_gain') * x_error
-        angular_z = self.clamp(
-            angular_z,
-            -self.get_float('approach_max_angular_z'),
-            self.get_float('approach_max_angular_z'),
-        )
-
-        if abs(x_error) > self.get_float('center_tolerance'):
-            linear_x = 0.0
-        else:
-            area_scale = max(0.0, min(1.0, area_ratio / self.get_float('grab_area_ratio')))
-            max_linear = self.get_float('approach_max_linear_x')
-            min_linear = self.get_float('approach_min_linear_x')
-            linear_x = max(min_linear, max_linear * (1.0 - area_scale))
-
+        area_scale = max(0.0, min(1.0, area_ratio / self.get_float('grab_area_ratio')))
+        max_linear = self.get_float('approach_max_linear_x')
+        min_linear = self.get_float('approach_min_linear_x')
+        linear_x = max(min_linear, max_linear * (1.0 - area_scale))
+        angular_z = self.target_turn_command(x_error)
         self.publish_cmd_vel(linear_x=linear_x, angular_z=angular_z)
 
     def run_final_forward(self):
         self.publish_cmd_vel(linear_x=self.get_float('final_forward_linear_x'))
         self.advance_after('final_forward_duration_s', MissionState.GRAB_OBJECT)
+
+    def run_avoid_turn(self):
+        self.publish_cmd_vel(angular_z=self.avoid_turn_direction * self.get_float('avoid_turn_angular_z'))
+        self.advance_after('avoid_turn_duration_s', MissionState.AVOID_FORWARD)
+
+    def run_avoid_forward(self):
+        self.publish_cmd_vel(
+            linear_x=self.get_float('avoid_forward_linear_x'),
+            angular_z=self.avoid_turn_direction * self.get_float('avoid_forward_angular_z'),
+        )
+        self.advance_after('avoid_forward_duration_s', MissionState.REACQUIRE_TARGET)
+
+    def run_reacquire_target(self):
+        if self.begin_avoid_if_needed():
+            return
+        if self.has_recent_target():
+            self.change_state(MissionState.ALIGN_TARGET)
+            return
+
+        self.publish_cmd_vel(angular_z=self.last_target_direction * self.get_float('reacquire_angular_z'))
+        self.advance_after('reacquire_duration_s', MissionState.SEARCH)
+
+    def begin_avoid_if_needed(self):
+        if not self.should_avoid():
+            return False
+
+        self.avoid_turn_direction = self.compute_avoid_turn_direction()
+        self.change_state(MissionState.AVOID_TURN)
+        return True
+
+    def should_avoid(self):
+        if not bool(self.get_parameter('avoid_enabled').value):
+            return False
+        if not self.has_recent_avoid():
+            return False
+
+        x_error = abs(float(self.latest_avoid.x))
+        area_ratio = float(self.latest_avoid.y)
+        if area_ratio < self.get_float('avoid_area_ratio'):
+            return False
+        if x_error > self.get_float('avoid_center_band'):
+            return False
+        if not self.avoid_is_closer_than_target(area_ratio):
+            return False
+        return True
+
+    def avoid_is_closer_than_target(self, avoid_area_ratio):
+        if not bool(self.get_parameter('avoid_only_if_closer_than_target').value):
+            return True
+        if not self.has_recent_target():
+            return True
+
+        target_area_ratio = float(self.latest_target.y)
+        return avoid_area_ratio >= target_area_ratio * self.get_float('avoid_closer_ratio')
+
+    def compute_avoid_turn_direction(self):
+        if not self.has_recent_avoid():
+            return self.search_direction()
+
+        avoid_x = float(self.latest_avoid.x)
+        direction = 1.0 if avoid_x >= 0.0 else -1.0
+        direction *= self.get_float('avoid_turn_direction_sign')
+        return 1.0 if direction >= 0.0 else -1.0
+
+    def target_turn_command(self, x_error):
+        angular_z = -self.get_float('approach_angular_gain') * x_error
+        return self.clamp(
+            angular_z,
+            -self.get_float('approach_max_angular_z'),
+            self.get_float('approach_max_angular_z'),
+        )
 
     def run_grab(self):
         self.publish_cmd_vel()
@@ -242,6 +379,12 @@ class MissionManager(Node):
             return False
         elapsed = self.get_clock().now() - self.latest_target_time
         return elapsed.nanoseconds / 1_000_000_000.0 <= self.get_float('target_timeout_s')
+
+    def has_recent_avoid(self):
+        if self.latest_avoid is None or self.latest_avoid_time is None:
+            return False
+        elapsed = self.get_clock().now() - self.latest_avoid_time
+        return elapsed.nanoseconds / 1_000_000_000.0 <= self.get_float('avoid_timeout_s')
 
     def change_state(self, next_state):
         if self.state == next_state:
@@ -317,6 +460,9 @@ class MissionManager(Node):
     def state_age_s(self):
         elapsed = self.get_clock().now() - self.state_started_at
         return elapsed.nanoseconds / 1_000_000_000.0
+
+    def search_direction(self):
+        return 1.0 if self.get_float('search_turn_direction') >= 0.0 else -1.0
 
     def get_float(self, name):
         return float(self.get_parameter(name).value)

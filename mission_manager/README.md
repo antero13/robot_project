@@ -2,9 +2,9 @@
 
 First mission state-machine package for the AI Robot Challenge robot.
 
-This node publishes `/cmd_vel` from a mission sequence. In `SEARCH_OBJECT` and
-`APPROACH_OBJECT`, it follows `/target_object` detections from the camera
-detector in real time.
+This node publishes `/cmd_vel` from a mission sequence. It follows
+`/target_object` detections, aligns before approaching, and can temporarily
+avoid nearer objects reported on `/avoid_object`.
 
 ## Topics
 
@@ -12,6 +12,7 @@ Subscribed:
 
 - `/mission_control` (`std_msgs/msg/String`)
 - `/target_object` (`geometry_msgs/msg/PointStamped`)
+- `/avoid_object` (`geometry_msgs/msg/PointStamped`)
 
 Published:
 
@@ -23,6 +24,7 @@ Published:
 
 ```bash
 ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'start'}"
+ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'search'}"
 ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'stop'}"
 ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'reset'}"
 ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'open'}"
@@ -32,7 +34,13 @@ ros2 topic pub -1 /mission_control std_msgs/msg/String "{data: 'close'}"
 `start` runs this first demo mission:
 
 ```text
-LEAVE_START -> SEARCH_OBJECT -> APPROACH_OBJECT -> FINAL_FORWARD -> GRAB_OBJECT -> BACK_OUT -> DONE
+LEAVE_START -> SEARCH -> ALIGN_TARGET -> APPROACH_TARGET -> FINAL_FORWARD -> GRAB_OBJECT -> BACK_OUT -> DONE
+```
+
+If a close obstacle is detected, the manager inserts:
+
+```text
+AVOID_TURN -> AVOID_FORWARD -> REACQUIRE_TARGET
 ```
 
 `/target_object` format:
@@ -43,20 +51,22 @@ point.y = bounding box area ratio, bigger means closer
 point.z = detection confidence
 ```
 
-During `APPROACH_OBJECT`, the robot turns until `point.x` is near 0, moves
-forward while centered, and transitions to `FINAL_FORWARD` when `point.y`
-reaches `grab_area_ratio`. `FINAL_FORWARD` drives straight for a short fixed
-time so the object reaches the gripper before `GRAB_OBJECT` closes the servo.
+`/avoid_object` uses the same point format. During `ALIGN_TARGET`, the robot
+turns until `point.x` is near 0. During `APPROACH_TARGET`, it moves forward
+while centered and transitions to `FINAL_FORWARD` when `point.y` reaches
+`grab_area_ratio`. `FINAL_FORWARD` drives straight briefly so the object reaches
+the gripper before `GRAB_OBJECT` closes the servo.
 
 ## Build
 
 Copy these packages into the Jetson workspace:
 
 ```bash
-cp -r yolo_target_detector ~/ros2_ws/src/
+cp -r ros2_yolo_detector ~/ros2_ws/src/
+cp -r cmd_vel_to_motor ~/ros2_ws/src/
 cp -r mission_manager ~/ros2_ws/src/
 cd ~/ros2_ws
-colcon build --symlink-install --packages-select yolo_target_detector mission_manager
+colcon build --symlink-install --packages-select ros2_yolo_detector cmd_vel_to_motor mission_manager
 source install/setup.bash
 ```
 
@@ -84,10 +94,11 @@ Terminal 3:
 ros2 launch mission_manager mission_manager.launch.py
 ```
 
-Or run the camera detector and mission manager together:
+Or run the camera detector, target conversion, mission manager, and motor
+bridge together:
 
 ```bash
-ros2 launch mission_manager camera_mission.launch.py target_class:=apple
+ros2 launch mission_manager object_pickup_mission.launch.py target_classes:=apple avoid_classes:=person
 ```
 
 Start the demo:
@@ -121,4 +132,7 @@ final_forward_linear_x: straight driving speed after visual approach
 final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
+avoid_area_ratio: minimum obstacle size before avoidance can trigger
+avoid_center_band: how close to the camera center an obstacle must be
+avoid_closer_ratio: how much larger the obstacle must be than the target
 ```
