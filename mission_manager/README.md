@@ -133,6 +133,37 @@ bridge together:
 ros2 launch mission_manager object_pickup_mission.launch.py target_classes:=apple avoid_classes:=person
 ```
 
+Enable the second camera pipeline when two USB cameras are connected:
+
+```bash
+ros2 launch mission_manager object_pickup_mission.launch.py \
+  target_classes:=apple \
+  avoid_classes:=person \
+  enable_second_camera:=true
+```
+
+The default camera device paths are:
+
+```text
+camera 1: /dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0
+camera 2: /dev/v4l/by-path/platform-3610000.usb-usb-0:2.2:1.0-video-index0
+```
+
+When enabled, the second camera publishes:
+
+```text
+/camera2/image_raw
+/yolo2/detections
+/yolo2/annotated_image
+/target_object2
+/avoid_object2
+/avoid_objects2
+```
+
+The mission manager still uses the first camera topics (`/target_object`,
+`/avoid_objects`) by default. Use the second camera topics for monitoring or
+future pickup/wall-check logic.
+
 Start the demo:
 
 ```bash

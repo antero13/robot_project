@@ -19,6 +19,8 @@ def launch_setup(context, *args, **kwargs):
     camera_height = int(arg(context, 'camera_height'))
     camera_fps = float(arg(context, 'camera_fps'))
     time_per_frame_denominator = max(1, int(round(camera_fps)))
+    enable_second_camera = as_bool(arg(context, 'enable_second_camera'))
+    second_camera_yolo_enabled = as_bool(arg(context, 'second_camera_yolo_enabled'))
     confidence = float(arg(context, 'confidence'))
     tracker_enabled = as_bool(arg(context, 'tracker_enabled'))
     tracker_persist = as_bool(arg(context, 'tracker_persist'))
@@ -32,7 +34,7 @@ def launch_setup(context, *args, **kwargs):
     final_forward_linear_x = float(arg(context, 'final_forward_linear_x'))
     final_forward_duration_s = float(arg(context, 'final_forward_duration_s'))
 
-    return [
+    nodes = [
         Node(
             package='v4l2_camera',
             executable='v4l2_camera_node',
@@ -51,6 +53,31 @@ def launch_setup(context, *args, **kwargs):
                 'gain': int(arg(context, 'gain')),
             }],
         ),
+    ]
+
+    if enable_second_camera:
+        nodes.append(
+            Node(
+                package='v4l2_camera',
+                executable='v4l2_camera_node',
+                name='v4l2_camera_node',
+                namespace='camera2',
+                output='screen',
+                parameters=[{
+                    'video_device': arg(context, 'second_video_device'),
+                    'image_size': [camera_width, camera_height],
+                    'time_per_frame': [1, time_per_frame_denominator],
+                    'pixel_format': arg(context, 'pixel_format'),
+                    'output_encoding': arg(context, 'output_encoding'),
+                    'power_line_frequency': int(arg(context, 'power_line_frequency')),
+                    'auto_exposure': int(arg(context, 'auto_exposure')),
+                    'exposure_time_absolute': int(arg(context, 'exposure_time_absolute')),
+                    'gain': int(arg(context, 'gain')),
+                }],
+            )
+        )
+
+    nodes.append(
         Node(
             package='ros2_yolo_detector',
             executable='yolo_camera_node',
@@ -78,7 +105,42 @@ def launch_setup(context, *args, **kwargs):
                 'publish_raw': publish_raw,
                 'publish_annotated': publish_annotated,
             }],
-        ),
+        )
+    )
+
+    if enable_second_camera and second_camera_yolo_enabled:
+        nodes.append(
+            Node(
+                package='ros2_yolo_detector',
+                executable='yolo_camera_node',
+                name='yolo_camera_node2',
+                output='screen',
+                parameters=[{
+                    'model_path': arg(context, 'model_path'),
+                    'input_mode': 'topic',
+                    'image_topic': arg(context, 'second_image_topic'),
+                    'camera_index': camera_index,
+                    'camera_width': camera_width,
+                    'camera_height': camera_height,
+                    'camera_fps': camera_fps,
+                    'confidence': confidence,
+                    'tracker_enabled': tracker_enabled,
+                    'tracker_config': arg(context, 'tracker_config'),
+                    'tracker_persist': tracker_persist,
+                    'stable_tracking_enabled': stable_tracking_enabled,
+                    'stable_track_timeout_s': float(arg(context, 'stable_track_timeout_s')),
+                    'stable_track_iou_threshold': float(arg(context, 'stable_track_iou_threshold')),
+                    'stable_track_center_ratio': float(arg(context, 'stable_track_center_ratio')),
+                    'detections_topic': '/yolo2/detections',
+                    'annotated_topic': '/yolo2/annotated_image',
+                    'raw_topic': arg(context, 'second_image_topic'),
+                    'publish_raw': False,
+                    'publish_annotated': publish_annotated,
+                }],
+            )
+        )
+
+    nodes.extend([
         Node(
             package='ros2_yolo_detector',
             executable='detections_to_target_node',
@@ -107,6 +169,41 @@ def launch_setup(context, *args, **kwargs):
                 'image_height': float(camera_height),
             }],
         ),
+    ])
+
+    if enable_second_camera and second_camera_yolo_enabled:
+        nodes.append(
+            Node(
+                package='ros2_yolo_detector',
+                executable='detections_to_target_node',
+                name='detections_to_target_node2',
+                output='screen',
+                parameters=[{
+                    'detections_topic': '/yolo2/detections',
+                    'target_topic': '/target_object2',
+                    'target_label_topic': '/target_label2',
+                    'avoid_topic': '/avoid_object2',
+                    'avoid_label_topic': '/avoid_label2',
+                    'avoid_objects_topic': '/avoid_objects2',
+                    'target_lock_enabled': True,
+                    'target_lock_timeout_s': 0.7,
+                    'target_lock_iou_threshold': 0.20,
+                    'target_lock_x_margin': 0.30,
+                    'target_lock_y_margin': 0.20,
+                    'target_switch_y_margin': 0.12,
+                    'target_switch_score_margin': 0.25,
+                    'target_center_weight': 0.25,
+                    'avoid_target_iou_threshold': 0.35,
+                    'target_classes': arg(context, 'target_classes'),
+                    'avoid_classes': arg(context, 'avoid_classes'),
+                    'min_confidence': confidence,
+                    'image_width': float(camera_width),
+                    'image_height': float(camera_height),
+                }],
+            )
+        )
+
+    nodes.extend([
         Node(
             package='mission_manager',
             executable='mission_manager',
@@ -202,7 +299,9 @@ def launch_setup(context, *args, **kwargs):
                 'command_timeout_s': 0.5,
             }],
         ),
-    ]
+    ])
+
+    return nodes
 
 
 def generate_launch_description():
@@ -218,6 +317,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'video_device',
             default_value='/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0',
+        ),
+        DeclareLaunchArgument('enable_second_camera', default_value='false'),
+        DeclareLaunchArgument('second_camera_yolo_enabled', default_value='true'),
+        DeclareLaunchArgument('second_image_topic', default_value='/camera2/image_raw'),
+        DeclareLaunchArgument(
+            'second_video_device',
+            default_value='/dev/v4l/by-path/platform-3610000.usb-usb-0:2.2:1.0-video-index0',
         ),
         DeclareLaunchArgument('camera_index', default_value='0'),
         DeclareLaunchArgument('camera_width', default_value='640'),
