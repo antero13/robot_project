@@ -29,7 +29,8 @@ class Vl53l1xSensorPair:
     def __init__(
         self,
         *,
-        i2c_bus: int,
+        left_i2c_bus: int,
+        right_i2c_bus: int,
         default_address: int,
         left_address: int,
         right_address: int,
@@ -40,7 +41,8 @@ class Vl53l1xSensorPair:
         distance_scale_m: float,
         logger,
     ) -> None:
-        self.i2c_bus = i2c_bus
+        self.left_i2c_bus = left_i2c_bus
+        self.right_i2c_bus = right_i2c_bus
         self.default_address = default_address
         self.left_address = left_address
         self.right_address = right_address
@@ -61,8 +63,8 @@ class Vl53l1xSensorPair:
         if self.left_xshut_pin >= 0 and self.right_xshut_pin >= 0:
             self._open_sensors_with_xshut()
         else:
-            self.left_sensor = self._make_sensor(self.left_address)
-            self.right_sensor = self._make_sensor(self.right_address)
+            self.left_sensor = self._make_sensor(self.left_i2c_bus, self.left_address)
+            self.right_sensor = self._make_sensor(self.right_i2c_bus, self.right_address)
 
         self._start_ranging(self.left_sensor)
         self._start_ranging(self.right_sensor)
@@ -75,11 +77,17 @@ class Vl53l1xSensorPair:
 
         self._set_xshut(self.left_xshut_pin, True)
         time.sleep(0.10)
-        self.left_sensor = self._make_sensor_at_default_then_readdress(self.left_address)
+        self.left_sensor = self._make_sensor_at_default_then_readdress(
+            self.left_i2c_bus,
+            self.left_address,
+        )
 
         self._set_xshut(self.right_xshut_pin, True)
         time.sleep(0.10)
-        self.right_sensor = self._make_sensor_at_default_then_readdress(self.right_address)
+        self.right_sensor = self._make_sensor_at_default_then_readdress(
+            self.right_i2c_bus,
+            self.right_address,
+        )
 
     def _setup_gpio(self) -> None:
         try:
@@ -102,17 +110,17 @@ class Vl53l1xSensorPair:
             return
         self.gpio.output(pin, self.gpio.HIGH if enabled else self.gpio.LOW)
 
-    def _make_sensor_at_default_then_readdress(self, target_address: int) -> Any:
-        sensor = self._make_sensor(self.default_address)
+    def _make_sensor_at_default_then_readdress(self, i2c_bus: int, target_address: int) -> Any:
+        sensor = self._make_sensor(i2c_bus, self.default_address)
         if target_address == self.default_address:
             return sensor
 
         self._change_address(sensor, target_address)
         self._close_sensor(sensor)
-        return self._make_sensor(target_address)
+        return self._make_sensor(i2c_bus, target_address)
 
-    def _make_sensor(self, address: int) -> Any:
-        sensor = self.vl53l1x.VL53L1X(i2c_bus=self.i2c_bus, i2c_address=address)
+    def _make_sensor(self, i2c_bus: int, address: int) -> Any:
+        sensor = self.vl53l1x.VL53L1X(i2c_bus=i2c_bus, i2c_address=address)
         if hasattr(sensor, "open"):
             sensor.open()
         return sensor
@@ -163,10 +171,11 @@ class WallDistanceAngleNode(Node):
         super().__init__("wall_distance_angle_node")
 
         self.declare_parameter("driver_backend", "vl53l1x")
-        self.declare_parameter("i2c_bus", 1)
+        self.declare_parameter("left_i2c_bus", 1)
+        self.declare_parameter("right_i2c_bus", 0)
         self.declare_parameter("default_address", "0x29")
-        self.declare_parameter("left_address", "0x2A")
-        self.declare_parameter("right_address", "0x2B")
+        self.declare_parameter("left_address", "0x29")
+        self.declare_parameter("right_address", "0x29")
         self.declare_parameter("left_xshut_pin", -1)
         self.declare_parameter("right_xshut_pin", -1)
         self.declare_parameter("xshut_pin_mode", "BOARD")
@@ -246,7 +255,8 @@ class WallDistanceAngleNode(Node):
             raise ValueError("driver_backend must be 'vl53l1x' or 'mock'.")
 
         return Vl53l1xSensorPair(
-            i2c_bus=int(self.get_parameter("i2c_bus").value),
+            left_i2c_bus=int(self.get_parameter("left_i2c_bus").value),
+            right_i2c_bus=int(self.get_parameter("right_i2c_bus").value),
             default_address=self.parse_int_parameter("default_address"),
             left_address=self.parse_int_parameter("left_address"),
             right_address=self.parse_int_parameter("right_address"),

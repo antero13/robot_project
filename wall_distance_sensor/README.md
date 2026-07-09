@@ -38,32 +38,55 @@ wall_angle = atan2(dR - dL, B)
 wall_distance = ((dL + dR) / 2) * cos(wall_angle)
 ```
 
-## Jetson Nano wiring notes
+## Jetson Orin Nano wiring
 
-VL53L1X modules normally boot at I2C address `0x29`. If you connect two modules
-on the same I2C bus, use each module's XSHUT pin so the node can power them up
-one at a time and assign new addresses.
+For Jetson Orin Nano, use two separate I2C buses so the two VL53L1X sensors can
+both keep their default `0x29` address. This avoids SDA/SCL branching and does
+not require XSHUT wiring.
 
-Typical launch with XSHUT pins:
+Left sensor:
+
+```text
+VCC -> Pin 1 or Pin 17, 3.3V
+GND -> Pin 6, 9, 14, 20, 25, 30, 34, or 39
+SDA -> Pin 3, I2C1_SDA
+SCL -> Pin 5, I2C1_SCL
+```
+
+Right sensor:
+
+```text
+VCC -> Pin 1 or Pin 17, 3.3V
+GND -> Pin 6, 9, 14, 20, 25, 30, 34, or 39
+SDA -> Pin 27, I2C0_SDA
+SCL -> Pin 28, I2C0_SCL
+```
+
+Default launch for this wiring:
 
 ```bash
 ros2 launch wall_distance_sensor wall_distance_angle.launch.py \
-  i2c_bus:=1 \
-  left_xshut_pin:=15 \
-  right_xshut_pin:=16 \
-  xshut_pin_mode:=BOARD \
+  left_i2c_bus:=1 \
+  right_i2c_bus:=0 \
+  left_address:=0x29 \
+  right_address:=0x29 \
   sensor_separation_m:=0.29 \
   safe_distance_m:=0.15
 ```
 
-If the two sensors already have different addresses or are behind an I2C
-multiplexer, leave the XSHUT pins disabled and set the addresses:
+Check which Linux I2C bus numbers are exposed on your board:
 
 ```bash
-ros2 launch wall_distance_sensor wall_distance_angle.launch.py \
-  left_address:=0x2A \
-  right_address:=0x2B
+ls /dev/i2c-*
+sudo i2cdetect -y 1
+sudo i2cdetect -y 0
 ```
+
+Each bus should show one sensor at `0x29`. If your board exposes different bus
+numbers, pass those values as `left_i2c_bus` and `right_i2c_bus`.
+
+The package is intentionally standalone. Existing mission, YOLO, and motor
+launch files do not start this node automatically.
 
 ## Test without hardware
 

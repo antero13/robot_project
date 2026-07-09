@@ -9,10 +9,11 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("driver_backend", default_value="vl53l1x"),
-            DeclareLaunchArgument("i2c_bus", default_value="1"),
+            DeclareLaunchArgument("left_i2c_bus", default_value="1"),
+            DeclareLaunchArgument("right_i2c_bus", default_value="0"),
             DeclareLaunchArgument("default_address", default_value="0x29"),
-            DeclareLaunchArgument("left_address", default_value="0x2A"),
-            DeclareLaunchArgument("right_address", default_value="0x2B"),
+            DeclareLaunchArgument("left_address", default_value="0x29"),
+            DeclareLaunchArgument("right_address", default_value="0x29"),
             DeclareLaunchArgument("left_xshut_pin", default_value="-1"),
             DeclareLaunchArgument("right_xshut_pin", default_value="-1"),
             DeclareLaunchArgument("xshut_pin_mode", default_value="BOARD"),
@@ -42,7 +43,8 @@ def generate_launch_description():
                 parameters=[
                     {
                         "driver_backend": LaunchConfiguration("driver_backend"),
-                        "i2c_bus": ParameterValue(LaunchConfiguration("i2c_bus"), value_type=int),
+                        "left_i2c_bus": ParameterValue(LaunchConfiguration("left_i2c_bus"), value_type=int),
+                        "right_i2c_bus": ParameterValue(LaunchConfiguration("right_i2c_bus"), value_type=int),
                         "default_address": LaunchConfiguration("default_address"),
                         "left_address": LaunchConfiguration("left_address"),
                         "right_address": LaunchConfiguration("right_address"),
