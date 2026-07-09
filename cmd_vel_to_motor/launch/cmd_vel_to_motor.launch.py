@@ -12,8 +12,8 @@ def generate_launch_description():
             parameters=[{
                 'cmd_vel_topic': '/cmd_vel',
                 'motor_topic': '/ros_robot_controller/set_motor',
-                'wheel_radius_m': 0.03,
-                'wheel_separation_m': 0.18,
+                'wheel_radius_m': 0.05,
+                'wheel_separation_m': 0.32,
                 'left_motor_ids': [4, 3],
                 'right_motor_ids': [2, 1],
                 'left_motor_signs': [1.0, 1.0],

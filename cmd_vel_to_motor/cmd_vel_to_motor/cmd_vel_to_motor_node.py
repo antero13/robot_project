@@ -12,8 +12,8 @@ class CmdVelToMotor(Node):
 
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
         self.declare_parameter('motor_topic', '/ros_robot_controller/set_motor')
-        self.declare_parameter('wheel_radius_m', 0.03)
-        self.declare_parameter('wheel_separation_m', 0.18)
+        self.declare_parameter('wheel_radius_m', 0.05)
+        self.declare_parameter('wheel_separation_m', 0.32)
         self.declare_parameter('left_motor_ids', [4, 3])
         self.declare_parameter('right_motor_ids', [2, 1])
         self.declare_parameter('left_motor_signs', [1.0, 1.0])
