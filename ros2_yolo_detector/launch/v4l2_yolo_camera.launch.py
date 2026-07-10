@@ -1,10 +1,43 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
+
+
+def launch_camera(context):
+    def value(name):
+        return LaunchConfiguration(name).perform(context)
+
+    return [
+        Node(
+            package="v4l2_camera",
+            executable="v4l2_camera_node",
+            name="v4l2_camera_node",
+            output="screen",
+            parameters=[
+                {
+                    "video_device": value("video_device"),
+                    "image_size": [
+                        int(value("image_width")),
+                        int(value("image_height")),
+                    ],
+                    "time_per_frame": [
+                        int(value("time_per_frame_numerator")),
+                        int(value("time_per_frame_denominator")),
+                    ],
+                    "pixel_format": value("pixel_format"),
+                    "output_encoding": value("output_encoding"),
+                    "power_line_frequency": int(value("power_line_frequency")),
+                    "auto_exposure": int(value("auto_exposure")),
+                    "exposure_time_absolute": int(value("exposure_time_absolute")),
+                    "gain": int(value("gain")),
+                }
+            ],
+        )
+    ]
 
 
 def generate_launch_description():
@@ -60,35 +93,7 @@ def generate_launch_description():
             DeclareLaunchArgument("target_center_weight", default_value="0.25"),
             DeclareLaunchArgument("avoid_target_iou_threshold", default_value="0.35"),
             DeclareLaunchArgument("publish_target", default_value="true"),
-            Node(
-                package="v4l2_camera",
-                executable="v4l2_camera_node",
-                name="v4l2_camera_node",
-                output="screen",
-                parameters=[
-                    {
-                        "video_device": LaunchConfiguration("video_device"),
-                        "image_size": [
-                            ParameterValue(LaunchConfiguration("image_width"), value_type=int),
-                            ParameterValue(LaunchConfiguration("image_height"), value_type=int),
-                        ],
-                        "time_per_frame": [
-                            ParameterValue(LaunchConfiguration("time_per_frame_numerator"), value_type=int),
-                            ParameterValue(LaunchConfiguration("time_per_frame_denominator"), value_type=int),
-                        ],
-                        "pixel_format": LaunchConfiguration("pixel_format"),
-                        "output_encoding": LaunchConfiguration("output_encoding"),
-                        "power_line_frequency": ParameterValue(
-                            LaunchConfiguration("power_line_frequency"), value_type=int
-                        ),
-                        "auto_exposure": ParameterValue(LaunchConfiguration("auto_exposure"), value_type=int),
-                        "exposure_time_absolute": ParameterValue(
-                            LaunchConfiguration("exposure_time_absolute"), value_type=int
-                        ),
-                        "gain": ParameterValue(LaunchConfiguration("gain"), value_type=int),
-                    }
-                ],
-            ),
+            OpaqueFunction(function=launch_camera),
             Node(
                 package="ros2_yolo_detector",
                 executable="yolo_camera_node",
