@@ -25,6 +25,18 @@ def generate_launch_description():
     speed_scale = LaunchConfiguration("speed_scale")
     dry_run = LaunchConfiguration("dry_run")
     auto_start = LaunchConfiguration("auto_start")
+    gripper_enabled = LaunchConfiguration("gripper_enabled")
+    gripper_type = LaunchConfiguration("gripper_type")
+    gripper_servo_id = LaunchConfiguration("gripper_servo_id")
+    gripper_open_position = LaunchConfiguration("gripper_open_position")
+    gripper_closed_position = LaunchConfiguration("gripper_closed_position")
+    gripper_move_duration_s = LaunchConfiguration("gripper_move_duration_s")
+    grab_center_tolerance = LaunchConfiguration("grab_center_tolerance")
+    grab_area_ratio = LaunchConfiguration("grab_area_ratio")
+    final_forward_linear_x = LaunchConfiguration("final_forward_linear_x")
+    final_forward_duration_s = LaunchConfiguration("final_forward_duration_s")
+    grab_duration_s = LaunchConfiguration("grab_duration_s")
+    stop_after_grab = LaunchConfiguration("stop_after_grab")
 
     controller_launch = IncludeLaunchDescription(
         PathJoinSubstitution([
@@ -68,6 +80,18 @@ def generate_launch_description():
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
             "dry_run": dry_run,
+            "gripper_enabled": gripper_enabled,
+            "gripper_type": gripper_type,
+            "gripper_servo_id": gripper_servo_id,
+            "gripper_open_position": gripper_open_position,
+            "gripper_closed_position": gripper_closed_position,
+            "gripper_move_duration_s": gripper_move_duration_s,
+            "grab_center_tolerance": grab_center_tolerance,
+            "grab_area_ratio": grab_area_ratio,
+            "final_forward_linear_x": final_forward_linear_x,
+            "final_forward_duration_s": final_forward_duration_s,
+            "grab_duration_s": grab_duration_s,
+            "stop_after_grab": stop_after_grab,
         }.items(),
     )
 
@@ -124,6 +148,18 @@ def generate_launch_description():
         DeclareLaunchArgument("publish_annotated", default_value="false"),
         DeclareLaunchArgument("speed_scale", default_value="0.25"),
         DeclareLaunchArgument("dry_run", default_value="false"),
+        DeclareLaunchArgument("gripper_enabled", default_value="true"),
+        DeclareLaunchArgument("gripper_type", default_value="bus"),
+        DeclareLaunchArgument("gripper_servo_id", default_value="1"),
+        DeclareLaunchArgument("gripper_open_position", default_value="1000"),
+        DeclareLaunchArgument("gripper_closed_position", default_value="250"),
+        DeclareLaunchArgument("gripper_move_duration_s", default_value="0.5"),
+        DeclareLaunchArgument("grab_center_tolerance", default_value="0.12"),
+        DeclareLaunchArgument("grab_area_ratio", default_value="0.50"),
+        DeclareLaunchArgument("final_forward_linear_x", default_value="0.06"),
+        DeclareLaunchArgument("final_forward_duration_s", default_value="1.6"),
+        DeclareLaunchArgument("grab_duration_s", default_value="1.0"),
+        DeclareLaunchArgument("stop_after_grab", default_value="true"),
         DeclareLaunchArgument(
             "auto_start",
             default_value="false",

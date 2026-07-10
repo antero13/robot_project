@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import rclpy
 from geometry_msgs.msg import PointStamped, Twist
 from rclpy.node import Node
+from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
+from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
 from std_msgs.msg import String
 
 try:
@@ -47,6 +49,12 @@ if torch is not None:
 class RLModelPolicyNode(Node):
     """Run the trained Isaac Lab/skrl policy from YOLO-derived observations."""
 
+    GRAB_TRACKING = "TRACKING"
+    GRAB_OPENING = "OPENING"
+    GRAB_FINAL_FORWARD = "FINAL_FORWARD"
+    GRAB_CLOSING = "CLOSING"
+    GRAB_COMPLETE = "GRABBED"
+
     def __init__(self):
         super().__init__("rl_model_policy")
 
@@ -57,6 +65,8 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("avoid_objects_topic", "/avoid_objects")
         self.declare_parameter("control_topic", "/rl_model_policy_control")
         self.declare_parameter("state_topic", "/rl_model_policy_state")
+        self.declare_parameter("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state")
+        self.declare_parameter("bus_servo_topic", "/ros_robot_controller/bus_servo/set_state")
 
         self.declare_parameter("active_on_start", False)
         self.declare_parameter("dry_run", False)
@@ -82,6 +92,19 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("publish_stop_when_inactive", True)
         self.declare_parameter("state_preprocessor_epsilon", 1e-8)
 
+        self.declare_parameter("gripper_enabled", True)
+        self.declare_parameter("gripper_type", "bus")
+        self.declare_parameter("gripper_servo_id", 1)
+        self.declare_parameter("gripper_open_position", 1000)
+        self.declare_parameter("gripper_closed_position", 250)
+        self.declare_parameter("gripper_move_duration_s", 0.5)
+        self.declare_parameter("grab_center_tolerance", 0.12)
+        self.declare_parameter("grab_area_ratio", 0.50)
+        self.declare_parameter("final_forward_linear_x", 0.06)
+        self.declare_parameter("final_forward_duration_s", 1.6)
+        self.declare_parameter("grab_duration_s", 1.0)
+        self.declare_parameter("stop_after_grab", True)
+
         self.active = bool(self.get_parameter("active_on_start").value)
         self.dry_run = bool(self.get_parameter("dry_run").value)
         self.latest_target = None
@@ -95,6 +118,8 @@ class RLModelPolicyNode(Node):
         self.raw_action = [0.0, 0.0]
         self.filtered_action = [0.0, 0.0]
         self.last_cmd = (0.0, 0.0)
+        self.grab_state = self.GRAB_TRACKING
+        self.grab_state_started_at = self.get_clock().now()
 
         self.policy = None
         self.obs_mean = None
@@ -104,6 +129,16 @@ class RLModelPolicyNode(Node):
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.get_parameter("cmd_vel_topic").value, 10)
         self.state_pub = self.create_publisher(String, self.get_parameter("state_topic").value, 10)
+        self.pwm_servo_pub = self.create_publisher(
+            SetPWMServoState,
+            self.get_parameter("pwm_servo_topic").value,
+            10,
+        )
+        self.bus_servo_pub = self.create_publisher(
+            SetBusServoState,
+            self.get_parameter("bus_servo_topic").value,
+            10,
+        )
         self.target_sub = self.create_subscription(
             PointStamped,
             self.get_parameter("target_object_topic").value,
@@ -233,6 +268,8 @@ class RLModelPolicyNode(Node):
             if self.policy is None:
                 self.get_logger().error("Cannot start: model is not loaded")
                 return
+            self.change_grab_state(self.GRAB_TRACKING)
+            self.command_gripper(open_gripper=False)
             self.active = True
             self.get_logger().info("RL model policy started")
         elif command in ("stop", "pause"):
@@ -249,15 +286,26 @@ class RLModelPolicyNode(Node):
             self.time_since_target_seen = self.get_float("episode_length_s")
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
+            self.change_grab_state(self.GRAB_TRACKING)
+            self.command_gripper(open_gripper=False)
             self.publish_cmd(0.0, 0.0)
             self.get_logger().info("RL model policy reset")
+        elif command == "open":
+            self.command_gripper(open_gripper=True)
+        elif command == "close":
+            self.command_gripper(open_gripper=False)
 
     def tick(self):
         target = self.latest_target if self.is_fresh(self.latest_target_time, "target_timeout_s") else None
         objects = self.current_avoid_objects(target)
         obs, bins, nearest = self.make_observation(target, objects)
+        grab_cmd = self.update_grab_sequence(target) if self.active else None
 
-        if self.active and self.policy is not None:
+        if grab_cmd is not None:
+            linear_x, angular_z = grab_cmd
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+        elif self.active and self.policy is not None:
             self.raw_action = self.infer_action(obs)
             self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
             linear_x, angular_z = self.action_to_cmd(self.filtered_action)
@@ -338,6 +386,51 @@ class RLModelPolicyNode(Node):
         scale = self.get_float("speed_scale")
         return linear_x * scale, angular_z * scale
 
+    def update_grab_sequence(self, target):
+        if not bool(self.get_parameter("gripper_enabled").value):
+            return None
+
+        if self.grab_state == self.GRAB_TRACKING:
+            if target is None:
+                return None
+            centered = abs(target.x) <= self.get_float("grab_center_tolerance")
+            close_enough = target.y >= self.get_float("grab_area_ratio")
+            if not (centered and close_enough):
+                return None
+
+            self.publish_cmd(0.0, 0.0)
+            self.command_gripper(open_gripper=True)
+            self.change_grab_state(self.GRAB_OPENING)
+            return (0.0, 0.0)
+
+        if self.grab_state == self.GRAB_OPENING:
+            if self.grab_state_age_s() < self.get_float("gripper_move_duration_s"):
+                return (0.0, 0.0)
+            self.change_grab_state(self.GRAB_FINAL_FORWARD)
+
+        if self.grab_state == self.GRAB_FINAL_FORWARD:
+            if self.grab_state_age_s() < self.get_float("final_forward_duration_s"):
+                return (self.get_float("final_forward_linear_x"), 0.0)
+            self.command_gripper(open_gripper=False)
+            self.change_grab_state(self.GRAB_CLOSING)
+            return (0.0, 0.0)
+
+        if self.grab_state == self.GRAB_CLOSING:
+            if self.grab_state_age_s() < self.get_float("grab_duration_s"):
+                return (0.0, 0.0)
+            self.change_grab_state(self.GRAB_COMPLETE)
+            if bool(self.get_parameter("stop_after_grab").value):
+                self.active = False
+                self.get_logger().info("Object grabbed; RL drive stopped")
+            else:
+                self.change_grab_state(self.GRAB_TRACKING)
+            return (0.0, 0.0)
+
+        if self.grab_state == self.GRAB_COMPLETE:
+            return (0.0, 0.0)
+
+        return None
+
     def current_avoid_objects(self, target):
         if self.is_fresh(self.latest_avoid_objects_time, "avoid_timeout_s"):
             objects = list(self.latest_avoid_objects)
@@ -387,6 +480,57 @@ class RLModelPolicyNode(Node):
         msg.angular.z = float(angular_z)
         self.cmd_vel_pub.publish(msg)
 
+    def command_gripper(self, open_gripper):
+        action = "open" if open_gripper else "close"
+        if not bool(self.get_parameter("gripper_enabled").value):
+            self.get_logger().info(f"Gripper {action} skipped because gripper_enabled is false")
+            return
+        if self.dry_run:
+            self.get_logger().info(f"Gripper {action} skipped in dry-run mode")
+            return
+
+        position = int(
+            self.get_parameter("gripper_open_position").value
+            if open_gripper
+            else self.get_parameter("gripper_closed_position").value
+        )
+        gripper_type = str(self.get_parameter("gripper_type").value).strip().lower()
+        if gripper_type == "bus":
+            state = BusServoState()
+            state.present_id = [1, int(self.get_parameter("gripper_servo_id").value)]
+            state.position = [1, position]
+
+            msg = SetBusServoState()
+            msg.duration = self.get_float("gripper_move_duration_s")
+            msg.state = [state]
+            self.bus_servo_pub.publish(msg)
+        elif gripper_type == "pwm":
+            state = PWMServoState()
+            state.id = [int(self.get_parameter("gripper_servo_id").value)]
+            state.position = [position]
+
+            msg = SetPWMServoState()
+            msg.duration = self.get_float("gripper_move_duration_s")
+            msg.state = [state]
+            self.pwm_servo_pub.publish(msg)
+        else:
+            self.get_logger().warning(f"Unknown gripper_type: {gripper_type}")
+            return
+
+        self.get_logger().info(f"Gripper command: {action} position={position}")
+
+    def change_grab_state(self, state):
+        if self.grab_state == state:
+            self.grab_state_started_at = self.get_clock().now()
+            return
+        self.grab_state = state
+        self.grab_state_started_at = self.get_clock().now()
+        self.get_logger().info(f"Grab state -> {state}")
+
+    def grab_state_age_s(self):
+        elapsed = self.get_clock().now() - self.grab_state_started_at
+        return elapsed.nanoseconds / 1_000_000_000.0
+
     def publish_state(self, obs, bins, nearest, linear_x, angular_z):
         msg = String()
         msg.data = json.dumps(
@@ -394,6 +538,8 @@ class RLModelPolicyNode(Node):
                 "active": self.active,
                 "dry_run": self.dry_run,
                 "model_loaded": self.policy is not None,
+                "grab_state": self.grab_state,
+                "gripper_enabled": bool(self.get_parameter("gripper_enabled").value),
                 "obs": [round(v, 4) for v in obs],
                 "raw_action": [round(v, 4) for v in self.raw_action],
                 "filtered_action": [round(v, 4) for v in self.filtered_action],
