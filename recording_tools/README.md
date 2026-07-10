@@ -17,9 +17,25 @@ After pulling the repository:
 
 ```bash
 mkdir -p ~/recording_tools
-cp -a ~/ros2_ws/src/robot_project/recording_tools/. ~/recording_tools/
+cp -a ~/recording_tools ~/recording_tools_backup_$(date +%Y%m%d_%H%M%S)
+
+if [[ ! -f ~/recording_tools/camera_settings.env ]]; then
+  cp ~/ros2_ws/src/robot_project/recording_tools/camera_settings.env \
+    ~/recording_tools/camera_settings.env
+fi
+
+ln -sfn ~/ros2_ws/src/robot_project/recording_tools/camera2_settings.env \
+  ~/recording_tools/camera2_settings.env
+ln -sfn ~/ros2_ws/src/robot_project/recording_tools/record_once.sh \
+  ~/recording_tools/record_once.sh
+ln -sfn ~/ros2_ws/src/robot_project/recording_tools/record_both.sh \
+  ~/recording_tools/record_both.sh
+
 chmod +x ~/recording_tools/record_once.sh ~/recording_tools/record_both.sh
 ```
+
+The existing camera 1 `camera_settings.env` is preserved. The linked camera 2 profile
+and scripts update automatically on future Git pulls.
 
 ## Record one camera
 

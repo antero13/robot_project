@@ -26,9 +26,17 @@ source /opt/ros/humble/setup.bash
 source /home/airobot/ros2_ws/install/setup.bash
 source "$ENV_FILE"
 
+if [[ "$PROFILE" == "camera1" || "$PROFILE" == "camera2" ]]; then
+  default_camera_name="$PROFILE"
+else
+  default_camera_name="$(basename "$ENV_FILE" .env)"
+fi
+CAMERA_NAME="${CAMERA_NAME:-$default_camera_name}"
+IMAGE_TOPIC="${IMAGE_TOPIC:-/recording/${CAMERA_NAME}/image_raw}"
+
 required_variables=(
-  CAMERA_NAME VIDEO_DEVICE IMAGE_TOPIC WIDTH HEIGHT FPS DURATION
-  PIXEL_FORMAT OUTPUT_ENCODING POWER_LINE_FREQUENCY AUTO_EXPOSURE
+  VIDEO_DEVICE WIDTH HEIGHT FPS DURATION PIXEL_FORMAT OUTPUT_ENCODING
+  POWER_LINE_FREQUENCY AUTO_EXPOSURE
   EXPOSURE GAIN BRIGHTNESS CONTRAST SATURATION SHARPNESS OUTPUT_DIR
 )
 for variable in "${required_variables[@]}"; do
