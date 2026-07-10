@@ -219,6 +219,18 @@ class ArenaVisualizer(Node):
     def publish_robot(self, pose_msg):
         stamp = pose_msg.header.stamp
         markers = MarkerArray()
+        yaw = self.pose_yaw(pose_msg)
+        heading_length = self.robot_length * 0.95
+        heading_start = self.point(
+            pose_msg.pose.position.x,
+            pose_msg.pose.position.y,
+            0.22,
+        )
+        heading_end = self.point(
+            pose_msg.pose.position.x + heading_length * math.cos(yaw),
+            pose_msg.pose.position.y + heading_length * math.sin(yaw),
+            0.22,
+        )
 
         body = self.new_marker(stamp, 'robot', 0, Marker.CUBE)
         body.pose = deepcopy(pose_msg.pose)
@@ -229,14 +241,23 @@ class ArenaVisualizer(Node):
         self.set_color(body, 0.05, 0.75, 0.95, 0.80)
 
         heading = self.new_marker(stamp, 'robot', 1, Marker.ARROW)
-        heading.pose = deepcopy(pose_msg.pose)
-        heading.pose.position.z = 0.16
-        heading.scale.x = self.robot_length * 0.75
-        heading.scale.y = 0.10
-        heading.scale.z = 0.10
+        heading.points = [heading_start, heading_end]
+        heading.scale.x = 0.06
+        heading.scale.y = 0.14
+        heading.scale.z = 0.18
         self.set_color(heading, 1.00, 0.20, 0.15, 1.0)
 
-        markers.markers = [body, heading]
+        nose = self.new_marker(stamp, 'robot', 2, Marker.SPHERE)
+        nose.pose.position.x = heading_end.x
+        nose.pose.position.y = heading_end.y
+        nose.pose.position.z = 0.22
+        nose.pose.orientation.w = 1.0
+        nose.scale.x = 0.14
+        nose.scale.y = 0.14
+        nose.scale.z = 0.08
+        self.set_color(nose, 1.00, 0.75, 0.05, 1.0)
+
+        markers.markers = [body, heading, nose]
         self.robot_pub.publish(markers)
 
     def update_path(self, pose_msg):
