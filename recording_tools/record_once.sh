@@ -22,8 +22,10 @@ case "$PROFILE" in
     ;;
 esac
 
+set +u
 source /opt/ros/humble/setup.bash
 source /home/airobot/ros2_ws/install/setup.bash
+set -u
 source "$ENV_FILE"
 
 if [[ "$PROFILE" == "camera1" || "$PROFILE" == "camera2" ]]; then
