@@ -154,8 +154,12 @@ def generate_launch_description():
                         "avoid_topic": LaunchConfiguration("avoid_topic"),
                         "avoid_label_topic": LaunchConfiguration("avoid_label_topic"),
                         "avoid_objects_topic": LaunchConfiguration("avoid_objects_topic"),
-                        "target_classes": LaunchConfiguration("target_classes"),
-                        "avoid_classes": LaunchConfiguration("avoid_classes"),
+                        "target_classes": ParameterValue(
+                            LaunchConfiguration("target_classes"), value_type=str
+                        ),
+                        "avoid_classes": ParameterValue(
+                            LaunchConfiguration("avoid_classes"), value_type=str
+                        ),
                         "target_lock_enabled": ParameterValue(
                             LaunchConfiguration("target_lock_enabled"),
                             value_type=bool,
