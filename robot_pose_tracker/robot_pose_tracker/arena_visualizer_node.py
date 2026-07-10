@@ -240,12 +240,22 @@ class ArenaVisualizer(Node):
         body.scale.z = 0.12
         self.set_color(body, 0.05, 0.75, 0.95, 0.80)
 
+        footprint = self.new_marker(stamp, 'robot', 3, Marker.LINE_STRIP)
+        footprint.scale.x = 0.06
+        footprint.points = self.robot_footprint_points(
+            pose_msg.pose.position.x,
+            pose_msg.pose.position.y,
+            yaw,
+            0.25,
+        )
+        self.set_color(footprint, 0.10, 1.00, 1.00, 1.0)
+
         heading = self.new_marker(stamp, 'robot', 1, Marker.ARROW)
         heading.points = [heading_start, heading_end]
         heading.scale.x = 0.06
         heading.scale.y = 0.14
         heading.scale.z = 0.18
-        self.set_color(heading, 1.00, 0.20, 0.15, 1.0)
+        self.set_color(heading, 1.00, 1.00, 0.05, 1.0)
 
         nose = self.new_marker(stamp, 'robot', 2, Marker.SPHERE)
         nose.pose.position.x = heading_end.x
@@ -255,9 +265,9 @@ class ArenaVisualizer(Node):
         nose.scale.x = 0.14
         nose.scale.y = 0.14
         nose.scale.z = 0.08
-        self.set_color(nose, 1.00, 0.75, 0.05, 1.0)
+        self.set_color(nose, 1.00, 0.35, 0.05, 1.0)
 
-        markers.markers = [body, heading, nose]
+        markers.markers = [body, heading, nose, footprint]
         self.robot_pub.publish(markers)
 
     def update_path(self, pose_msg):
@@ -306,6 +316,28 @@ class ArenaVisualizer(Node):
         point.y = float(y)
         point.z = float(z)
         return point
+
+    def robot_footprint_points(self, center_x, center_y, yaw, z):
+        half_length = self.robot_length / 2.0
+        half_width = self.robot_width / 2.0
+        local_corners = [
+            (half_length, half_width),
+            (half_length, -half_width),
+            (-half_length, -half_width),
+            (-half_length, half_width),
+            (half_length, half_width),
+        ]
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+
+        return [
+            self.point(
+                center_x + local_x * cos_yaw - local_y * sin_yaw,
+                center_y + local_x * sin_yaw + local_y * cos_yaw,
+                z,
+            )
+            for local_x, local_y in local_corners
+        ]
 
     @staticmethod
     def pose_distance(first, second):
