@@ -13,8 +13,12 @@
   <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>cmd_vel_to_motor</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>mission_manager</exec_depend>
+  <exec_depend>ros2_yolo_detector</exec_depend>
+  <exec_depend>ros_robot_controller</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

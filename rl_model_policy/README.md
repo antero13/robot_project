@@ -64,3 +64,44 @@ ros2 launch rl_model_policy rl_model_policy.launch.py speed_scale:=0.25
 ## Notes
 
 The robot machine must have PyTorch available in the Python environment used by ROS 2.
+
+## One-command Jetson launch
+
+Build the policy and install its model file once after pulling the repository:
+
+```bash
+cd ~/ros2_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select mission_manager rl_model_policy --symlink-install
+source ~/ros2_ws/install/setup.bash
+```
+
+Start the controller, camera/YOLO, motor converter, and RL policy in one terminal:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  yolo_model_path:=/home/airobot/ros2_ws/best.engine \
+  target_classes:=0 \
+  speed_scale:=0.25
+```
+
+The safe default waits for a separate start command:
+
+```bash
+ros2 topic pub --once /rl_model_policy_control std_msgs/msg/String "{data: start}"
+```
+
+For a true one-command start, add `auto_start:=true`. The robot starts moving after an
+8 second delay so the camera and YOLO model have time to initialize:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  yolo_model_path:=/home/airobot/ros2_ws/best.engine \
+  target_classes:=0 \
+  speed_scale:=0.25 \
+  auto_start:=true
+```
+
+Press `Ctrl+C` in the launch terminal to stop all processes started by this launch file.
+Do not run `mission_manager`, keyboard teleoperation, or another `/cmd_vel` publisher at
+the same time.

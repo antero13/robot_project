@@ -1,7 +1,8 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
@@ -12,7 +13,11 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'model_path',
-            default_value='mission_manager/models/rl_avoid_search_best.pt',
+            default_value=PathJoinSubstitution([
+                FindPackageShare('mission_manager'),
+                'models',
+                'rl_avoid_search_best.pt',
+            ]),
             description='Path to the trained skrl best_agent.pt file.',
         ),
         DeclareLaunchArgument(

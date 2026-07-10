@@ -1,0 +1,141 @@
+from launch import LaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    LogInfo,
+    TimerAction,
+)
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
+
+
+AUTO_START_DELAY_S = 8.0
+
+
+def generate_launch_description():
+    yolo_model_path = LaunchConfiguration("yolo_model_path")
+    rl_model_path = LaunchConfiguration("rl_model_path")
+    video_device = LaunchConfiguration("video_device")
+    target_classes = LaunchConfiguration("target_classes")
+    avoid_classes = LaunchConfiguration("avoid_classes")
+    confidence = LaunchConfiguration("confidence")
+    publish_annotated = LaunchConfiguration("publish_annotated")
+    speed_scale = LaunchConfiguration("speed_scale")
+    dry_run = LaunchConfiguration("dry_run")
+    auto_start = LaunchConfiguration("auto_start")
+
+    controller_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([
+            FindPackageShare("ros_robot_controller"),
+            "launch",
+            "ros_robot_controller.launch.xml",
+        ])
+    )
+
+    yolo_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([
+            FindPackageShare("ros2_yolo_detector"),
+            "launch",
+            "v4l2_yolo_camera.launch.py",
+        ]),
+        launch_arguments={
+            "model_path": yolo_model_path,
+            "video_device": video_device,
+            "target_classes": target_classes,
+            "avoid_classes": avoid_classes,
+            "confidence": confidence,
+            "publish_annotated": publish_annotated,
+        }.items(),
+    )
+
+    motor_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([
+            FindPackageShare("cmd_vel_to_motor"),
+            "launch",
+            "cmd_vel_to_motor.launch.py",
+        ])
+    )
+
+    policy_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([
+            FindPackageShare("rl_model_policy"),
+            "launch",
+            "rl_model_policy.launch.py",
+        ]),
+        launch_arguments={
+            "model_path": rl_model_path,
+            "speed_scale": speed_scale,
+            "dry_run": dry_run,
+        }.items(),
+    )
+
+    delayed_start = TimerAction(
+        period=AUTO_START_DELAY_S,
+        condition=IfCondition(auto_start),
+        actions=[
+            LogInfo(msg="Auto-starting RL drive after the 8 second startup delay."),
+            ExecuteProcess(
+                cmd=[
+                    "ros2",
+                    "topic",
+                    "pub",
+                    "--once",
+                    "/rl_model_policy_control",
+                    "std_msgs/msg/String",
+                    "{data: start}",
+                ],
+                output="screen",
+            ),
+        ],
+    )
+
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            "yolo_model_path",
+            default_value=PathJoinSubstitution([
+                FindPackageShare("ros2_yolo_detector"),
+                "models",
+                "best.pt",
+            ]),
+            description="YOLO .pt or TensorRT .engine model path.",
+        ),
+        DeclareLaunchArgument(
+            "rl_model_path",
+            default_value=PathJoinSubstitution([
+                FindPackageShare("mission_manager"),
+                "models",
+                "rl_avoid_search_best.pt",
+            ]),
+            description="Trained RL policy checkpoint path.",
+        ),
+        DeclareLaunchArgument(
+            "video_device",
+            default_value=(
+                "/dev/v4l/by-path/"
+                "platform-3610000.usb-usb-0:2.1:1.0-video-index0"
+            ),
+            description="Stable V4L2 path for the driving camera.",
+        ),
+        DeclareLaunchArgument("target_classes", default_value="0"),
+        DeclareLaunchArgument("avoid_classes", default_value=""),
+        DeclareLaunchArgument("confidence", default_value="0.25"),
+        DeclareLaunchArgument("publish_annotated", default_value="false"),
+        DeclareLaunchArgument("speed_scale", default_value="0.25"),
+        DeclareLaunchArgument("dry_run", default_value="false"),
+        DeclareLaunchArgument(
+            "auto_start",
+            default_value="false",
+            description="Start driving automatically after an 8 second delay.",
+        ),
+        LogInfo(
+            condition=IfCondition(auto_start),
+            msg="AUTO START enabled: the robot will move after 8 seconds.",
+        ),
+        controller_launch,
+        yolo_launch,
+        motor_launch,
+        policy_launch,
+        delayed_start,
+    ])
