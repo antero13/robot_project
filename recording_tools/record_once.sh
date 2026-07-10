@@ -115,7 +115,8 @@ if ! kill -0 "$CAMERA_PID" 2>/dev/null; then
   exit 1
 fi
 
-if ! ros2 topic info "$IMAGE_TOPIC" 2>/dev/null | grep -Eq 'Publisher count: [1-9]'; then
+topic_info="$(ros2 topic info "$IMAGE_TOPIC" 2>/dev/null || true)"
+if ! grep -Eq 'Publisher count: [1-9]' <<<"$topic_info"; then
   echo "No publisher appeared on $IMAGE_TOPIC" >&2
   echo "Publisher details from /${CAMERA_NAME}_v4l2_camera:" >&2
   ros2 node info "/${CAMERA_NAME}_v4l2_camera" 2>/dev/null || true
