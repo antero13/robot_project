@@ -40,6 +40,12 @@ def generate_launch_description():
             DeclareLaunchArgument("confidence", default_value="0.25"),
             DeclareLaunchArgument("iou", default_value="0.45"),
             DeclareLaunchArgument("device", default_value=""),
+            DeclareLaunchArgument("imgsz", default_value="800"),
+            DeclareLaunchArgument("correction_enabled", default_value="true"),
+            DeclareLaunchArgument("correction_gamma", default_value="0.65"),
+            DeclareLaunchArgument("correction_clahe_clip_limit", default_value="1.2"),
+            DeclareLaunchArgument("correction_clahe_tile_grid", default_value="8"),
+            DeclareLaunchArgument("correction_chroma_gain", default_value="1.3"),
             DeclareLaunchArgument("tracker_enabled", default_value="true"),
             DeclareLaunchArgument("tracker_config", default_value="bytetrack.yaml"),
             DeclareLaunchArgument("tracker_persist", default_value="true"),
@@ -73,6 +79,22 @@ def generate_launch_description():
                         "confidence": ParameterValue(LaunchConfiguration("confidence"), value_type=float),
                         "iou": ParameterValue(LaunchConfiguration("iou"), value_type=float),
                         "device": LaunchConfiguration("device"),
+                        "imgsz": ParameterValue(LaunchConfiguration("imgsz"), value_type=int),
+                        "correction_enabled": ParameterValue(
+                            LaunchConfiguration("correction_enabled"), value_type=bool
+                        ),
+                        "correction_gamma": ParameterValue(
+                            LaunchConfiguration("correction_gamma"), value_type=float
+                        ),
+                        "correction_clahe_clip_limit": ParameterValue(
+                            LaunchConfiguration("correction_clahe_clip_limit"), value_type=float
+                        ),
+                        "correction_clahe_tile_grid": ParameterValue(
+                            LaunchConfiguration("correction_clahe_tile_grid"), value_type=int
+                        ),
+                        "correction_chroma_gain": ParameterValue(
+                            LaunchConfiguration("correction_chroma_gain"), value_type=float
+                        ),
                         "tracker_enabled": ParameterValue(
                             LaunchConfiguration("tracker_enabled"),
                             value_type=bool,

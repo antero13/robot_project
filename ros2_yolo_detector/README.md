@@ -76,11 +76,40 @@ ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \
   power_line_frequency:=2 \
   auto_exposure:=1 \
   exposure_time_absolute:=200 \
-  gain:=20
+  gain:=20 \
+  imgsz:=800 \
+  correction_enabled:=true \
+  correction_gamma:=0.65 \
+  correction_clahe_clip_limit:=1.2 \
+  correction_clahe_tile_grid:=8 \
+  correction_chroma_gain:=1.3
 ```
 
 The YOLO node subscribes to `/image_raw` by default in this launch file. It also starts
 `detections_to_target_node` by default so mission nodes can consume `/target_object`.
+
+## Real-time image correction
+
+The YOLO node applies deterministic correction immediately before inference. The
+camera's `/image_raw` topic is not modified. Default inference settings match the
+corrected training dataset:
+
+```text
+imgsz: 800
+correction_enabled: true
+correction_gamma: 0.65
+correction_clahe_clip_limit: 1.2
+correction_clahe_tile_grid: 8
+correction_chroma_gain: 1.3
+```
+
+Gamma lookup data and the CLAHE object are created once when the node starts and
+reused for every frame. Disable all correction without changing the remaining
+settings by passing `correction_enabled:=false` to a launch file.
+
+In `object_pickup_mission.launch.py`, these correction settings and `imgsz=800`
+apply only to camera1. The optional camera2 YOLO node explicitly disables image
+correction and uses `second_imgsz=640`.
 
 ## Run with direct OpenCV camera
 

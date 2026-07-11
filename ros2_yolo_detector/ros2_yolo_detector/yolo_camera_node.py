@@ -10,6 +10,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header, String
 
+from .frame_correction import FrameCorrector
+
 
 class YoloCameraNode(Node):
     def __init__(self) -> None:
@@ -24,6 +26,12 @@ class YoloCameraNode(Node):
         self.declare_parameter("confidence", 0.25)
         self.declare_parameter("iou", 0.45)
         self.declare_parameter("device", "")
+        self.declare_parameter("imgsz", 640)
+        self.declare_parameter("correction_enabled", False)
+        self.declare_parameter("correction_gamma", 0.65)
+        self.declare_parameter("correction_clahe_clip_limit", 1.2)
+        self.declare_parameter("correction_clahe_tile_grid", 8)
+        self.declare_parameter("correction_chroma_gain", 1.3)
         self.declare_parameter("tracker_enabled", True)
         self.declare_parameter("tracker_config", "bytetrack.yaml")
         self.declare_parameter("tracker_persist", True)
@@ -53,6 +61,22 @@ class YoloCameraNode(Node):
         self.confidence = self.get_parameter("confidence").get_parameter_value().double_value
         self.iou = self.get_parameter("iou").get_parameter_value().double_value
         self.device = self.get_parameter("device").get_parameter_value().string_value
+        self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
+        self.correction_enabled = self.get_parameter(
+            "correction_enabled"
+        ).get_parameter_value().bool_value
+        self.correction_gamma = self.get_parameter(
+            "correction_gamma"
+        ).get_parameter_value().double_value
+        self.correction_clahe_clip_limit = self.get_parameter(
+            "correction_clahe_clip_limit"
+        ).get_parameter_value().double_value
+        self.correction_clahe_tile_grid = self.get_parameter(
+            "correction_clahe_tile_grid"
+        ).get_parameter_value().integer_value
+        self.correction_chroma_gain = self.get_parameter(
+            "correction_chroma_gain"
+        ).get_parameter_value().double_value
         self.tracker_enabled = self.get_parameter("tracker_enabled").get_parameter_value().bool_value
         self.tracker_config = self.get_parameter("tracker_config").get_parameter_value().string_value
         self.tracker_persist = self.get_parameter("tracker_persist").get_parameter_value().bool_value
@@ -85,7 +109,17 @@ class YoloCameraNode(Node):
             self.get_parameter("camera_auto_exposure_value").get_parameter_value().double_value
         )
 
+        if self.imgsz <= 0:
+            raise ValueError("imgsz must be greater than 0")
+
         self.bridge = CvBridge()
+        self.frame_corrector = FrameCorrector(
+            enabled=self.correction_enabled,
+            gamma=self.correction_gamma,
+            clahe_clip_limit=self.correction_clahe_clip_limit,
+            clahe_tile_grid=self.correction_clahe_tile_grid,
+            chroma_gain=self.correction_chroma_gain,
+        )
         self.model = self._load_model(self.model_path)
         self.camera = None
         self.camera_timer = None
@@ -119,6 +153,14 @@ class YoloCameraNode(Node):
             raise ValueError("input_mode must be either 'topic' or 'camera'")
 
         self.get_logger().info(f"YOLO model loaded: {self.model_path}")
+        self.get_logger().info(
+            "Inference preprocessing: "
+            f"imgsz={self.imgsz}, enabled={self.correction_enabled}, "
+            f"gamma={self.correction_gamma}, "
+            f"clahe_clip_limit={self.correction_clahe_clip_limit}, "
+            f"clahe_tile_grid={self.correction_clahe_tile_grid}, "
+            f"chroma_gain={self.correction_chroma_gain}"
+        )
         if self.tracker_enabled:
             self.get_logger().info(f"ByteTrack enabled: tracker={self.tracker_config}")
         self.get_logger().info(f"Publishing detections: {self.detections_topic}")
@@ -225,10 +267,12 @@ class YoloCameraNode(Node):
     def _run_inference(self, frame: Any, header: Header) -> None:
         image_height, image_width = frame.shape[:2]
         try:
+            inference_frame = self.frame_corrector.apply(frame)
             inference_kwargs = {
-                "source": frame,
+                "source": inference_frame,
                 "conf": self.confidence,
                 "iou": self.iou,
+                "imgsz": self.imgsz,
                 "verbose": False,
             }
             if self.device:

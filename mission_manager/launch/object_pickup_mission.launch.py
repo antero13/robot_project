@@ -18,10 +18,17 @@ def launch_setup(context, *args, **kwargs):
     camera_width = int(arg(context, 'camera_width'))
     camera_height = int(arg(context, 'camera_height'))
     camera_fps = float(arg(context, 'camera_fps'))
+    second_imgsz = int(arg(context, 'second_imgsz'))
     time_per_frame_denominator = max(1, int(round(camera_fps)))
     enable_second_camera = as_bool(arg(context, 'enable_second_camera'))
     second_camera_yolo_enabled = as_bool(arg(context, 'second_camera_yolo_enabled'))
     confidence = float(arg(context, 'confidence'))
+    imgsz = int(arg(context, 'imgsz'))
+    correction_enabled = as_bool(arg(context, 'correction_enabled'))
+    correction_gamma = float(arg(context, 'correction_gamma'))
+    correction_clahe_clip_limit = float(arg(context, 'correction_clahe_clip_limit'))
+    correction_clahe_tile_grid = int(arg(context, 'correction_clahe_tile_grid'))
+    correction_chroma_gain = float(arg(context, 'correction_chroma_gain'))
     tracker_enabled = as_bool(arg(context, 'tracker_enabled'))
     tracker_persist = as_bool(arg(context, 'tracker_persist'))
     stable_tracking_enabled = as_bool(arg(context, 'stable_tracking_enabled'))
@@ -92,6 +99,12 @@ def launch_setup(context, *args, **kwargs):
                 'camera_height': camera_height,
                 'camera_fps': camera_fps,
                 'confidence': confidence,
+                'imgsz': imgsz,
+                'correction_enabled': correction_enabled,
+                'correction_gamma': correction_gamma,
+                'correction_clahe_clip_limit': correction_clahe_clip_limit,
+                'correction_clahe_tile_grid': correction_clahe_tile_grid,
+                'correction_chroma_gain': correction_chroma_gain,
                 'tracker_enabled': tracker_enabled,
                 'tracker_config': arg(context, 'tracker_config'),
                 'tracker_persist': tracker_persist,
@@ -124,6 +137,8 @@ def launch_setup(context, *args, **kwargs):
                     'camera_height': camera_height,
                     'camera_fps': camera_fps,
                     'confidence': confidence,
+                    'imgsz': second_imgsz,
+                    'correction_enabled': False,
                     'tracker_enabled': tracker_enabled,
                     'tracker_config': arg(context, 'tracker_config'),
                     'tracker_persist': tracker_persist,
@@ -329,6 +344,7 @@ def generate_launch_description():
         DeclareLaunchArgument('camera_width', default_value='640'),
         DeclareLaunchArgument('camera_height', default_value='480'),
         DeclareLaunchArgument('camera_fps', default_value='30.0'),
+        DeclareLaunchArgument('second_imgsz', default_value='640'),
         DeclareLaunchArgument('pixel_format', default_value='YUYV'),
         DeclareLaunchArgument('output_encoding', default_value='bgr8'),
         DeclareLaunchArgument('power_line_frequency', default_value='2'),
@@ -336,6 +352,12 @@ def generate_launch_description():
         DeclareLaunchArgument('exposure_time_absolute', default_value='200'),
         DeclareLaunchArgument('gain', default_value='20'),
         DeclareLaunchArgument('confidence', default_value='0.25'),
+        DeclareLaunchArgument('imgsz', default_value='800'),
+        DeclareLaunchArgument('correction_enabled', default_value='true'),
+        DeclareLaunchArgument('correction_gamma', default_value='0.65'),
+        DeclareLaunchArgument('correction_clahe_clip_limit', default_value='1.2'),
+        DeclareLaunchArgument('correction_clahe_tile_grid', default_value='8'),
+        DeclareLaunchArgument('correction_chroma_gain', default_value='1.3'),
         DeclareLaunchArgument('tracker_enabled', default_value='true'),
         DeclareLaunchArgument('tracker_config', default_value='bytetrack.yaml'),
         DeclareLaunchArgument('tracker_persist', default_value='true'),
