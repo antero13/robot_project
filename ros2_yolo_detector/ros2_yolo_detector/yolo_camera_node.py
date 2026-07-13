@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import cv2
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.node import Node
@@ -300,11 +301,84 @@ class YoloCameraNode(Node):
 
         if self.annotated_pub is not None:
             annotated = result.plot()
+            self._draw_normalized_coordinates(
+                annotated,
+                detections,
+                image_width,
+                image_height,
+            )
             try:
                 annotated_msg = self.frame_to_image_msg(annotated, header, encoding="bgr8")
                 self.annotated_pub.publish(annotated_msg)
             except Exception as exc:
                 self.get_logger().warning(f"Failed to publish annotated image: {exc}")
+
+    @staticmethod
+    def _draw_normalized_coordinates(
+        frame: Any,
+        detections: list[dict[str, Any]],
+        image_width: int,
+        image_height: int,
+    ) -> None:
+        if image_width <= 0 or image_height <= 0:
+            return
+
+        for detection in detections:
+            bbox = detection.get("bbox_xyxy", {})
+            try:
+                x1 = float(bbox["x1"])
+                x2 = float(bbox["x2"])
+                y2 = float(bbox["y2"])
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            center_x = (x1 + x2) * 0.5
+            normalized_x = max(-1.0, min(1.0, (center_x - image_width * 0.5) / (image_width * 0.5)))
+            normalized_y = max(0.0, min(1.0, y2 / image_height))
+            label = f"x={normalized_x:+.3f}  y={normalized_y:.3f}"
+
+            marker_x = max(0, min(image_width - 1, int(round(center_x))))
+            marker_y = max(0, min(image_height - 1, int(round(y2))))
+            cv2.drawMarker(
+                frame,
+                (marker_x, marker_y),
+                (0, 255, 255),
+                markerType=cv2.MARKER_CROSS,
+                markerSize=12,
+                thickness=2,
+            )
+
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.55
+            thickness = 2
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label,
+                font,
+                font_scale,
+                thickness,
+            )
+            text_x = max(0, min(image_width - text_width - 8, int(round(x1))))
+            text_y = marker_y + text_height + 10
+            if text_y + baseline + 4 >= image_height:
+                text_y = max(text_height + 4, marker_y - 10)
+
+            cv2.rectangle(
+                frame,
+                (text_x, text_y - text_height - 4),
+                (text_x + text_width + 8, text_y + baseline + 4),
+                (0, 0, 0),
+                thickness=-1,
+            )
+            cv2.putText(
+                frame,
+                label,
+                (text_x + 4, text_y),
+                font,
+                font_scale,
+                (0, 255, 255),
+                thickness,
+                lineType=cv2.LINE_AA,
+            )
 
     def _result_to_detections(self, result: Any) -> list[dict[str, Any]]:
         detections = []

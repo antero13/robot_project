@@ -10,8 +10,10 @@ def generate_launch_description():
     model_path = LaunchConfiguration('model_path')
     speed_scale = LaunchConfiguration('speed_scale')
     dry_run = LaunchConfiguration('dry_run')
+    target_timeout_s = LaunchConfiguration('target_timeout_s')
     odometry_topic = LaunchConfiguration('odometry_topic')
     pose_timeout_s = LaunchConfiguration('pose_timeout_s')
+    pose_observation_enabled = LaunchConfiguration('pose_observation_enabled')
     arena_half_extent_m = LaunchConfiguration('arena_half_extent_m')
     pose_bounds_tolerance_m = LaunchConfiguration('pose_bounds_tolerance_m')
     camera_horizontal_fov_deg = LaunchConfiguration('camera_horizontal_fov_deg')
@@ -48,11 +50,21 @@ def generate_launch_description():
             default_value='false',
             description='If true, publish state but do not publish cmd_vel.',
         ),
+        DeclareLaunchArgument(
+            'target_timeout_s',
+            default_value='0.8',
+            description='Keep tracking the last target through short YOLO detection gaps.',
+        ),
         DeclareLaunchArgument('odometry_topic', default_value='/odom'),
         DeclareLaunchArgument('pose_timeout_s', default_value='0.5'),
+        DeclareLaunchArgument(
+            'pose_observation_enabled',
+            default_value='false',
+            description='Use pose/IMU policy inputs and yaw-based target prediction.',
+        ),
         DeclareLaunchArgument('arena_half_extent_m', default_value='2.0'),
         DeclareLaunchArgument('pose_bounds_tolerance_m', default_value='0.25'),
-        DeclareLaunchArgument('camera_horizontal_fov_deg', default_value='90.0'),
+        DeclareLaunchArgument('camera_horizontal_fov_deg', default_value='80.0'),
         DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),
         DeclareLaunchArgument('gripper_servo_id', default_value='1'),
@@ -83,10 +95,14 @@ def generate_launch_description():
                 'active_on_start': False,
                 'dry_run': dry_run,
                 'timer_rate_hz': 20.0,
-                'target_timeout_s': 0.5,
+                'target_timeout_s': ParameterValue(target_timeout_s, value_type=float),
                 'avoid_timeout_s': 0.5,
                 'episode_length_s': 18.0,
                 'pose_timeout_s': ParameterValue(pose_timeout_s, value_type=float),
+                'pose_observation_enabled': ParameterValue(
+                    pose_observation_enabled,
+                    value_type=bool,
+                ),
                 'arena_half_extent_m': ParameterValue(arena_half_extent_m, value_type=float),
                 'pose_bounds_tolerance_m': ParameterValue(
                     pose_bounds_tolerance_m,

@@ -1,13 +1,16 @@
 # RL Model Policy Run Guide
 
 The current checkpoint uses the 18-observation contract documented in
-`rl_model_policy/MODEL_CHECKPOINT_README.md`.
+`rl_model_policy/MODEL_CHECKPOINT_README.md`. The default real-robot launch
+uses the first 10 YOLO-derived values and intentionally supplies zeros for the
+8 pose/IMU values. This keeps the checkpoint shape compatible while disabling
+pose-based control.
 
 ## Data Flow
 
 ```text
 camera + YOLO -> /target_object, /avoid_objects
-robot_pose_tracker -> /odom
+robot_pose_tracker -> /odom (started, but ignored by the policy by default)
 rl_model_policy -> /cmd_vel
 cmd_vel_to_motor -> motor controller
 ```
@@ -67,8 +70,39 @@ Expected state:
 model_loaded: true
 observation_dim: 18
 obs: 18 values
-obs[10]: 1.0 when /odom is fresh
+pose_observation_enabled: false
+obs[10:18]: all zeros
 ```
+
+The policy keeps the last YOLO target for `target_timeout_s=0.8` seconds so a
+one- or two-frame detection gap does not immediately switch into search mode.
+Because pose input is disabled by default, the held target x/y remains the last
+camera observation rather than being adjusted from odometry.
+
+The camera horizontal field of view defaults to `80.0` degrees to match the
+training environment. Override these settings only when testing a calibrated
+alternative:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  target_timeout_s:=0.8 \
+  pose_observation_enabled:=false \
+  camera_horizontal_fov_deg:=80.0
+```
+
+## Annotated YOLO Coordinates
+
+Enable the annotated image to see the exact normalized observation coordinates
+next to every YOLO box:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  publish_annotated:=true
+ros2 run rqt_image_view rqt_image_view /yolo/annotated_image
+```
+
+The yellow label uses `x=-1..1` from the bounding-box center and `y=0..1` from
+the bounding-box bottom edge. These are normalized policy inputs, not meters.
 
 ## Low-Speed Robot Test
 

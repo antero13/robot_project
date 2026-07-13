@@ -3,6 +3,7 @@ import unittest
 
 from rl_model_policy.observation import (
     OBSERVATION_DIM,
+    estimate_target_image_x,
     estimate_target_world_bearing,
     make_pose_observation,
     pose_is_usable,
@@ -36,6 +37,11 @@ class ObservationTest(unittest.TestCase):
     def test_target_bearing_uses_ros_and_image_sign_conventions(self):
         bearing = estimate_target_world_bearing(0.0, -1.0, math.pi / 2.0)
         self.assertAlmostEqual(bearing, math.pi / 4.0)
+
+    def test_target_image_x_tracks_yaw_during_detection_gap(self):
+        world_bearing = estimate_target_world_bearing(0.0, 0.0, math.pi / 2.0)
+        image_x = estimate_target_image_x(math.pi / 8.0, world_bearing, math.pi / 2.0)
+        self.assertAlmostEqual(image_x, 0.5)
 
     def test_quaternion_to_yaw(self):
         yaw = math.pi / 3.0

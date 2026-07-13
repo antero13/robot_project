@@ -39,6 +39,12 @@ def estimate_target_world_bearing(yaw, target_x, camera_horizontal_fov_rad):
     return yaw - clamp(target_x, -1.0, 1.0) * camera_horizontal_fov_rad * 0.5
 
 
+def estimate_target_image_x(yaw, target_world_bearing, camera_horizontal_fov_rad):
+    half_fov = max(abs(float(camera_horizontal_fov_rad)) * 0.5, 1e-6)
+    relative_bearing = normalize_angle(float(target_world_bearing) - float(yaw))
+    return clamp(-relative_bearing / half_fov, -1.0, 1.0)
+
+
 def normalize_angle(angle):
     return math.atan2(math.sin(angle), math.cos(angle))
 

@@ -23,8 +23,10 @@ def generate_launch_description():
     confidence = LaunchConfiguration("confidence")
     publish_annotated = LaunchConfiguration("publish_annotated")
     speed_scale = LaunchConfiguration("speed_scale")
+    target_timeout_s = LaunchConfiguration("target_timeout_s")
     odometry_topic = LaunchConfiguration("odometry_topic")
     pose_timeout_s = LaunchConfiguration("pose_timeout_s")
+    pose_observation_enabled = LaunchConfiguration("pose_observation_enabled")
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
     pose_bounds_tolerance_m = LaunchConfiguration("pose_bounds_tolerance_m")
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
@@ -108,9 +110,11 @@ def generate_launch_description():
         launch_arguments={
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
+            "target_timeout_s": target_timeout_s,
             "dry_run": dry_run,
             "odometry_topic": odometry_topic,
             "pose_timeout_s": pose_timeout_s,
+            "pose_observation_enabled": pose_observation_enabled,
             "arena_half_extent_m": arena_half_extent_m,
             "pose_bounds_tolerance_m": pose_bounds_tolerance_m,
             "camera_horizontal_fov_deg": camera_horizontal_fov_deg,
@@ -181,11 +185,21 @@ def generate_launch_description():
         DeclareLaunchArgument("confidence", default_value="0.25"),
         DeclareLaunchArgument("publish_annotated", default_value="false"),
         DeclareLaunchArgument("speed_scale", default_value="0.25"),
+        DeclareLaunchArgument(
+            "target_timeout_s",
+            default_value="0.8",
+            description="Keep tracking the last target through short YOLO detection gaps.",
+        ),
         DeclareLaunchArgument("odometry_topic", default_value="/odom"),
         DeclareLaunchArgument("pose_timeout_s", default_value="0.5"),
+        DeclareLaunchArgument(
+            "pose_observation_enabled",
+            default_value="false",
+            description="Use pose/IMU policy inputs and yaw-based target prediction.",
+        ),
         DeclareLaunchArgument("arena_half_extent_m", default_value="2.0"),
         DeclareLaunchArgument("pose_bounds_tolerance_m", default_value="0.25"),
-        DeclareLaunchArgument("camera_horizontal_fov_deg", default_value="90.0"),
+        DeclareLaunchArgument("camera_horizontal_fov_deg", default_value="80.0"),
         DeclareLaunchArgument(
             "initial_x",
             default_value="1.8",

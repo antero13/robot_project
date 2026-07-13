@@ -14,6 +14,7 @@ from std_msgs.msg import String
 from rl_model_policy.observation import (
     OBSERVATION_DIM,
     OBSERVATION_NAMES,
+    estimate_target_image_x,
     estimate_target_world_bearing,
     make_pose_observation,
     pose_is_usable,
@@ -82,13 +83,14 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("active_on_start", False)
         self.declare_parameter("dry_run", False)
         self.declare_parameter("timer_rate_hz", 20.0)
-        self.declare_parameter("target_timeout_s", 0.5)
+        self.declare_parameter("target_timeout_s", 0.8)
         self.declare_parameter("avoid_timeout_s", 0.5)
         self.declare_parameter("episode_length_s", 18.0)
         self.declare_parameter("pose_timeout_s", 0.5)
+        self.declare_parameter("pose_observation_enabled", False)
         self.declare_parameter("arena_half_extent_m", 2.0)
         self.declare_parameter("pose_bounds_tolerance_m", 0.25)
-        self.declare_parameter("camera_horizontal_fov_deg", 90.0)
+        self.declare_parameter("camera_horizontal_fov_deg", 80.0)
 
         self.declare_parameter("avoid_area_ratio", 0.20)
         self.declare_parameter("avoid_center_band", 0.75)
@@ -370,7 +372,7 @@ class RLModelPolicyNode(Node):
             self.command_gripper(open_gripper=False)
 
     def tick(self):
-        target = self.latest_target if self.is_fresh(self.latest_target_time, "target_timeout_s") else None
+        target = self.current_target()
         objects = self.current_avoid_objects(target)
         obs, bins, nearest = self.make_observation(target, objects)
         grab_cmd = self.update_grab_sequence(target) if self.active else None
@@ -391,6 +393,28 @@ class RLModelPolicyNode(Node):
         if self.active or bool(self.get_parameter("publish_stop_when_inactive").value):
             self.publish_cmd(linear_x, angular_z)
         self.publish_state(obs, bins, nearest, linear_x, angular_z)
+
+    def current_target(self):
+        if not self.is_fresh(self.latest_target_time, "target_timeout_s"):
+            return None
+
+        target = self.make_point(
+            self.latest_target.x,
+            self.latest_target.y,
+            self.latest_target.z,
+        )
+        if (
+            bool(self.get_parameter("pose_observation_enabled").value)
+            and self.last_target_world_bearing is not None
+            and self.is_fresh(self.latest_pose_time, "pose_timeout_s")
+        ):
+            fov_rad = math.radians(self.get_float("camera_horizontal_fov_deg"))
+            target.x = estimate_target_image_x(
+                self.robot_yaw,
+                self.last_target_world_bearing,
+                fov_rad,
+            )
+        return target
 
     def make_observation(self, target, objects):
         visible = target is not None
@@ -416,7 +440,11 @@ class RLModelPolicyNode(Node):
             1.0,
         )
 
-        pose_fresh = self.is_fresh(self.latest_pose_time, "pose_timeout_s")
+        pose_enabled = bool(self.get_parameter("pose_observation_enabled").value)
+        pose_fresh = pose_enabled and self.is_fresh(
+            self.latest_pose_time,
+            "pose_timeout_s",
+        )
         pose_valid = pose_fresh and pose_is_usable(
             self.robot_x,
             self.robot_y,
@@ -633,6 +661,9 @@ class RLModelPolicyNode(Node):
                 "model_loaded": self.policy is not None,
                 "observation_dim": OBSERVATION_DIM,
                 "observation_names": OBSERVATION_NAMES,
+                "pose_observation_enabled": bool(
+                    self.get_parameter("pose_observation_enabled").value
+                ),
                 "grab_state": self.grab_state,
                 "gripper_enabled": bool(self.get_parameter("gripper_enabled").value),
                 "obs": [round(v, 4) for v in obs],

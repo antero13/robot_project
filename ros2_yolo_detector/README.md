@@ -138,7 +138,7 @@ ros2 launch ros2_yolo_detector yolo_camera.launch.py \
 - `/target_label`: `std_msgs/msg/String`, selected target class name
 - `/avoid_object`: `geometry_msgs/msg/PointStamped`, closest selected avoid object
 - `/avoid_objects`: `std_msgs/msg/String`, JSON list of all selected avoid objects for VFH-lite avoidance
-- `/yolo/annotated_image`: `sensor_msgs/msg/Image`, image with boxes drawn
+- `/yolo/annotated_image`: `sensor_msgs/msg/Image`, image with boxes and normalized x/y coordinates drawn
 - `/camera/image_raw`: optional raw camera image when `publish_raw:=true`
 
 Detection JSON example:
@@ -165,6 +165,32 @@ Mission nodes can subscribe to `/target_object` and `/avoid_objects`.
 confidence, tracking ID, and bounding-box payload for each avoid object.
 Lower-level consumers can subscribe to `/yolo/detections` for the full class,
 confidence, tracking ID, and bounding-box payload.
+
+## Annotated Normalized Coordinates
+
+When `publish_annotated:=true`, every YOLO box includes a yellow marker and a
+label such as:
+
+```text
+x=-0.352  y=0.440
+```
+
+The values use the same calculation as `/target_object` and `/avoid_objects`:
+
+```text
+x = (bbox center x - image center x) / image center x   [-1, 1]
+y = bbox bottom y / image height                       [0, 1]
+```
+
+The yellow cross marks the bounding-box center-bottom point used for the
+calculation. These values are normalized camera observations, not physical
+meters.
+
+```bash
+ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \
+  publish_annotated:=true
+ros2 run rqt_image_view rqt_image_view /yolo/annotated_image
+```
 
 ByteTrack is enabled by default in `yolo_camera_node` through Ultralytics:
 

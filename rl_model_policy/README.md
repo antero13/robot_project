@@ -33,8 +33,14 @@ the current checkpoint.
   - JSON from `ros2_yolo_detector`
 - `/odom` (`nav_msgs/Odometry`)
   - arena-center pose and calibrated/fallback yaw rate from `robot_pose_tracker`
+  - ignored by default because `pose_observation_enabled:=false`
   - stale or missing odometry sets `pose_valid=0` and zeroes observation 11-17
   - positions outside the 4 m arena plus `pose_bounds_tolerance_m` are also invalid
+
+The checkpoint remains an 18-input network. With pose observation disabled,
+the runner supplies the 10 YOLO-derived values followed by 8 zeros. Set
+`pose_observation_enabled:=true` only when the real pose source has been
+calibrated and validated.
 
 ## Output
 
@@ -138,9 +144,21 @@ Press `Ctrl+C` in the launch terminal to stop all processes started by this laun
 Do not run `mission_manager`, keyboard teleoperation, or another `/cmd_vel` publisher at
 the same time.
 
-`camera_horizontal_fov_deg` defaults to `90.0` and is used to convert target
-image x into the last target world bearing. Replace it with the calibrated
-horizontal field of view of the driving camera when that value is available.
+`camera_horizontal_fov_deg` defaults to `80.0`, matching the training
+environment. It is used for yaw-based target prediction only when
+`pose_observation_enabled:=true`.
+
+`target_timeout_s` defaults to `0.8`. The last target x/y is kept during a
+short YOLO detection gap instead of immediately changing to search behavior.
+
+The default real-robot configuration is explicit below:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  pose_observation_enabled:=false \
+  target_timeout_s:=0.8 \
+  camera_horizontal_fov_deg:=80.0
+```
 
 ## Automatic pickup
 
