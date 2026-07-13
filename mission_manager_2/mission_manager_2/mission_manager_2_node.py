@@ -1,5 +1,6 @@
 import json
 import math
+from collections import deque
 from enum import Enum
 
 import rclpy
@@ -15,12 +16,14 @@ from std_srvs.srv import Trigger
 from mission_manager_2.mission_logic import (
     Pose2D,
     angular_error,
+    best_target,
     clamp,
+    confirmed_side_target,
     parse_class_list,
     pose_distance,
     quaternion_to_yaw,
-    select_target,
-    target_is_large_enough,
+    select_side_targets,
+    target_observations,
     wall_matches_expected,
 )
 
@@ -98,6 +101,7 @@ class MissionManager2(Node):
         self.storage_pending = False
         self.action_command_sent = False
         self.target_cooldown_until_s = 0.0
+        self.side_target_history = deque(maxlen=self.target_history_frames)
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.state_pub = self.create_publisher(String, self.state_topic, 10)
@@ -194,11 +198,13 @@ class MissionManager2(Node):
             'leave_start_linear_x': 0.08,
             'leave_start_angular_z': 0.22,
             'leave_start_duration_s': 3.0,
-            'navigation_linear_x': 0.12,
-            'navigation_min_linear_x': 0.04,
+            'navigation_linear_x': 0.20,
+            'navigation_min_linear_x': 0.06,
             'search_linear_x': 0.10,
-            'return_linear_x': -0.14,
-            'storage_linear_x': 0.08,
+            'target_return_linear_x': -0.14,
+            'return_linear_x': -0.20,
+            'storage_linear_x': 0.16,
+            'storage_reverse_linear_x': -0.14,
             'heading_gain': 1.4,
             'navigation_max_angular_z': 0.30,
             'scan_heading_max_angular_z': 0.18,
@@ -214,6 +220,8 @@ class MissionManager2(Node):
             'target_min_confidence': 0.30,
             'target_trigger_area_ratio': 0.008,
             'target_trigger_height_ratio': 0.10,
+            'target_history_frames': 5,
+            'target_required_frames': 3,
             'target_center_tolerance': 0.10,
             'target_timeout_s': 0.6,
             'target_action_timeout_s': 15.0,
@@ -269,6 +277,12 @@ class MissionManager2(Node):
         ]
         self.main_road_y = self.get_float('main_road_y_m')
         self.target_classes = parse_class_list(self.get_parameter('target_classes').value)
+        self.target_history_frames = int(
+            self.get_parameter('target_history_frames').value
+        )
+        self.target_required_frames = int(
+            self.get_parameter('target_required_frames').value
+        )
         self.pickup_capacity = int(self.get_parameter('pickup_capacity').value)
 
     def _validate_parameters(self):
@@ -282,10 +296,20 @@ class MissionManager2(Node):
             raise ValueError('main_road_y_m must be inside the arena')
         if self.pickup_capacity <= 0:
             raise ValueError('pickup_capacity must be positive')
+        if self.target_history_frames <= 0:
+            raise ValueError('target_history_frames must be positive')
+        if not 0 < self.target_required_frames <= self.target_history_frames:
+            raise ValueError(
+                'target_required_frames must be in [1, target_history_frames]'
+            )
         if not 0.0 < self.get_float('pickup_bottom_y_ratio') <= 1.0:
             raise ValueError('pickup_bottom_y_ratio must be in (0, 1]')
         if self.get_float('return_linear_x') >= 0.0:
             raise ValueError('return_linear_x must be negative')
+        if self.get_float('target_return_linear_x') >= 0.0:
+            raise ValueError('target_return_linear_x must be negative')
+        if self.get_float('storage_reverse_linear_x') >= 0.0:
+            raise ValueError('storage_reverse_linear_x must be negative')
         if self.get_float('search_linear_x') <= 0.0:
             raise ValueError('search_linear_x must be positive')
         if self.get_float('final_grab_forward_distance_m') <= 0.0:
@@ -314,15 +338,24 @@ class MissionManager2(Node):
 
     def detections_callback(self, msg):
         now = self.get_clock().now()
-        target = select_target(
+        observations = target_observations(
             msg.data,
             self.target_classes,
             self.get_float('target_min_confidence'),
             locked_class=self.locked_target_class,
         )
+        target = best_target(observations)
         if target is not None:
             self.latest_target = target
             self.target_received_at = now
+        if self.state == MissionState.SCAN_LANE:
+            self.side_target_history.append(
+                select_side_targets(
+                    observations,
+                    self.get_float('target_trigger_area_ratio'),
+                    self.get_float('target_trigger_height_ratio'),
+                )
+            )
 
     def control_callback(self, msg):
         command = msg.data.strip().lower()
@@ -367,6 +400,7 @@ class MissionManager2(Node):
         self.lane_heading_yaw = math.pi * 0.5
         self.wall_aligned_ticks = 0
         self.target_cooldown_until_s = 0.0
+        self.side_target_history.clear()
 
     def request_pose_reset(self):
         if not self.pose_reset_client.service_is_ready():
@@ -551,22 +585,23 @@ class MissionManager2(Node):
             self.fail('search lane timed out before reaching the main road or upper limit')
             return
 
-        target = self.recent_target()
+        target = confirmed_side_target(
+            self.side_target_history,
+            self.target_required_frames,
+            self.target_history_frames,
+        )
         if (
             target is not None
             and self.now_seconds() >= self.target_cooldown_until_s
-            and target_is_large_enough(
-                target,
-                self.get_float('target_trigger_area_ratio'),
-                self.get_float('target_trigger_height_ratio'),
-            )
         ):
+            self.latest_target = target
+            self.target_received_at = self.get_clock().now()
             self.target_checkpoint = Pose2D(self.pose.x, self.pose.y, self.pose.yaw)
             self.approach_started_pose = None
             self.locked_target_class = target.class_name
             self.transition(
                 MissionState.ALIGN_TARGET,
-                f'large-enough target detected: {target.class_name}',
+                f'target confirmed in side-middle cell: {target.class_name}',
             )
             return
 
@@ -728,7 +763,7 @@ class MissionManager2(Node):
             -self.get_float('navigation_max_angular_z'),
             self.get_float('navigation_max_angular_z'),
         )
-        self.publish_cmd_vel(self.get_float('return_linear_x'), angular)
+        self.publish_cmd_vel(self.get_float('target_return_linear_x'), angular)
 
     def run_after_target_return(self):
         self.locked_target_class = None
@@ -853,7 +888,7 @@ class MissionManager2(Node):
             -self.get_float('scan_heading_max_angular_z'),
             self.get_float('scan_heading_max_angular_z'),
         )
-        self.publish_cmd_vel(self.get_float('return_linear_x'), angular)
+        self.publish_cmd_vel(self.get_float('storage_reverse_linear_x'), angular)
 
     def run_storage_close(self):
         self.stop_robot()
@@ -931,6 +966,8 @@ class MissionManager2(Node):
         self.action_command_sent = False
         if state == MissionState.ALIGN_LANE_WITH_WALL:
             self.wall_aligned_ticks = 0
+        if state == MissionState.SCAN_LANE:
+            self.side_target_history.clear()
         self.get_logger().info(f'Mission state -> {state.value}: {reason}')
         self.publish_state(force=True)
         self.publish_status(force=True)
@@ -1007,6 +1044,8 @@ class MissionManager2(Node):
             and self.seconds_between(now, self.last_status_published_at) < self.status_period_s
         ):
             return
+        left_votes = sum(frame[0] is not None for frame in self.side_target_history)
+        right_votes = sum(frame[1] is not None for frame in self.side_target_history)
         payload = {
             'state': self.state.value,
             'reason': self.state_reason,
@@ -1015,6 +1054,12 @@ class MissionManager2(Node):
             'lane_count': len(self.lane_x_positions),
             'carried_count': self.carried_count,
             'pickup_attempts': self.total_pick_attempts,
+            'side_target_votes': {
+                'left': left_votes,
+                'right': right_votes,
+                'frames': len(self.side_target_history),
+                'required': self.target_required_frames,
+            },
             'pose': None if self.pose is None else {
                 'x': self.pose.x,
                 'y': self.pose.y,
@@ -1029,6 +1074,7 @@ class MissionManager2(Node):
                 'class_name': self.latest_target.class_name,
                 'confidence': self.latest_target.confidence,
                 'x_error': self.latest_target.x_error,
+                'center_y_ratio': self.latest_target.center_y_ratio,
                 'bottom_y_ratio': self.latest_target.bottom_y_ratio,
                 'area_ratio': self.latest_target.area_ratio,
             },

@@ -3,8 +3,11 @@ import math
 from mission_manager_2.mission_logic import (
     Pose2D,
     angular_error,
+    confirmed_side_target,
     pose_distance,
     select_target,
+    select_side_targets,
+    target_observations,
     target_is_large_enough,
     wall_matches_expected,
 )
@@ -65,6 +68,60 @@ def test_target_size_requires_both_area_and_height():
     )
     assert target_is_large_enough(target, 0.008, 0.10)
     assert not target_is_large_enough(target, 0.05, 0.10)
+
+
+def test_side_targets_only_use_left_and_right_cells_of_middle_row():
+    observations = target_observations(
+        detection_payload([
+            detection('left', 0.9, (40, 170, 180, 310), class_id=1),
+            detection('center', 0.9, (260, 170, 380, 310), class_id=2),
+            detection('right', 0.9, (470, 170, 610, 310), class_id=3),
+            detection('top', 0.9, (40, 20, 180, 120), class_id=4),
+        ]),
+        set(),
+        0.3,
+    )
+    left, right = select_side_targets(observations, 0.008, 0.10)
+    assert left.class_name == 'left'
+    assert right.class_name == 'right'
+
+
+def test_side_target_requires_three_votes_in_the_same_side_over_five_frames():
+    observations = target_observations(
+        detection_payload([
+            detection('left', 0.9, (40, 170, 180, 310), class_id=1),
+            detection('right', 0.9, (470, 170, 610, 310), class_id=2),
+        ]),
+        set(),
+        0.3,
+    )
+    left, right = select_side_targets(observations, 0.008, 0.10)
+    history = [
+        (left, None),
+        (None, right),
+        (left, None),
+        (None, None),
+        (left, None),
+    ]
+    assert confirmed_side_target(history, 3, 5).class_name == 'left'
+
+    split_votes = [
+        (left, None),
+        (None, right),
+        (left, None),
+        (None, right),
+        (None, None),
+    ]
+    assert confirmed_side_target(split_votes, 3, 5) is None
+
+
+def test_side_target_waits_until_five_frames_are_available():
+    target = select_target(
+        detection_payload([detection('left', 0.9, (40, 170, 180, 310))]),
+        set(),
+        0.3,
+    )
+    assert confirmed_side_target([(target, None)] * 3, 3, 5) is None
 
 
 def test_wall_measurement_must_match_expected_distance():

@@ -26,11 +26,14 @@ mission_manager_2:
     leave_start_angular_z: 0.22
     leave_start_duration_s: 3.0
 
-    navigation_linear_x: 0.12
-    navigation_min_linear_x: 0.04
+    # Non-search travel is approximately twice as fast as lane scanning.
+    navigation_linear_x: 0.20
+    navigation_min_linear_x: 0.06
     search_linear_x: 0.10
-    return_linear_x: -0.14
-    storage_linear_x: 0.08
+    target_return_linear_x: -0.14
+    return_linear_x: -0.20
+    storage_linear_x: 0.16
+    storage_reverse_linear_x: -0.14
     heading_gain: 1.4
     navigation_max_angular_z: 0.30
     scan_heading_max_angular_z: 0.18
@@ -45,6 +48,9 @@ mission_manager_2:
     target_min_confidence: 0.30
     target_trigger_area_ratio: 0.008
     target_trigger_height_ratio: 0.10
+    # The same side-middle cell must vote in 3 of the latest 5 YOLO frames.
+    target_history_frames: 5
+    target_required_frames: 3
     target_center_tolerance: 0.10
     target_timeout_s: 0.6
     target_align_gain: 0.90

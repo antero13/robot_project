@@ -12,9 +12,9 @@ The pose tracker starts at `(3.8, 0.2, 90 deg)`.
 2. Move to the bottom main road at `y=0.4*sqrt(2)+0.1=0.6657 m`.
 3. Search north along `x=[3.25, 2.25, 1.25, 0.25] m`.
 4. At each lane end, reverse to the main road and shift west to the next lane.
-5. When a sufficiently large YOLO box appears, rotate to center it, approach,
-   open the gripper, advance 10 cm, close it, reverse to the saved pose, and
-   restore the saved yaw.
+5. Split each frame into a 3x3 grid. When a sufficiently large target box has
+   its center in the left-middle or right-middle cell in at least three of the
+   latest five frames on the same side, rotate to center it and perform pickup.
 6. After four pickup commands, return to the main road and drive west.
 7. Stop at the storage-wall distance, rotate counterclockwise 45 degrees, open
    the gripper, reverse 40 cm, close the gripper, and finish.
@@ -73,6 +73,8 @@ Edit `config/mission_manager_2.yaml` before a full-speed run.
 | `main_road_y_m` | `0.6657` | Robot-center main-road coordinate |
 | `target_trigger_area_ratio` | `0.008` | Ignore very small/far YOLO boxes |
 | `target_trigger_height_ratio` | `0.10` | Additional far-box rejection |
+| `target_history_frames` | `5` | Number of actual YOLO frames used for voting |
+| `target_required_frames` | `3` | Required votes in the same left/right cell |
 | `pickup_bottom_y_ratio` | `0.70` | Start the final 10 cm pickup motion |
 | `final_grab_forward_distance_m` | `0.10` | Distance travelled with gripper open |
 | `storage_wall_distance_m` | `0.3828` | Direct ToF reading used near storage |
@@ -81,12 +83,11 @@ Edit `config/mission_manager_2.yaml` before a full-speed run.
 the box center. This matches the existing detection converter and is more
 stable when an object grows in the lower part of the image.
 
-The initial speeds are deliberately conservative for bring-up. Four complete
-lane traversals require about 9.34 m of forward search, 9.34 m of reverse
-travel, and 3 m of lateral shifts. At the configured 0.10/0.14/0.12 m/s, those
-motions alone take about 185 seconds before target approaches, turns, and
-gripper dwell time. They therefore cannot meet a three-minute limit. Increase
-speeds only after measuring lane clearance and calibrating `linear_scale`.
+Search and target-handling speeds remain conservative. Non-search travel uses
+`0.20 m/s` for main-road shifts and returns and `0.16 m/s` toward storage. Four
+complete lane traversals still take about 155 seconds before target approaches,
+turns, storage travel, and gripper dwell time, so a worst-case four-lane run may
+still exceed three minutes.
 
 Set `target_classes` to a comma-separated allow-list if the YOLO model also
 detects objects that must not be picked. An empty value treats every class as a
