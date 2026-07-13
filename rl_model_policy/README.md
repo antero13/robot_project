@@ -2,6 +2,28 @@
 
 ROS 2 node that runs the trained Isaac Lab/skrl avoid/search policy.
 
+## Checkpoint contract
+
+Before changing this package, read:
+
+```text
+rl_model_policy/MODEL_CHECKPOINT_README.md
+```
+
+The currently pushed model at
+`mission_manager/models/rl_avoid_search_best.pt` is an 18-observation-input
+checkpoint:
+
+```text
+policy.net_container.0.weight: (128, 18)
+state_preprocessor.running_mean: (18,)
+state_preprocessor.running_variance: (18,)
+```
+
+The runner must build the same 18-value observation vector described in
+`MODEL_CHECKPOINT_README.md`. A 10-value observation runner is incompatible with
+the current checkpoint.
+
 ## Inputs
 
 - `/target_object` (`geometry_msgs/PointStamped`)
