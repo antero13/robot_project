@@ -134,7 +134,7 @@ ros2 launch ros2_yolo_detector yolo_camera.launch.py \
 ## Published topics
 
 - `/yolo/detections`: `std_msgs/msg/String`, JSON detection result
-- `/target_object`: `geometry_msgs/msg/PointStamped`, normalized target center x and box-bottom y closeness
+- `/target_object`: `geometry_msgs/msg/PointStamped`, normalized bounding-box center x/y
 - `/target_label`: `std_msgs/msg/String`, selected target class name
 - `/avoid_object`: `geometry_msgs/msg/PointStamped`, closest selected avoid object
 - `/avoid_objects`: `std_msgs/msg/String`, JSON list of all selected avoid objects for VFH-lite avoidance
@@ -159,8 +159,9 @@ Detection JSON example:
 ```
 
 Mission nodes can subscribe to `/target_object` and `/avoid_objects`.
-`/avoid_objects` includes `x`, box-bottom `y`, bbox-center `center_y`,
-confidence, and bounding-box payload for each avoid object.
+`/avoid_objects` includes bbox-center `x`/`y`, the compatibility field
+`center_y`, box-bottom `bottom_y`, confidence, and bounding-box payload for
+each avoid object.
 Lower-level consumers can subscribe to `/yolo/detections` for the full class,
 confidence, and bounding-box payload.
 
@@ -182,12 +183,12 @@ The values use the same calculation as `/target_object` and `/avoid_objects`:
 
 ```text
 x = (bbox center x - image center x) / image center x   [-1, 1]
-y = bbox bottom y / image height                       [0, 1]
+y = bbox center y / image height                        [0, 1]
 ```
 
-The yellow cross marks the bounding-box center-bottom point used for the
-calculation. These values are normalized camera observations, not physical
-meters.
+The yellow cross marks the bounding-box center used for calibration and policy
+input. `bottom_y` remains available in `/avoid_objects` as diagnostic metadata.
+These values are normalized camera observations, not physical meters.
 
 ```bash
 ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \

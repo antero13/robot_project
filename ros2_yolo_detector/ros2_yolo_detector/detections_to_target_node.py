@@ -6,6 +6,8 @@ from geometry_msgs.msg import PointStamped
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from .detection_geometry import bbox_to_normalized_point
+
 
 class DetectionsToTargetNode(Node):
     def __init__(self) -> None:
@@ -77,11 +79,15 @@ class DetectionsToTargetNode(Node):
             if converted is None:
                 continue
 
-            class_name, class_keys, point_msg, bbox_xyxy, center_y_ratio = converted
+            class_name, class_keys, point_msg, bbox_xyxy, bottom_y_ratio = converted
             if self.is_target(class_keys):
-                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio))
+                target_candidates.append(
+                    (point_msg.point.y, class_name, point_msg, bbox_xyxy, bottom_y_ratio)
+                )
             elif self.is_avoid(class_keys):
-                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio))
+                avoid_candidates.append(
+                    (point_msg.point.y, class_name, point_msg, bbox_xyxy, bottom_y_ratio)
+                )
 
         avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
         target_candidate = self.select_target_candidate(target_candidates)
@@ -117,19 +123,21 @@ class DetectionsToTargetNode(Node):
         if bbox_width <= 0.0 or bbox_height <= 0.0 or image_width <= 0.0 or image_height <= 0.0:
             return None
 
-        bbox_center_x = (x1 + x2) * 0.5
-        bbox_center_y = (y1 + y2) * 0.5
-        image_center_x = image_width * 0.5
-        normalized_x_error = (bbox_center_x - image_center_x) / image_center_x
-        bottom_y_ratio = y2 / image_height
-        center_y_ratio = self.clamp(bbox_center_y / image_height, 0.0, 1.0)
+        normalized = bbox_to_normalized_point(
+            x1,
+            y1,
+            x2,
+            y2,
+            image_width,
+            image_height,
+        )
 
         out = PointStamped()
         out.header = header
-        out.point.x = self.clamp(normalized_x_error, -1.0, 1.0)
-        out.point.y = self.clamp(bottom_y_ratio, 0.0, 1.0)
+        out.point.x = normalized.x
+        out.point.y = normalized.y
         out.point.z = confidence
-        return class_name, class_keys, out, (x1, y1, x2, y2), center_y_ratio
+        return class_name, class_keys, out, (x1, y1, x2, y2), normalized.bottom_y
 
     def filter_overlapping_avoid_candidates(self, avoid_candidates, target_candidates):
         threshold = self.avoid_target_iou_threshold
@@ -190,7 +198,8 @@ class DetectionsToTargetNode(Node):
                     "class_name": class_name,
                     "x": float(point_msg.point.x),
                     "y": float(point_msg.point.y),
-                    "center_y": float(center_y_ratio),
+                    "center_y": float(point_msg.point.y),
+                    "bottom_y": float(bottom_y_ratio),
                     "confidence": float(point_msg.point.z),
                     "bbox_xyxy": {
                         "x1": float(bbox_xyxy[0]),
@@ -199,7 +208,7 @@ class DetectionsToTargetNode(Node):
                         "y2": float(bbox_xyxy[3]),
                     },
                 }
-                for _, class_name, point_msg, bbox_xyxy, center_y_ratio in sorted(
+                for _, class_name, point_msg, bbox_xyxy, bottom_y_ratio in sorted(
                     candidates,
                     key=lambda item: item[0],
                     reverse=True,

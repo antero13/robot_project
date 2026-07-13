@@ -56,15 +56,15 @@ AVOID_TURN -> AVOID_FORWARD -> REACQUIRE_TARGET
 
 ```text
 point.x = normalized horizontal error, -1.0 left to +1.0 right
-point.y = normalized bounding-box bottom y, 0.0 top to 1.0 bottom
+point.y = normalized bounding-box center y, 0.0 top to 1.0 bottom
 point.z = detection confidence
 ```
 
 `/avoid_object` uses the same point format. During `ALIGN_TARGET`, the robot
 turns until `point.x` is near 0. During `APPROACH_TARGET`, it moves forward
-while centered and transitions to `OPEN_GRIPPER` when `point.y` reaches
-`grab_area_ratio`. Despite the legacy parameter name, this threshold is now a
-camera y-position closeness score. `OPEN_GRIPPER` opens the servo, then
+while centered and transitions to `OPEN_GRIPPER` when the bbox-center
+`point.y` reaches `grab_area_ratio`. Despite the legacy parameter name, this
+threshold is now a camera y-position score. `OPEN_GRIPPER` opens the servo, then
 `FINAL_FORWARD` drives straight briefly so the object enters the gripper before
 `GRAB_OBJECT` closes the servo. After the gripper closes, the mission ends
 without backing away.
@@ -74,16 +74,17 @@ without backing away.
 ```json
 {
   "objects": [
-    {"class_name": "person", "x": 0.25, "y": 0.62, "center_y": 0.48, "confidence": 0.88}
+    {"class_name": "person", "x": 0.25, "y": 0.48, "center_y": 0.48, "bottom_y": 0.62, "confidence": 0.88}
   ]
 }
 ```
 
-The manager treats `y` as closeness from the box bottom. It uses `center_y`,
-the normalized bounding-box center y, with `x` to check whether the box center
-is inside the rear-camera trapezoid ROI before avoidance can trigger. Objects
-outside that trapezoid are ignored. The previous `/avoid_object` single-point
-topic still works as a fallback, using `y` as both closeness and center y.
+The manager uses bbox-center `y` for both target and avoid-object comparisons.
+`center_y` carries the same value for compatibility, while `bottom_y` is kept
+as diagnostic metadata. The manager uses center `x/y` to check whether the box
+center is inside the rear-camera trapezoid ROI before avoidance can trigger.
+Objects outside that trapezoid are ignored. Older JSON without `bottom_y`
+remains supported.
 
 When the target is close and centered, avoid detections at nearly the same
 screen position are treated as duplicate detections of the target and ignored.
@@ -190,12 +191,12 @@ Tune these values in `launch/mission_manager.launch.py` or
 
 ```text
 center_tolerance: how centered the target must be before moving forward
-grab_area_ratio: how low the box bottom must be before grabbing, 0.0 top to 1.0 bottom, default 0.50
+grab_area_ratio: how low the box center must be before grabbing, 0.0 top to 1.0 bottom, default 0.50
 final_forward_linear_x: straight driving speed after visual approach
 final_forward_duration_s: straight driving time before closing the gripper
 approach_angular_gain: how strongly the robot turns toward the target
 approach_max_linear_x: maximum approach speed
-avoid_area_ratio: obstacle box-bottom y where avoidance can trigger, default 0.38
+avoid_area_ratio: obstacle box-center y where avoidance can trigger, default 0.38
 avoid_roi_enabled: require the avoid box center to be inside the trapezoid ROI, default true
 avoid_roi_left_far_x/y: upper-left ROI point, default -0.75 / 0.42
 avoid_roi_right_far_x/y: upper-right ROI point, default 0.62 / 0.42

@@ -139,7 +139,7 @@ target_x:
   normalized image x in [-1, 1], 0 when target is not visible
 
 target_y:
-  normalized image y/closeness in [0, 1], 0 when target is not visible
+  normalized bounding-box center y in [0, 1], 0 when target is not visible
 
 time_since_target_seen_norm:
   time_since_target_seen / episode_length_s, clamped to [0, 1]
@@ -152,7 +152,7 @@ avoid_left, avoid_center, avoid_right:
   obstacle danger bins from YOLO avoid objects, each in [0, 1]
 
 nearest_avoid_x, nearest_avoid_y:
-  x/y of the closest avoid object in normalized camera coordinates,
+  bounding-box center x/y of the closest avoid object in normalized camera coordinates,
   or 0.0/0.0 when no avoid object is fresh
 
 Legacy-only pose values:

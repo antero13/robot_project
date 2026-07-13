@@ -111,8 +111,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 ros2 run rqt_image_view rqt_image_view /yolo/annotated_image
 ```
 
-The yellow label uses `x=-1..1` from the bounding-box center and `y=0..1` from
-the bounding-box bottom edge. These are normalized policy inputs, not meters.
+The yellow label uses `x=-1..1` and `y=0..1` from the bounding-box center.
+These are the calibration-aligned normalized policy inputs, not meters.
 
 ## Low-Speed Robot Test
 

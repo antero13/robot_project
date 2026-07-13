@@ -37,7 +37,7 @@ when one is passed explicitly through `model_path`.
 
 - `/target_object` (`geometry_msgs/PointStamped`)
   - `point.x`: normalized target x in `[-1, 1]`
-  - `point.y`: normalized target bottom-y/closeness in `[0, 1]`
+  - `point.y`: normalized bounding-box center y in `[0, 1]`
 - `/avoid_objects` (`std_msgs/String`)
   - JSON from `ros2_yolo_detector`
 - `/odom` (`nav_msgs/Odometry`)
@@ -169,9 +169,9 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 
 ## Automatic pickup
 
-The policy keeps the gripper closed when a run starts. When the target is centered and
-its bottom edge reaches `grab_area_ratio`, the policy temporarily pauses RL control and
-runs this sequence:
+The policy keeps the gripper closed when a run starts. When the target is
+centered and its bbox center y reaches `grab_area_ratio`, the policy temporarily
+pauses RL control and runs this sequence:
 
 ```text
 TRACKING -> OPENING -> FINAL_FORWARD -> CLOSING -> GRABBED

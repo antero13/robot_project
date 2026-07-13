@@ -213,21 +213,29 @@ class MissionManager(Node):
             try:
                 x = float(raw.get('x', raw.get('point_x', 0.0)))
                 y = float(raw.get('y', raw.get('point_y', 0.0)))
+                center_y = float(
+                    raw.get('center_y', raw.get('bbox_center_y', y))
+                )
+                bottom_y = float(raw.get('bottom_y', y))
                 confidence = float(raw.get('confidence', raw.get('z', 1.0)))
-                center_y = float(raw.get('center_y', raw.get('bbox_center_y', y)))
             except (TypeError, ValueError):
                 continue
-            points.append(self.make_avoid_point(x, y, confidence, center_y))
+            points.append(self.make_avoid_point(x, y, confidence, center_y, bottom_y))
 
         self.latest_avoid_objects = points
         self.latest_avoid_objects_time = self.get_clock().now()
 
-    def make_avoid_point(self, x, bottom_y, confidence, center_y):
+    def make_avoid_point(self, x, y, confidence, center_y, bottom_y=None):
         return SimpleNamespace(
             x=self.clamp(float(x), -1.0, 1.0),
-            y=self.clamp(float(bottom_y), 0.0, 1.0),
+            y=self.clamp(float(y), 0.0, 1.0),
             z=max(0.0, float(confidence)),
             center_y=self.clamp(float(center_y), 0.0, 1.0),
+            bottom_y=self.clamp(
+                float(y if bottom_y is None else bottom_y),
+                0.0,
+                1.0,
+            ),
         )
 
     def control_callback(self, msg):

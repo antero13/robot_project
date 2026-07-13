@@ -11,6 +11,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header, String
 
+from .detection_geometry import bbox_to_normalized_point
 from .frame_correction import FrameCorrector
 
 
@@ -291,18 +292,29 @@ class YoloCameraNode(Node):
             bbox = detection.get("bbox_xyxy", {})
             try:
                 x1 = float(bbox["x1"])
+                y1 = float(bbox["y1"])
                 x2 = float(bbox["x2"])
                 y2 = float(bbox["y2"])
             except (KeyError, TypeError, ValueError):
                 continue
 
             center_x = (x1 + x2) * 0.5
-            normalized_x = max(-1.0, min(1.0, (center_x - image_width * 0.5) / (image_width * 0.5)))
-            normalized_y = max(0.0, min(1.0, y2 / image_height))
-            label = f"x={normalized_x:+.3f}  y={normalized_y:.3f}"
+            center_y = (y1 + y2) * 0.5
+            try:
+                normalized = bbox_to_normalized_point(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    image_width,
+                    image_height,
+                )
+            except ValueError:
+                continue
+            label = f"x={normalized.x:+.3f}  y={normalized.y:.3f}"
 
             marker_x = max(0, min(image_width - 1, int(round(center_x))))
-            marker_y = max(0, min(image_height - 1, int(round(y2))))
+            marker_y = max(0, min(image_height - 1, int(round(center_y))))
             cv2.drawMarker(
                 frame,
                 (marker_x, marker_y),
