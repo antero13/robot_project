@@ -108,7 +108,7 @@ The robot machine must have PyTorch available in the Python environment used by 
 
 ## One-command Jetson launch
 
-Build the policy, pose tracker, and model package once after pulling the repository:
+Build the integrated runtime packages once after pulling the repository:
 
 ```bash
 cd ~/ros2_ws
@@ -117,18 +117,16 @@ colcon build --packages-up-to mission_manager robot_pose_tracker rl_model_policy
 source ~/ros2_ws/install/setup.bash
 ```
 
-Start the controller, camera/YOLO, motor converter, pose tracker, and RL policy
-in one terminal. The default start pose is `(1.8, -1.8, 90 deg)` in the
-arena-center coordinate frame used by training:
+Start the controller, camera/YOLO, motor converter, and RL policy in one
+terminal. The bundled 10-input model does not start or use the pose tracker:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   yolo_model_path:=/home/airobot/ros2_ws/best.engine \
   target_classes:=0 \
   speed_scale:=0.25 \
-  initial_x:=1.8 \
-  initial_y:=-1.8 \
-  initial_yaw_deg:=90.0
+  launch_pose_tracker:=false \
+  pose_observation_enabled:=false
 ```
 
 The safe default waits for a separate start command:
@@ -154,6 +152,7 @@ the same time.
 
 `camera_horizontal_fov_deg` defaults to `80.0`, matching the training
 environment. It is used for yaw-based target prediction only when
+running a legacy 18-input model with both `launch_pose_tracker:=true` and
 `pose_observation_enabled:=true`.
 
 `target_timeout_s` defaults to `0.8`. The last target x/y is kept during a

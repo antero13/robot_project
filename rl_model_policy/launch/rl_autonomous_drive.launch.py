@@ -27,6 +27,7 @@ def generate_launch_description():
     odometry_topic = LaunchConfiguration("odometry_topic")
     pose_timeout_s = LaunchConfiguration("pose_timeout_s")
     pose_observation_enabled = LaunchConfiguration("pose_observation_enabled")
+    launch_pose_tracker = LaunchConfiguration("launch_pose_tracker")
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
     pose_bounds_tolerance_m = LaunchConfiguration("pose_bounds_tolerance_m")
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
@@ -99,6 +100,7 @@ def generate_launch_description():
             "gyro_calibration_duration_s": gyro_calibration_duration_s,
             "publish_tf": "true",
         }.items(),
+        condition=IfCondition(launch_pose_tracker),
     )
 
     policy_launch = IncludeLaunchDescription(
@@ -196,6 +198,11 @@ def generate_launch_description():
             "pose_observation_enabled",
             default_value="false",
             description="Use pose/IMU policy inputs and yaw-based target prediction.",
+        ),
+        DeclareLaunchArgument(
+            "launch_pose_tracker",
+            default_value="false",
+            description="Start command/IMU pose tracking for a legacy 18-input policy.",
         ),
         DeclareLaunchArgument("arena_half_extent_m", default_value="2.0"),
         DeclareLaunchArgument("pose_bounds_tolerance_m", default_value="0.25"),

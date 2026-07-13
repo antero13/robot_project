@@ -18,6 +18,7 @@ from rl_model_policy.observation import (
     estimate_target_image_x,
     estimate_target_world_bearing,
     make_pose_observation,
+    model_uses_pose_observation,
     pose_is_usable,
     quaternion_to_yaw,
     validate_observation,
@@ -182,12 +183,22 @@ class RLModelPolicyNode(Node):
             self.avoid_objects_callback,
             10,
         )
-        self.odometry_sub = self.create_subscription(
-            Odometry,
-            self.get_parameter("odometry_topic").value,
-            self.odometry_callback,
-            10,
-        )
+        self.odometry_sub = None
+        if self.pose_observation_is_active():
+            self.odometry_sub = self.create_subscription(
+                Odometry,
+                self.get_parameter("odometry_topic").value,
+                self.odometry_callback,
+                10,
+            )
+        elif self.model_observation_dim == OBSERVATION_DIM:
+            self.get_logger().info(
+                "Legacy 18-input policy loaded with pose disabled; pose inputs remain zero"
+            )
+        else:
+            self.get_logger().info(
+                "10-input YOLO-only policy loaded; odometry and pose correction are disabled"
+            )
         self.control_sub = self.create_subscription(
             String,
             self.get_parameter("control_topic").value,
@@ -416,7 +427,7 @@ class RLModelPolicyNode(Node):
             self.latest_target.z,
         )
         if (
-            bool(self.get_parameter("pose_observation_enabled").value)
+            self.pose_observation_is_active()
             and self.last_target_world_bearing is not None
             and self.is_fresh(self.latest_pose_time, "pose_timeout_s")
         ):
@@ -452,7 +463,7 @@ class RLModelPolicyNode(Node):
             1.0,
         )
 
-        pose_enabled = bool(self.get_parameter("pose_observation_enabled").value)
+        pose_enabled = self.pose_observation_is_active()
         pose_fresh = pose_enabled and self.is_fresh(
             self.latest_pose_time,
             "pose_timeout_s",
@@ -674,7 +685,8 @@ class RLModelPolicyNode(Node):
                 "model_loaded": self.policy is not None,
                 "observation_dim": self.model_observation_dim,
                 "observation_names": OBSERVATION_NAMES[:self.model_observation_dim],
-                "pose_observation_enabled": bool(
+                "pose_observation_enabled": self.pose_observation_is_active(),
+                "pose_observation_requested": bool(
                     self.get_parameter("pose_observation_enabled").value
                 ),
                 "grab_state": self.grab_state,
@@ -693,6 +705,12 @@ class RLModelPolicyNode(Node):
             ensure_ascii=True,
         )
         self.state_pub.publish(msg)
+
+    def pose_observation_is_active(self):
+        return model_uses_pose_observation(
+            self.model_observation_dim,
+            self.get_parameter("pose_observation_enabled").value,
+        )
 
     def is_fresh(self, stamp, timeout_param):
         if stamp is None:

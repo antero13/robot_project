@@ -8,6 +8,7 @@ from rl_model_policy.observation import (
     estimate_target_image_x,
     estimate_target_world_bearing,
     make_pose_observation,
+    model_uses_pose_observation,
     pose_is_usable,
     quaternion_to_yaw,
     validate_observation,
@@ -18,6 +19,12 @@ class ObservationTest(unittest.TestCase):
     def test_yolo_only_checkpoint_contract_is_supported(self):
         self.assertEqual(YOLO_OBSERVATION_DIM, 10)
         self.assertEqual(SUPPORTED_OBSERVATION_DIMS, (10, 18))
+
+    def test_pose_is_never_used_by_yolo_only_model(self):
+        self.assertFalse(model_uses_pose_observation(10, True))
+        self.assertFalse(model_uses_pose_observation(10, False))
+        self.assertTrue(model_uses_pose_observation(18, True))
+        self.assertFalse(model_uses_pose_observation(18, False))
 
     def test_pose_observation_matches_18_input_contract(self):
         pose = make_pose_observation(

@@ -26,6 +26,10 @@ OBSERVATION_DIM = len(OBSERVATION_NAMES)
 SUPPORTED_OBSERVATION_DIMS = (YOLO_OBSERVATION_DIM, OBSERVATION_DIM)
 
 
+def model_uses_pose_observation(observation_dim, requested):
+    return int(observation_dim) == OBSERVATION_DIM and bool(requested)
+
+
 def clamp(value, low, high):
     return max(low, min(high, value))
 
