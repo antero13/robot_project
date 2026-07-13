@@ -11,6 +11,10 @@ from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
 from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
 from std_msgs.msg import String
 
+from rl_model_policy.coverage_controller import (
+    CoverageController,
+    generate_coverage_legs,
+)
 from rl_model_policy.observation import (
     OBSERVATION_DIM,
     OBSERVATION_NAMES,
@@ -62,6 +66,13 @@ if torch is not None:
 class RLModelPolicyNode(Node):
     """Run the trained Isaac Lab/skrl policy from YOLO-derived observations."""
 
+    MODE_IDLE = "IDLE"
+    MODE_TRACK_TARGET = "TRACK_TARGET"
+    MODE_LOCAL_REACQUIRE = "LOCAL_REACQUIRE"
+    MODE_COVERAGE_SEARCH = "COVERAGE_SEARCH"
+    MODE_WAITING_FOR_POSE = "WAITING_FOR_POSE"
+    MODE_GRAB_SEQUENCE = "GRAB_SEQUENCE"
+
     GRAB_TRACKING = "TRACKING"
     GRAB_OPENING = "OPENING"
     GRAB_FINAL_FORWARD = "FINAL_FORWARD"
@@ -93,6 +104,24 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("arena_half_extent_m", 2.0)
         self.declare_parameter("pose_bounds_tolerance_m", 0.25)
         self.declare_parameter("camera_horizontal_fov_deg", 80.0)
+
+        self.declare_parameter("coverage_enabled", True)
+        self.declare_parameter("coverage_min_x", -1.75)
+        self.declare_parameter("coverage_max_x", 1.25)
+        self.declare_parameter("coverage_main_road_y", -1.3343)
+        self.declare_parameter("coverage_scan_end_y", 1.0)
+        self.declare_parameter("coverage_lane_spacing", 1.0)
+        self.declare_parameter("coverage_scan_speed", 0.14)
+        self.declare_parameter("coverage_transit_speed", 0.18)
+        self.declare_parameter("coverage_return_speed", 0.20)
+        self.declare_parameter("coverage_waypoint_tolerance", 0.10)
+        self.declare_parameter("coverage_heading_tolerance", 0.12)
+        self.declare_parameter("coverage_heading_gain", 1.4)
+        self.declare_parameter("coverage_max_angular_speed", 0.40)
+        self.declare_parameter("coverage_avoid_danger_threshold", 0.20)
+        self.declare_parameter("coverage_avoid_angular_speed", 0.35)
+        self.declare_parameter("coverage_reacquire_duration_s", 0.8)
+        self.declare_parameter("coverage_reacquire_angular_z", 0.25)
 
         self.declare_parameter("avoid_area_ratio", 0.20)
         self.declare_parameter("avoid_center_band", 0.75)
@@ -145,6 +174,10 @@ class RLModelPolicyNode(Node):
         self.last_cmd = (0.0, 0.0)
         self.grab_state = self.GRAB_TRACKING
         self.grab_state_started_at = self.get_clock().now()
+        self.control_mode = self.MODE_IDLE
+        self.had_visible_target = False
+        self.target_lost_started_at = None
+        self.coverage_command = None
 
         self.policy = None
         self.model_observation_dim = OBSERVATION_DIM
@@ -152,6 +185,7 @@ class RLModelPolicyNode(Node):
         self.obs_variance = None
         self.model_path = None
         self.load_model()
+        self.coverage_controller = self.create_coverage_controller()
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.get_parameter("cmd_vel_topic").value, 10)
         self.state_pub = self.create_publisher(String, self.get_parameter("state_topic").value, 10)
@@ -184,18 +218,22 @@ class RLModelPolicyNode(Node):
             10,
         )
         self.odometry_sub = None
-        if self.pose_observation_is_active():
+        if self.pose_observation_is_active() or self.coverage_is_enabled():
             self.odometry_sub = self.create_subscription(
                 Odometry,
                 self.get_parameter("odometry_topic").value,
                 self.odometry_callback,
                 10,
             )
-        elif self.model_observation_dim == OBSERVATION_DIM:
+        if self.coverage_is_enabled() and not self.pose_observation_is_active():
+            self.get_logger().info(
+                "Odometry is enabled for coverage search but remains excluded from RL observations"
+            )
+        elif self.model_observation_dim == OBSERVATION_DIM and self.odometry_sub is None:
             self.get_logger().info(
                 "Legacy 18-input policy loaded with pose disabled; pose inputs remain zero"
             )
-        else:
+        elif self.odometry_sub is None:
             self.get_logger().info(
                 "10-input YOLO-only policy loaded; odometry and pose correction are disabled"
             )
@@ -366,6 +404,11 @@ class RLModelPolicyNode(Node):
             if self.policy is None:
                 self.get_logger().error("Cannot start: model is not loaded")
                 return
+            self.coverage_controller.reset()
+            self.coverage_command = None
+            self.had_visible_target = False
+            self.target_lost_started_at = None
+            self.set_control_mode(self.MODE_COVERAGE_SEARCH)
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
             self.active = True
@@ -374,6 +417,8 @@ class RLModelPolicyNode(Node):
             self.active = False
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
+            self.coverage_command = None
+            self.set_control_mode(self.MODE_IDLE)
             self.publish_cmd(0.0, 0.0)
             self.get_logger().info("RL model policy stopped")
         elif command == "reset":
@@ -385,6 +430,11 @@ class RLModelPolicyNode(Node):
             self.time_since_target_seen = self.get_float("episode_length_s")
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
+            self.coverage_controller.reset()
+            self.coverage_command = None
+            self.had_visible_target = False
+            self.target_lost_started_at = None
+            self.set_control_mode(self.MODE_IDLE)
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
             self.publish_cmd(0.0, 0.0)
@@ -398,24 +448,134 @@ class RLModelPolicyNode(Node):
         target = self.current_target()
         objects = self.current_avoid_objects(target)
         obs, bins, nearest = self.make_observation(target, objects)
+        self.update_target_history(target)
         grab_cmd = self.update_grab_sequence(target) if self.active else None
 
         if grab_cmd is not None:
+            self.set_control_mode(self.MODE_GRAB_SEQUENCE)
             linear_x, angular_z = grab_cmd
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
-        elif self.active and self.policy is not None:
+            self.coverage_command = None
+        elif self.active and target is not None and self.policy is not None:
+            self.set_control_mode(self.MODE_TRACK_TARGET)
             self.raw_action = self.infer_action(obs)
             self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
             linear_x, angular_z = self.action_to_cmd(self.filtered_action)
+            self.coverage_command = None
+        elif self.active and self.should_locally_reacquire():
+            self.set_control_mode(self.MODE_LOCAL_REACQUIRE)
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+            self.coverage_command = None
+            linear_x = 0.0
+            angular_z = (
+                -self.last_target_direction
+                * self.get_float("coverage_reacquire_angular_z")
+            )
+        elif self.active and self.coverage_is_enabled():
+            linear_x, angular_z = self.coverage_search_command(bins)
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+        elif self.active and self.policy is not None:
+            self.set_control_mode(self.MODE_TRACK_TARGET)
+            self.raw_action = self.infer_action(obs)
+            self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
+            linear_x, angular_z = self.action_to_cmd(self.filtered_action)
+            self.coverage_command = None
         else:
+            self.set_control_mode(self.MODE_IDLE)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
             linear_x, angular_z = (0.0, 0.0)
+            self.coverage_command = None
 
         if self.active or bool(self.get_parameter("publish_stop_when_inactive").value):
             self.publish_cmd(linear_x, angular_z)
         self.publish_state(obs, bins, nearest, linear_x, angular_z)
+
+    def create_coverage_controller(self):
+        legs = generate_coverage_legs(
+            min_x=self.get_float("coverage_min_x"),
+            max_x=self.get_float("coverage_max_x"),
+            main_road_y=self.get_float("coverage_main_road_y"),
+            scan_end_y=self.get_float("coverage_scan_end_y"),
+            lane_spacing=self.get_float("coverage_lane_spacing"),
+            scan_speed=self.get_float("coverage_scan_speed"),
+            transit_speed=self.get_float("coverage_transit_speed"),
+            return_speed=self.get_float("coverage_return_speed"),
+        )
+        controller = CoverageController(
+            legs=legs,
+            waypoint_tolerance=self.get_float("coverage_waypoint_tolerance"),
+            heading_tolerance=self.get_float("coverage_heading_tolerance"),
+            heading_gain=self.get_float("coverage_heading_gain"),
+            max_angular_speed=self.get_float("coverage_max_angular_speed"),
+            avoid_danger_threshold=self.get_float(
+                "coverage_avoid_danger_threshold"
+            ),
+            avoid_angular_speed=self.get_float("coverage_avoid_angular_speed"),
+        )
+        self.get_logger().info(
+            f"Coverage search ready with {len(legs)} legs "
+            f"({len(legs) // 3} scan lanes)"
+        )
+        return controller
+
+    def update_target_history(self, target):
+        if target is not None:
+            self.had_visible_target = True
+            self.target_lost_started_at = None
+            return
+        if self.had_visible_target and self.target_lost_started_at is None:
+            self.target_lost_started_at = self.get_clock().now()
+
+    def should_locally_reacquire(self):
+        if not self.had_visible_target or self.target_lost_started_at is None:
+            return False
+        elapsed = self.get_clock().now() - self.target_lost_started_at
+        elapsed_s = elapsed.nanoseconds / 1_000_000_000.0
+        if elapsed_s <= self.get_float("coverage_reacquire_duration_s"):
+            return True
+        self.had_visible_target = False
+        self.target_lost_started_at = None
+        return False
+
+    def coverage_search_command(self, bins):
+        pose_fresh = self.is_fresh(self.latest_pose_time, "pose_timeout_s")
+        pose_valid = pose_fresh and pose_is_usable(
+            self.robot_x,
+            self.robot_y,
+            self.get_float("arena_half_extent_m"),
+            self.get_float("pose_bounds_tolerance_m"),
+        )
+        if not pose_valid:
+            self.coverage_command = None
+            self.set_control_mode(self.MODE_WAITING_FOR_POSE)
+            return (0.0, 0.0)
+
+        self.coverage_command = self.coverage_controller.command(
+            robot_x=self.robot_x,
+            robot_y=self.robot_y,
+            robot_yaw=self.robot_yaw,
+            avoid_left=bins[0],
+            avoid_center=bins[1],
+            avoid_right=bins[2],
+        )
+        self.set_control_mode(self.MODE_COVERAGE_SEARCH)
+        return (
+            self.coverage_command.linear_x,
+            self.coverage_command.angular_z,
+        )
+
+    def set_control_mode(self, mode):
+        if mode == self.control_mode:
+            return
+        previous_mode = self.control_mode
+        self.control_mode = mode
+        if mode == self.MODE_TRACK_TARGET:
+            self.filtered_action = [0.0, 0.0]
+        self.get_logger().info(f"Control mode: {previous_mode} -> {mode}")
 
     def current_target(self):
         if not self.is_fresh(self.latest_target_time, "target_timeout_s"):
@@ -677,12 +837,15 @@ class RLModelPolicyNode(Node):
         return elapsed.nanoseconds / 1_000_000_000.0
 
     def publish_state(self, obs, bins, nearest, linear_x, angular_z):
+        pose_fresh = self.is_fresh(self.latest_pose_time, "pose_timeout_s")
+        coverage = self.coverage_command
         msg = String()
         msg.data = json.dumps(
             {
                 "active": self.active,
                 "dry_run": self.dry_run,
                 "model_loaded": self.policy is not None,
+                "control_mode": self.control_mode,
                 "observation_dim": self.model_observation_dim,
                 "observation_names": OBSERVATION_NAMES[:self.model_observation_dim],
                 "pose_observation_enabled": self.pose_observation_is_active(),
@@ -701,10 +864,34 @@ class RLModelPolicyNode(Node):
                 "avoid_right": round(bins[2], 4),
                 "nearest_avoid_x": None if nearest is None else round(nearest.x, 4),
                 "nearest_avoid_y": None if nearest is None else round(nearest.y, 4),
+                "pose_fresh": pose_fresh,
+                "pose": None
+                if not pose_fresh
+                else {
+                    "x": round(self.robot_x, 4),
+                    "y": round(self.robot_y, 4),
+                    "yaw": round(self.robot_yaw, 4),
+                },
+                "coverage": {
+                    "enabled": self.coverage_is_enabled(),
+                    "phase": None if coverage is None else coverage.phase,
+                    "leg_index": None if coverage is None else coverage.leg_index,
+                    "leg_count": len(self.coverage_controller.legs),
+                    "waypoint_x": None
+                    if coverage is None
+                    else round(coverage.waypoint_x, 4),
+                    "waypoint_y": None
+                    if coverage is None
+                    else round(coverage.waypoint_y, 4),
+                    "cycle_count": self.coverage_controller.cycle_count,
+                },
             },
             ensure_ascii=True,
         )
         self.state_pub.publish(msg)
+
+    def coverage_is_enabled(self):
+        return bool(self.get_parameter("coverage_enabled").value)
 
     def pose_observation_is_active(self):
         return model_uses_pose_observation(

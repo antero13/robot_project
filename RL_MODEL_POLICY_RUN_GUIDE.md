@@ -10,15 +10,14 @@ legacy 18-observation contract documented in
 
 ```text
 camera + YOLO -> /target_object, /avoid_objects
-robot_pose_tracker -> /odom (optional; legacy 18-input policy only)
+robot_pose_tracker -> /odom (coverage route; not part of the 10-input network)
 rl_model_policy -> /cmd_vel
 cmd_vel_to_motor -> motor controller
 ```
 
-The integrated launch starts the camera, controller, motor converter, and policy.
-The pose tracker is disabled for the bundled 10-input model. Do not run `mission_manager`,
-keyboard teleoperation, another pose tracker, or another `/cmd_vel` publisher at
-the same time.
+The integrated launch starts the camera, controller, pose tracker, motor
+converter, and policy. Do not run `mission_manager`, keyboard teleoperation,
+another pose tracker, or another `/cmd_vel` publisher at the same time.
 
 ## Jetson Build
 
@@ -48,7 +47,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   initial_y:=-1.8 \
   initial_yaw_deg:=90.0 \
   speed_scale:=0.25 \
-  launch_pose_tracker:=false \
+  launch_pose_tracker:=true \
   pose_observation_enabled:=false \
   dry_run:=true \
   auto_start:=false
@@ -74,6 +73,8 @@ model_loaded: true
 observation_dim: 10
 obs: 10 values
 pose_observation_enabled: false
+control_mode: COVERAGE_SEARCH or TRACK_TARGET
+pose_fresh: true
 ```
 
 The bundled model reports `observation_dim: 10` and never receives pose values,
@@ -85,6 +86,26 @@ The policy keeps the last YOLO target for `target_timeout_s=0.8` seconds so a
 one- or two-frame detection gap does not immediately switch into search mode.
 Because pose input is disabled by default, the held target x/y remains the last
 camera observation rather than being adjusted from odometry.
+
+When no target has ever been seen, the node immediately enters
+`COVERAGE_SEARCH`. After losing a target it first enters `LOCAL_REACQUIRE` for
+0.8 seconds, then resumes coverage. A new target immediately switches control
+back to `TRACK_TARGET`. Coverage uses `/odom` independently of the network's
+10-value observation contract; stale odometry produces `WAITING_FOR_POSE` and
+a zero velocity command.
+
+The default coverage route scans `x = 1.25, 0.25, -0.75, -1.75 m` from the
+lower main road at `y = -1.3343 m` up to `y = 1.0 m`. Tune it from the launch
+command when the real arena alignment differs:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  coverage_min_x:=-1.75 \
+  coverage_max_x:=1.25 \
+  coverage_main_road_y:=-1.3343 \
+  coverage_scan_end_y:=1.0 \
+  coverage_lane_spacing:=1.0
+```
 
 To run a legacy 18-input checkpoint with calibrated odometry, explicitly pass
 both `launch_pose_tracker:=true` and `pose_observation_enabled:=true`.

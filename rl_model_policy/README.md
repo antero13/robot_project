@@ -41,9 +41,9 @@ when one is passed explicitly through `model_path`.
 - `/avoid_objects` (`std_msgs/String`)
   - JSON from `ros2_yolo_detector`
 - `/odom` (`nav_msgs/Odometry`)
-  - optional arena-center pose and yaw rate for legacy 18-input checkpoints
-  - ignored by the bundled 10-input model
-  - also disabled by default with `pose_observation_enabled:=false`
+  - arena-center pose used by the no-target coverage controller
+  - never included in the bundled 10-input model observation
+  - optionally included in a legacy 18-input model with `pose_observation_enabled:=true`
 
 For a new 10-input checkpoint, pose data is never sent to the network. For a
 legacy 18-input checkpoint, disabling pose observation supplies zeros for its
@@ -117,15 +117,16 @@ colcon build --packages-up-to mission_manager robot_pose_tracker rl_model_policy
 source ~/ros2_ws/install/setup.bash
 ```
 
-Start the controller, camera/YOLO, motor converter, and RL policy in one
-terminal. The bundled 10-input model does not start or use the pose tracker:
+Start the controller, camera/YOLO, pose tracker, motor converter, and RL policy
+in one terminal. The pose tracker drives coverage waypoints but its values stay
+outside the bundled 10-input policy observation:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   yolo_model_path:=/home/airobot/ros2_ws/best.engine \
   target_classes:=0 \
   speed_scale:=0.25 \
-  launch_pose_tracker:=false \
+  launch_pose_tracker:=true \
   pose_observation_enabled:=false
 ```
 
@@ -157,6 +158,40 @@ running a legacy 18-input model with both `launch_pose_tracker:=true` and
 
 `target_timeout_s` defaults to `0.8`. The last target x/y is kept during a
 short YOLO detection gap instead of immediately changing to search behavior.
+
+## No-target coverage search
+
+The runtime is a hybrid controller. The learned policy handles a visible
+target; deterministic coverage handles the case that the target is absent:
+
+```text
+TRACK_TARGET -> LOCAL_REACQUIRE -> COVERAGE_SEARCH
+                                      |
+target detected ----------------------+--> TRACK_TARGET
+```
+
+Coverage starts on the lower main road, scans four vertical lanes northward,
+reverses down each cleared lane, and shifts to the next lane on the lower road.
+If `/odom` is missing or stale, the mode becomes `WAITING_FOR_POSE` and the
+robot publishes a stop command. The default lane settings are:
+
+```text
+x lanes: 1.25, 0.25, -0.75, -1.75 m
+main road y: -1.3343 m
+scan end y: 1.0 m
+scan speed: 0.14 m/s
+main-road speed: 0.18 m/s
+cleared-lane reverse speed: 0.20 m/s
+```
+
+Inspect the current mode, waypoint, pose, and route leg with:
+
+```bash
+ros2 topic echo /rl_model_policy_state
+```
+
+Set `coverage_enabled:=false` only to reproduce the old behavior where the RL
+policy also receives no-target observations.
 
 The default real-robot configuration is explicit below:
 

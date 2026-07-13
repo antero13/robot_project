@@ -31,6 +31,17 @@ def generate_launch_description():
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
     pose_bounds_tolerance_m = LaunchConfiguration("pose_bounds_tolerance_m")
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
+    coverage_enabled = LaunchConfiguration("coverage_enabled")
+    coverage_min_x = LaunchConfiguration("coverage_min_x")
+    coverage_max_x = LaunchConfiguration("coverage_max_x")
+    coverage_main_road_y = LaunchConfiguration("coverage_main_road_y")
+    coverage_scan_end_y = LaunchConfiguration("coverage_scan_end_y")
+    coverage_lane_spacing = LaunchConfiguration("coverage_lane_spacing")
+    coverage_scan_speed = LaunchConfiguration("coverage_scan_speed")
+    coverage_transit_speed = LaunchConfiguration("coverage_transit_speed")
+    coverage_return_speed = LaunchConfiguration("coverage_return_speed")
+    coverage_waypoint_tolerance = LaunchConfiguration("coverage_waypoint_tolerance")
+    coverage_reacquire_duration_s = LaunchConfiguration("coverage_reacquire_duration_s")
     initial_x = LaunchConfiguration("initial_x")
     initial_y = LaunchConfiguration("initial_y")
     initial_yaw_deg = LaunchConfiguration("initial_yaw_deg")
@@ -120,6 +131,17 @@ def generate_launch_description():
             "arena_half_extent_m": arena_half_extent_m,
             "pose_bounds_tolerance_m": pose_bounds_tolerance_m,
             "camera_horizontal_fov_deg": camera_horizontal_fov_deg,
+            "coverage_enabled": coverage_enabled,
+            "coverage_min_x": coverage_min_x,
+            "coverage_max_x": coverage_max_x,
+            "coverage_main_road_y": coverage_main_road_y,
+            "coverage_scan_end_y": coverage_scan_end_y,
+            "coverage_lane_spacing": coverage_lane_spacing,
+            "coverage_scan_speed": coverage_scan_speed,
+            "coverage_transit_speed": coverage_transit_speed,
+            "coverage_return_speed": coverage_return_speed,
+            "coverage_waypoint_tolerance": coverage_waypoint_tolerance,
+            "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
             "gripper_enabled": gripper_enabled,
             "gripper_type": gripper_type,
             "gripper_servo_id": gripper_servo_id,
@@ -201,12 +223,27 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "launch_pose_tracker",
-            default_value="false",
-            description="Start command/IMU pose tracking for a legacy 18-input policy.",
+            default_value="true",
+            description="Start command/IMU pose tracking used by coverage search.",
         ),
         DeclareLaunchArgument("arena_half_extent_m", default_value="2.0"),
         DeclareLaunchArgument("pose_bounds_tolerance_m", default_value="0.25"),
         DeclareLaunchArgument("camera_horizontal_fov_deg", default_value="80.0"),
+        DeclareLaunchArgument(
+            "coverage_enabled",
+            default_value="true",
+            description="Use odometry-based lane coverage while no target is visible.",
+        ),
+        DeclareLaunchArgument("coverage_min_x", default_value="-1.75"),
+        DeclareLaunchArgument("coverage_max_x", default_value="1.25"),
+        DeclareLaunchArgument("coverage_main_road_y", default_value="-1.3343"),
+        DeclareLaunchArgument("coverage_scan_end_y", default_value="1.0"),
+        DeclareLaunchArgument("coverage_lane_spacing", default_value="1.0"),
+        DeclareLaunchArgument("coverage_scan_speed", default_value="0.14"),
+        DeclareLaunchArgument("coverage_transit_speed", default_value="0.18"),
+        DeclareLaunchArgument("coverage_return_speed", default_value="0.20"),
+        DeclareLaunchArgument("coverage_waypoint_tolerance", default_value="0.10"),
+        DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="0.8"),
         DeclareLaunchArgument(
             "initial_x",
             default_value="1.8",
