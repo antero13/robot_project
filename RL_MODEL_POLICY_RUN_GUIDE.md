@@ -11,13 +11,17 @@ legacy 18-observation contract documented in
 ```text
 camera + YOLO -> /target_object, /avoid_objects
 robot_pose_tracker -> /odom (coverage route; not part of the 10-input network)
+rl_object_world_mapper -> /rl_estimated_objects
 rl_model_policy -> /cmd_vel
 cmd_vel_to_motor -> motor controller
+robot_status_gui <- /odom, /rl_model_policy_state, /rl_estimated_objects
 ```
 
 The integrated launch starts the camera, controller, pose tracker, motor
-converter, and policy. Do not run `mission_manager`, keyboard teleoperation,
-another pose tracker, or another `/cmd_vel` publisher at the same time.
+converter, policy, and object mapper. The status GUI can be enabled with
+`launch_status_gui:=true`. Do not run `mission_manager`, keyboard
+teleoperation, another pose tracker, or another `/cmd_vel` publisher at the
+same time.
 
 ## Jetson Build
 
@@ -29,7 +33,7 @@ cd ~/ros2_ws
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install --packages-up-to \
   ros2_yolo_detector cmd_vel_to_motor robot_pose_tracker \
-  mission_manager rl_model_policy
+  mission_manager robot_status_gui rl_model_policy
 source ~/ros2_ws/install/setup.bash
 ```
 
@@ -146,6 +150,32 @@ Emergency stop:
 ros2 topic pub --once /rl_model_policy_control \
   std_msgs/msg/String "{data: stop}"
 ```
+
+Operator pause keeps inference and status updates alive while stopping only
+the base command:
+
+```bash
+ros2 topic pub --once /rl_model_policy_control \
+  std_msgs/msg/String "{data: pause_motion}"
+
+ros2 topic pub --once /rl_model_policy_control \
+  std_msgs/msg/String "{data: resume_motion}"
+```
+
+Open the GUI in the integrated launch:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  yolo_model_path:=/home/airobot/ros2_ws/best.engine \
+  target_classes:=0 \
+  launch_status_gui:=true \
+  auto_start:=false
+```
+
+The object positions shown on the map are estimates snapped to the 42 legal
+placement points. Tune `camera_height_m`, `camera_pitch_deg`, and
+`camera_vertical_fov_deg` to the real camera installation before relying on
+their distance.
 
 The integrated launch loads the model installed at
 `mission_manager/models/rl_avoid_search_best.pt`, whose first layer is

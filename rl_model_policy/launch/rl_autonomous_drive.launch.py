@@ -8,6 +8,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -31,6 +32,13 @@ def generate_launch_description():
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
     pose_bounds_tolerance_m = LaunchConfiguration("pose_bounds_tolerance_m")
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
+    launch_object_mapper = LaunchConfiguration("launch_object_mapper")
+    launch_status_gui = LaunchConfiguration("launch_status_gui")
+    camera_vertical_fov_deg = LaunchConfiguration("camera_vertical_fov_deg")
+    camera_height_m = LaunchConfiguration("camera_height_m")
+    camera_pitch_deg = LaunchConfiguration("camera_pitch_deg")
+    object_center_height_m = LaunchConfiguration("object_center_height_m")
+    object_retention_s = LaunchConfiguration("object_retention_s")
     coverage_enabled = LaunchConfiguration("coverage_enabled")
     coverage_min_x = LaunchConfiguration("coverage_min_x")
     coverage_max_x = LaunchConfiguration("coverage_max_x")
@@ -157,6 +165,30 @@ def generate_launch_description():
         }.items(),
     )
 
+    object_mapper_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([
+            FindPackageShare("rl_model_policy"),
+            "launch",
+            "rl_object_world_mapper.launch.py",
+        ]),
+        launch_arguments={
+            "detections_topic": "/yolo/detections",
+            "odometry_topic": odometry_topic,
+            "output_topic": "/rl_estimated_objects",
+            "target_classes": target_classes,
+            "avoid_classes": avoid_classes,
+            "pose_timeout_s": pose_timeout_s,
+            "retention_s": object_retention_s,
+            "horizontal_fov_deg": camera_horizontal_fov_deg,
+            "vertical_fov_deg": camera_vertical_fov_deg,
+            "camera_height_m": camera_height_m,
+            "camera_pitch_deg": camera_pitch_deg,
+            "object_center_height_m": object_center_height_m,
+            "arena_half_extent_m": arena_half_extent_m,
+        }.items(),
+        condition=IfCondition(launch_object_mapper),
+    )
+
     delayed_start = TimerAction(
         period=AUTO_START_DELAY_S,
         condition=IfCondition(auto_start),
@@ -175,6 +207,14 @@ def generate_launch_description():
                 output="screen",
             ),
         ],
+    )
+
+    status_gui = Node(
+        package="robot_status_gui",
+        executable="robot_status_gui",
+        name="robot_status_gui",
+        output="screen",
+        condition=IfCondition(launch_status_gui),
     )
 
     return LaunchDescription([
@@ -229,6 +269,21 @@ def generate_launch_description():
         DeclareLaunchArgument("arena_half_extent_m", default_value="2.0"),
         DeclareLaunchArgument("pose_bounds_tolerance_m", default_value="0.25"),
         DeclareLaunchArgument("camera_horizontal_fov_deg", default_value="80.0"),
+        DeclareLaunchArgument(
+            "launch_object_mapper",
+            default_value="true",
+            description="Estimate detected object positions on the arena map.",
+        ),
+        DeclareLaunchArgument(
+            "launch_status_gui",
+            default_value="false",
+            description="Open the PyQt robot status GUI on the local display.",
+        ),
+        DeclareLaunchArgument("camera_vertical_fov_deg", default_value="50.0"),
+        DeclareLaunchArgument("camera_height_m", default_value="0.18"),
+        DeclareLaunchArgument("camera_pitch_deg", default_value="15.0"),
+        DeclareLaunchArgument("object_center_height_m", default_value="0.04"),
+        DeclareLaunchArgument("object_retention_s", default_value="180.0"),
         DeclareLaunchArgument(
             "coverage_enabled",
             default_value="true",
@@ -285,5 +340,7 @@ def generate_launch_description():
         motor_launch,
         pose_tracker_launch,
         policy_launch,
+        object_mapper_launch,
+        status_gui,
         delayed_start,
     ])

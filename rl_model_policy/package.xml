@@ -22,6 +22,7 @@
   <exec_depend>ros2_yolo_detector</exec_depend>
   <exec_depend>ros_robot_controller</exec_depend>
   <exec_depend>robot_pose_tracker</exec_depend>
+  <exec_depend>robot_status_gui</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

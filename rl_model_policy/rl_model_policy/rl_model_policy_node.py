@@ -85,6 +85,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("model_path", "mission_manager/models/rl_avoid_search_best.pt")
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("target_object_topic", "/target_object")
+        self.declare_parameter("target_label_topic", "/target_label")
         self.declare_parameter("avoid_object_topic", "/avoid_object")
         self.declare_parameter("avoid_objects_topic", "/avoid_objects")
         self.declare_parameter("control_topic", "/rl_model_policy_control")
@@ -157,6 +158,8 @@ class RLModelPolicyNode(Node):
         self.dry_run = bool(self.get_parameter("dry_run").value)
         self.latest_target = None
         self.latest_target_time = None
+        self.latest_target_label = None
+        self.latest_target_label_time = None
         self.latest_avoid = None
         self.latest_avoid_time = None
         self.latest_avoid_objects = []
@@ -174,6 +177,10 @@ class RLModelPolicyNode(Node):
         self.last_cmd = (0.0, 0.0)
         self.grab_state = self.GRAB_TRACKING
         self.grab_state_started_at = self.get_clock().now()
+        self.grab_state_elapsed_offset_s = 0.0
+        self.motion_paused = False
+        self.pickup_label = None
+        self.stored_objects = []
         self.control_mode = self.MODE_IDLE
         self.had_visible_target = False
         self.target_lost_started_at = None
@@ -203,6 +210,12 @@ class RLModelPolicyNode(Node):
             PointStamped,
             self.get_parameter("target_object_topic").value,
             self.target_callback,
+            10,
+        )
+        self.target_label_sub = self.create_subscription(
+            String,
+            self.get_parameter("target_label_topic").value,
+            self.target_label_callback,
             10,
         )
         self.avoid_sub = self.create_subscription(
@@ -251,7 +264,8 @@ class RLModelPolicyNode(Node):
             f"RL model policy ready. active={self.active}, dry_run={self.dry_run}, model={self.model_path}"
         )
         self.get_logger().info(
-            f"Send start/stop on {self.get_parameter('control_topic').value}; publishing cmd_vel on "
+            "Send start/pause_motion/resume_motion/stop on "
+            f"{self.get_parameter('control_topic').value}; publishing cmd_vel on "
             f"{self.get_parameter('cmd_vel_topic').value}"
         )
 
@@ -352,6 +366,10 @@ class RLModelPolicyNode(Node):
                 fov_rad,
             )
 
+    def target_label_callback(self, msg):
+        self.latest_target_label = msg.data.strip() or None
+        self.latest_target_label_time = self.get_clock().now()
+
     def odometry_callback(self, msg):
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
@@ -408,13 +426,19 @@ class RLModelPolicyNode(Node):
             self.coverage_command = None
             self.had_visible_target = False
             self.target_lost_started_at = None
+            self.motion_paused = False
             self.set_control_mode(self.MODE_COVERAGE_SEARCH)
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
             self.active = True
             self.get_logger().info("RL model policy started")
-        elif command in ("stop", "pause"):
+        elif command in ("pause", "pause_motion"):
+            self.set_motion_paused(True)
+        elif command in ("resume", "resume_motion"):
+            self.set_motion_paused(False)
+        elif command == "stop":
             self.active = False
+            self.motion_paused = False
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
@@ -424,6 +448,8 @@ class RLModelPolicyNode(Node):
         elif command == "reset":
             self.active = False
             self.latest_target = None
+            self.latest_target_label = None
+            self.latest_target_label_time = None
             self.latest_avoid = None
             self.latest_avoid_objects = []
             self.last_target_world_bearing = None
@@ -434,6 +460,9 @@ class RLModelPolicyNode(Node):
             self.coverage_command = None
             self.had_visible_target = False
             self.target_lost_started_at = None
+            self.motion_paused = False
+            self.pickup_label = None
+            self.stored_objects = []
             self.set_control_mode(self.MODE_IDLE)
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
@@ -449,9 +478,23 @@ class RLModelPolicyNode(Node):
         objects = self.current_avoid_objects(target)
         obs, bins, nearest = self.make_observation(target, objects)
         self.update_target_history(target)
-        grab_cmd = self.update_grab_sequence(target) if self.active else None
+        grab_cmd = (
+            self.update_grab_sequence(target)
+            if self.active and not self.motion_paused
+            else None
+        )
 
-        if grab_cmd is not None:
+        if (
+            self.active
+            and self.motion_paused
+            and self.grab_state != self.GRAB_TRACKING
+        ):
+            self.set_control_mode(self.MODE_GRAB_SEQUENCE)
+            linear_x, angular_z = (0.0, 0.0)
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+            self.coverage_command = None
+        elif grab_cmd is not None:
             self.set_control_mode(self.MODE_GRAB_SEQUENCE)
             linear_x, angular_z = grab_cmd
             self.raw_action = [0.0, 0.0]
@@ -490,9 +533,39 @@ class RLModelPolicyNode(Node):
             linear_x, angular_z = (0.0, 0.0)
             self.coverage_command = None
 
+        planned_linear_x = linear_x
+        planned_angular_z = angular_z
+        if self.motion_paused:
+            linear_x, angular_z = (0.0, 0.0)
+
         if self.active or bool(self.get_parameter("publish_stop_when_inactive").value):
             self.publish_cmd(linear_x, angular_z)
-        self.publish_state(obs, bins, nearest, linear_x, angular_z)
+        self.publish_state(
+            obs,
+            bins,
+            nearest,
+            linear_x,
+            angular_z,
+            planned_linear_x,
+            planned_angular_z,
+        )
+
+    def set_motion_paused(self, paused):
+        paused = bool(paused)
+        if paused == self.motion_paused:
+            return
+        if paused:
+            self.grab_state_elapsed_offset_s = self.grab_state_age_s()
+            self.motion_paused = True
+            self.publish_cmd(0.0, 0.0)
+            self.get_logger().info(
+                "Base motion paused; perception and policy updates remain active"
+            )
+            return
+
+        self.motion_paused = False
+        self.grab_state_started_at = self.get_clock().now()
+        self.get_logger().info("Base motion resumed")
 
     def create_coverage_controller(self):
         legs = generate_coverage_legs(
@@ -703,12 +776,16 @@ class RLModelPolicyNode(Node):
             if not (centered and close_enough):
                 return None
 
+            self.pickup_label = self.current_target_label() or "unknown"
             self.publish_cmd(0.0, 0.0)
             self.command_gripper(open_gripper=True)
             self.change_grab_state(self.GRAB_OPENING)
             return (0.0, 0.0)
 
         if self.grab_state == self.GRAB_OPENING:
+            fresh_label = self.current_target_label()
+            if fresh_label is not None:
+                self.pickup_label = fresh_label
             if self.grab_state_age_s() < self.get_float("gripper_move_duration_s"):
                 return (0.0, 0.0)
             self.change_grab_state(self.GRAB_FINAL_FORWARD)
@@ -723,6 +800,9 @@ class RLModelPolicyNode(Node):
         if self.grab_state == self.GRAB_CLOSING:
             if self.grab_state_age_s() < self.get_float("grab_duration_s"):
                 return (0.0, 0.0)
+            if self.pickup_label is not None:
+                self.stored_objects.append(self.pickup_label)
+                self.pickup_label = None
             self.change_grab_state(self.GRAB_COMPLETE)
             if bool(self.get_parameter("stop_after_grab").value):
                 self.active = False
@@ -827,22 +907,42 @@ class RLModelPolicyNode(Node):
     def change_grab_state(self, state):
         if self.grab_state == state:
             self.grab_state_started_at = self.get_clock().now()
+            self.grab_state_elapsed_offset_s = 0.0
             return
         self.grab_state = state
         self.grab_state_started_at = self.get_clock().now()
+        self.grab_state_elapsed_offset_s = 0.0
         self.get_logger().info(f"Grab state -> {state}")
 
     def grab_state_age_s(self):
         elapsed = self.get_clock().now() - self.grab_state_started_at
-        return elapsed.nanoseconds / 1_000_000_000.0
+        return (
+            self.grab_state_elapsed_offset_s
+            + elapsed.nanoseconds / 1_000_000_000.0
+        )
 
-    def publish_state(self, obs, bins, nearest, linear_x, angular_z):
+    def current_target_label(self):
+        if not self.is_fresh(self.latest_target_label_time, "target_timeout_s"):
+            return None
+        return self.latest_target_label
+
+    def publish_state(
+        self,
+        obs,
+        bins,
+        nearest,
+        linear_x,
+        angular_z,
+        planned_linear_x,
+        planned_angular_z,
+    ):
         pose_fresh = self.is_fresh(self.latest_pose_time, "pose_timeout_s")
         coverage = self.coverage_command
         msg = String()
         msg.data = json.dumps(
             {
                 "active": self.active,
+                "motion_paused": self.motion_paused,
                 "dry_run": self.dry_run,
                 "model_loaded": self.policy is not None,
                 "control_mode": self.control_mode,
@@ -854,11 +954,16 @@ class RLModelPolicyNode(Node):
                 ),
                 "grab_state": self.grab_state,
                 "gripper_enabled": bool(self.get_parameter("gripper_enabled").value),
+                "target_label": self.current_target_label(),
+                "pickup_label": self.pickup_label,
+                "stored_objects": list(self.stored_objects),
                 "obs": [round(v, 4) for v in obs[:self.model_observation_dim]],
                 "raw_action": [round(v, 4) for v in self.raw_action],
                 "filtered_action": [round(v, 4) for v in self.filtered_action],
                 "linear_x": round(float(linear_x), 4),
                 "angular_z": round(float(angular_z), 4),
+                "planned_linear_x": round(float(planned_linear_x), 4),
+                "planned_angular_z": round(float(planned_angular_z), 4),
                 "avoid_left": round(bins[0], 4),
                 "avoid_center": round(bins[1], 4),
                 "avoid_right": round(bins[2], 4),

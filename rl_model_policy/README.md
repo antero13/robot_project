@@ -54,6 +54,7 @@ testing a calibrated legacy pose model.
 
 - `/cmd_vel` (`geometry_msgs/Twist`)
 - `/ros_robot_controller/bus_servo/set_state` for the default bus-servo gripper
+- `/rl_estimated_objects` (`std_msgs/String`) for GUI map markers
 
 ## Run
 
@@ -247,3 +248,19 @@ Manual gripper commands use the same control topic:
 ros2 topic pub --once /rl_model_policy_control std_msgs/msg/String "{data: open}"
 ros2 topic pub --once /rl_model_policy_control std_msgs/msg/String "{data: close}"
 ```
+
+## Status GUI and motion pause
+
+Pass `launch_status_gui:=true` to open the PyQt status window. The autonomous
+launch also starts `rl_object_world_mapper`, which estimates each detected
+object's arena position and snaps it to one of the 42 legal placement points.
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  yolo_model_path:=/home/airobot/ros2_ws/best.engine \
+  target_classes:=0 \
+  launch_status_gui:=true
+```
+
+The GUI pause button publishes `pause_motion`; perception, policy calculations,
+and state topics continue while the published base velocity remains zero.
