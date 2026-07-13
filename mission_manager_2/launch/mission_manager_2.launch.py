@@ -106,8 +106,8 @@ def generate_launch_description():
             parameters=[{
                 'cmd_vel_topic': '/cmd_vel',
                 'imu_topic': '/ros_robot_controller/imu_raw',
-                'initial_x': 3.8,
-                'initial_y': 0.2,
+                'initial_x': 3.25,
+                'initial_y': 0.6656854249,
                 'initial_yaw_deg': 90.0,
                 'linear_scale': ParameterValue(
                     LaunchConfiguration('linear_scale'),

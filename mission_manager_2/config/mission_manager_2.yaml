@@ -9,8 +9,6 @@ mission_manager_2:
     main_road_y_m: 0.6656854249  # 0.4*sqrt(2)+0.1
     upper_wall_stop_distance_m: 1.0
     upper_wall_stop_pose_y_m: 3.0
-    storage_wall_distance_m: 0.3828427125  # 0.2*sqrt(2)+0.1
-    storage_pose_x_fallback_m: 0.45
 
     # ToF readings are accepted as wall readings only when they agree with odometry.
     front_sensor_offset_m: 0.15
@@ -21,19 +19,12 @@ mission_manager_2:
     wall_alignment_gain: 1.2
     wall_alignment_max_angular_z: 0.25
 
-    # Initial arc gets the 40 cm robot clear of the 40 cm start box before in-place turns.
-    leave_start_linear_x: 0.08
-    leave_start_angular_z: 0.22
-    leave_start_duration_s: 3.0
-
     # Non-search travel is approximately twice as fast as lane scanning.
     navigation_linear_x: 0.20
     navigation_min_linear_x: 0.06
     search_linear_x: 0.10
     target_return_linear_x: -0.14
     return_linear_x: -0.20
-    storage_linear_x: 0.16
-    storage_reverse_linear_x: -0.14
     heading_gain: 1.4
     navigation_max_angular_z: 0.30
     scan_heading_max_angular_z: 0.18
@@ -63,9 +54,6 @@ mission_manager_2:
     final_grab_forward_linear_x: 0.06
     target_cooldown_s: 1.0
     pickup_capacity: 4
-
-    storage_turn_ccw_deg: 45.0
-    storage_reverse_distance_m: 0.40
 
     gripper_enabled: true
     gripper_type: bus

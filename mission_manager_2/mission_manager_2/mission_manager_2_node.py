@@ -30,7 +30,6 @@ from mission_manager_2.mission_logic import (
 
 class MissionState(str, Enum):
     IDLE = 'IDLE'
-    LEAVE_START_ARC = 'LEAVE_START_ARC'
     NAV_TURN = 'NAV_TURN'
     NAV_DRIVE = 'NAV_DRIVE'
     TURN_TO_HEADING = 'TURN_TO_HEADING'
@@ -45,10 +44,6 @@ class MissionState(str, Enum):
     RETURN_TO_CHECKPOINT = 'RETURN_TO_CHECKPOINT'
     AFTER_TARGET_RETURN = 'AFTER_TARGET_RETURN'
     RETURN_MAIN_ROAD = 'RETURN_MAIN_ROAD'
-    STORAGE_APPROACH_WALL = 'STORAGE_APPROACH_WALL'
-    STORAGE_OPEN = 'STORAGE_OPEN'
-    STORAGE_BACK_OUT = 'STORAGE_BACK_OUT'
-    STORAGE_CLOSE = 'STORAGE_CLOSE'
     DONE = 'DONE'
     STOPPED = 'STOPPED'
     ERROR = 'ERROR'
@@ -98,7 +93,7 @@ class MissionManager2(Node):
         self.lane_index = 0
         self.carried_count = 0
         self.total_pick_attempts = 0
-        self.storage_pending = False
+        self.finish_after_main_road = False
         self.action_command_sent = False
         self.target_cooldown_until_s = 0.0
         self.side_target_history = deque(maxlen=self.target_history_frames)
@@ -156,7 +151,7 @@ class MissionManager2(Node):
 
         if self.auto_start:
             self.reset_mission_progress()
-            self.transition(MissionState.LEAVE_START_ARC, 'automatic start')
+            self.transition(MissionState.PREPARE_LANE, 'automatic start')
 
     def _declare_parameters(self):
         topics = {
@@ -186,8 +181,6 @@ class MissionManager2(Node):
             'main_road_y_m': 0.6656854249,
             'upper_wall_stop_distance_m': 1.0,
             'upper_wall_stop_pose_y_m': 3.0,
-            'storage_wall_distance_m': 0.3828427125,
-            'storage_pose_x_fallback_m': 0.45,
             'front_sensor_offset_m': 0.15,
             'wall_consistency_tolerance_m': 0.30,
             'wall_alignment_timeout_s': 2.0,
@@ -195,16 +188,11 @@ class MissionManager2(Node):
             'wall_alignment_stable_ticks': 4,
             'wall_alignment_gain': 1.2,
             'wall_alignment_max_angular_z': 0.25,
-            'leave_start_linear_x': 0.08,
-            'leave_start_angular_z': 0.22,
-            'leave_start_duration_s': 3.0,
             'navigation_linear_x': 0.20,
             'navigation_min_linear_x': 0.06,
             'search_linear_x': 0.10,
             'target_return_linear_x': -0.14,
             'return_linear_x': -0.20,
-            'storage_linear_x': 0.16,
-            'storage_reverse_linear_x': -0.14,
             'heading_gain': 1.4,
             'navigation_max_angular_z': 0.30,
             'scan_heading_max_angular_z': 0.18,
@@ -235,8 +223,6 @@ class MissionManager2(Node):
             'final_grab_forward_linear_x': 0.06,
             'target_cooldown_s': 1.0,
             'pickup_capacity': 4,
-            'storage_turn_ccw_deg': 45.0,
-            'storage_reverse_distance_m': 0.40,
             'gripper_enabled': True,
             'gripper_type': 'bus',
             'gripper_servo_id': 1,
@@ -308,14 +294,10 @@ class MissionManager2(Node):
             raise ValueError('return_linear_x must be negative')
         if self.get_float('target_return_linear_x') >= 0.0:
             raise ValueError('target_return_linear_x must be negative')
-        if self.get_float('storage_reverse_linear_x') >= 0.0:
-            raise ValueError('storage_reverse_linear_x must be negative')
         if self.get_float('search_linear_x') <= 0.0:
             raise ValueError('search_linear_x must be positive')
         if self.get_float('final_grab_forward_distance_m') <= 0.0:
             raise ValueError('final_grab_forward_distance_m must be positive')
-        if self.get_float('storage_reverse_distance_m') <= 0.0:
-            raise ValueError('storage_reverse_distance_m must be positive')
 
     def odom_callback(self, msg):
         orientation = msg.pose.pose.orientation
@@ -364,7 +346,7 @@ class MissionManager2(Node):
                 self.get_logger().warning('Start ignored because the mission is already active.')
                 return
             self.reset_mission_progress()
-            self.transition(MissionState.LEAVE_START_ARC, 'start command')
+            self.transition(MissionState.PREPARE_LANE, 'start command')
         elif command == 'stop':
             self.stop_robot()
             self.transition(MissionState.STOPPED, 'stop command')
@@ -388,7 +370,7 @@ class MissionManager2(Node):
         self.lane_index = 0
         self.carried_count = 0
         self.total_pick_attempts = 0
-        self.storage_pending = False
+        self.finish_after_main_road = False
         self.locked_target_class = None
         self.target_checkpoint = None
         self.approach_started_pose = None
@@ -423,7 +405,6 @@ class MissionManager2(Node):
             return
 
         handlers = {
-            MissionState.LEAVE_START_ARC: self.run_leave_start_arc,
             MissionState.NAV_TURN: self.run_nav_turn,
             MissionState.NAV_DRIVE: self.run_nav_drive,
             MissionState.TURN_TO_HEADING: self.run_turn_to_heading,
@@ -438,10 +419,6 @@ class MissionManager2(Node):
             MissionState.RETURN_TO_CHECKPOINT: self.run_return_to_checkpoint,
             MissionState.AFTER_TARGET_RETURN: self.run_after_target_return,
             MissionState.RETURN_MAIN_ROAD: self.run_return_main_road,
-            MissionState.STORAGE_APPROACH_WALL: self.run_storage_approach_wall,
-            MissionState.STORAGE_OPEN: self.run_storage_open,
-            MissionState.STORAGE_BACK_OUT: self.run_storage_back_out,
-            MissionState.STORAGE_CLOSE: self.run_storage_close,
         }
         handler = handlers.get(self.state)
         if handler is None:
@@ -449,20 +426,6 @@ class MissionManager2(Node):
             return
         handler()
         self.publish_status()
-
-    def run_leave_start_arc(self):
-        if self.state_age_s() < self.get_float('leave_start_duration_s'):
-            self.publish_cmd_vel(
-                self.get_float('leave_start_linear_x'),
-                self.get_float('leave_start_angular_z'),
-            )
-            return
-        self.begin_navigation(
-            self.lane_x_positions[0],
-            self.main_road_y,
-            MissionState.PREPARE_LANE,
-            'moving to first search-lane entrance',
-        )
 
     def begin_navigation(self, x, y, next_state, reason):
         self.nav_goal = (float(x), float(y))
@@ -606,7 +569,7 @@ class MissionManager2(Node):
             return
 
         if self.upper_wall_limit_reached():
-            self.begin_return_to_main_road(storage_pending=False)
+            self.begin_return_to_main_road(finish_after_return=False)
             return
 
         error = angular_error(self.lane_heading_yaw, self.pose.yaw)
@@ -772,12 +735,12 @@ class MissionManager2(Node):
         self.motion_started_pose = None
         self.target_cooldown_until_s = self.now_seconds() + self.get_float('target_cooldown_s')
         if self.carried_count >= self.pickup_capacity:
-            self.begin_return_to_main_road(storage_pending=True)
+            self.begin_return_to_main_road(finish_after_return=True)
         else:
             self.transition(MissionState.SCAN_LANE, 'search path restored')
 
-    def begin_return_to_main_road(self, storage_pending):
-        self.storage_pending = bool(storage_pending)
+    def begin_return_to_main_road(self, finish_after_return):
+        self.finish_after_main_road = bool(finish_after_return)
         self.transition(
             MissionState.RETURN_MAIN_ROAD,
             'returning straight to the bottom main road',
@@ -789,11 +752,10 @@ class MissionManager2(Node):
             return
         if self.pose.y <= self.main_road_y + self.get_float('position_tolerance_m'):
             self.stop_robot()
-            if self.storage_pending:
-                self.begin_turn(
-                    math.pi,
-                    MissionState.STORAGE_APPROACH_WALL,
-                    'turning west toward storage',
+            if self.finish_after_main_road:
+                self.transition(
+                    MissionState.DONE,
+                    'pickup capacity reached; storage route is disabled',
                 )
                 return
             if self.lane_index + 1 < len(self.lane_x_positions):
@@ -805,15 +767,7 @@ class MissionManager2(Node):
                     f'shifting to search lane {self.lane_index + 1}',
                 )
                 return
-            if self.carried_count > 0:
-                self.storage_pending = True
-                self.begin_turn(
-                    math.pi,
-                    MissionState.STORAGE_APPROACH_WALL,
-                    'all lanes searched; taking remaining objects to storage',
-                )
-            else:
-                self.transition(MissionState.DONE, 'all search lanes completed')
+            self.transition(MissionState.DONE, 'all search lanes completed')
             return
 
         error = angular_error(self.lane_heading_yaw, self.pose.yaw)
@@ -823,85 +777,6 @@ class MissionManager2(Node):
             self.get_float('scan_heading_max_angular_z'),
         )
         self.publish_cmd_vel(self.get_float('return_linear_x'), angular)
-
-    def run_storage_approach_wall(self):
-        if self.state_age_s() > self.get_float('navigation_timeout_s'):
-            self.fail('storage-wall approach timed out')
-            return
-        reached_by_sensor = (
-            self.left_wall_measurement_is_plausible()
-            and self.wall_distance <= self.get_float('storage_wall_distance_m')
-        )
-        reached_by_pose = self.pose.x <= self.get_float('storage_pose_x_fallback_m')
-        if reached_by_sensor or reached_by_pose:
-            self.stop_robot()
-            storage_yaw = self.pose.yaw + math.radians(
-                self.get_float('storage_turn_ccw_deg')
-            )
-            self.begin_turn(
-                storage_yaw,
-                MissionState.STORAGE_OPEN,
-                'storage distance reached; turning counterclockwise',
-            )
-            return
-
-        heading_error = angular_error(math.pi, self.pose.yaw)
-        angular = self.get_float('heading_gain') * heading_error
-        if self.left_wall_measurement_is_plausible():
-            angular += self.get_float('wall_alignment_gain') * self.wall_angle
-        angular = clamp(
-            angular,
-            -self.get_float('navigation_max_angular_z'),
-            self.get_float('navigation_max_angular_z'),
-        )
-        self.publish_cmd_vel(self.get_float('storage_linear_x'), angular)
-
-    def run_storage_open(self):
-        self.stop_robot()
-        if not self.action_command_sent:
-            self.command_gripper(open_gripper=True)
-            self.action_command_sent = True
-        if self.state_age_s() >= self.get_float('gripper_open_dwell_s'):
-            self.motion_started_pose = Pose2D(self.pose.x, self.pose.y, self.pose.yaw)
-            self.motion_heading = self.pose.yaw
-            self.transition(
-                MissionState.STORAGE_BACK_OUT,
-                'gripper open; reversing away from deposited objects',
-            )
-
-    def run_storage_back_out(self):
-        if self.motion_started_pose is None or self.motion_heading is None:
-            self.fail('storage reverse origin is missing')
-            return
-        if self.state_age_s() > self.get_float('distance_motion_timeout_s'):
-            self.fail('storage reverse motion timed out')
-            return
-        if pose_distance(self.pose, self.motion_started_pose) >= self.get_float(
-            'storage_reverse_distance_m'
-        ):
-            self.stop_robot()
-            self.transition(MissionState.STORAGE_CLOSE, 'storage reverse distance reached')
-            return
-        error = angular_error(self.motion_heading, self.pose.yaw)
-        angular = clamp(
-            self.get_float('heading_gain') * error,
-            -self.get_float('scan_heading_max_angular_z'),
-            self.get_float('scan_heading_max_angular_z'),
-        )
-        self.publish_cmd_vel(self.get_float('storage_reverse_linear_x'), angular)
-
-    def run_storage_close(self):
-        self.stop_robot()
-        if not self.action_command_sent:
-            self.command_gripper(open_gripper=False)
-            self.action_command_sent = True
-        if self.state_age_s() >= self.get_float('gripper_close_dwell_s'):
-            deposited = self.carried_count
-            self.carried_count = 0
-            self.transition(
-                MissionState.DONE,
-                f'storage deposit completed for {deposited} pickup attempts',
-            )
 
     def upper_wall_limit_reached(self):
         if self.pose.y >= self.get_float('upper_wall_stop_pose_y_m'):
@@ -915,16 +790,6 @@ class MissionManager2(Node):
         if not self.wall_is_recent() or self.wall_distance is None:
             return False
         expected = self.arena_height - self.pose.y - self.get_float('front_sensor_offset_m')
-        return wall_matches_expected(
-            self.wall_distance,
-            expected,
-            self.get_float('wall_consistency_tolerance_m'),
-        )
-
-    def left_wall_measurement_is_plausible(self):
-        if not self.wall_is_recent() or self.wall_distance is None:
-            return False
-        expected = self.pose.x - self.get_float('front_sensor_offset_m')
         return wall_matches_expected(
             self.wall_distance,
             expected,
