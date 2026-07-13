@@ -9,7 +9,6 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
 from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
-from sensor_msgs.msg import Range
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
@@ -77,16 +76,10 @@ class MissionManager2(Node):
         self.pose_received_at = None
         self.wall_distance = None
         self.wall_angle = None
-        self.wall_min_distance = None
         self.wall_received_at = None
-        self.left_range = None
-        self.left_range_received_at = None
-        self.right_range = None
-        self.right_range_received_at = None
 
         self.latest_target = None
         self.target_received_at = None
-        self.detection_frame_received_at = None
         self.locked_target_class = None
         self.target_checkpoint = None
         self.approach_started_pose = None
@@ -103,8 +96,6 @@ class MissionManager2(Node):
         self.carried_count = 0
         self.total_pick_attempts = 0
         self.storage_pending = False
-        self.pickup_succeeded = False
-        self.grab_counted = False
         self.action_command_sent = False
         self.target_cooldown_until_s = 0.0
 
@@ -146,18 +137,6 @@ class MissionManager2(Node):
             self.wall_callback,
             qos_profile_sensor_data,
         )
-        self.left_range_sub = self.create_subscription(
-            Range,
-            self.left_range_topic,
-            self.left_range_callback,
-            qos_profile_sensor_data,
-        )
-        self.right_range_sub = self.create_subscription(
-            Range,
-            self.right_range_topic,
-            self.right_range_callback,
-            qos_profile_sensor_data,
-        )
         self.pose_reset_client = self.create_client(Trigger, self.pose_reset_service)
 
         self.timer = self.create_timer(1.0 / self.timer_rate_hz, self.tick)
@@ -184,8 +163,6 @@ class MissionManager2(Node):
             'detections_topic': '/yolo/detections',
             'odom_topic': '/odom',
             'wall_topic': '/wall/distance_angle',
-            'left_range_topic': '/wall/left_range',
-            'right_range_topic': '/wall/right_range',
             'pose_reset_service': '/robot_pose/reset',
             'pwm_servo_topic': '/ros_robot_controller/pwm_servo/set_state',
             'bus_servo_topic': '/ros_robot_controller/bus_servo/set_state',
@@ -273,8 +250,6 @@ class MissionManager2(Node):
             'detections_topic',
             'odom_topic',
             'wall_topic',
-            'left_range_topic',
-            'right_range_topic',
             'pose_reset_service',
             'pwm_servo_topic',
             'bus_servo_topic',
@@ -335,20 +310,10 @@ class MissionManager2(Node):
     def wall_callback(self, msg):
         self.wall_distance = float(msg.vector.x)
         self.wall_angle = float(msg.vector.y)
-        self.wall_min_distance = float(msg.vector.z)
         self.wall_received_at = self.get_clock().now()
-
-    def left_range_callback(self, msg):
-        self.left_range = float(msg.range)
-        self.left_range_received_at = self.get_clock().now()
-
-    def right_range_callback(self, msg):
-        self.right_range = float(msg.range)
-        self.right_range_received_at = self.get_clock().now()
 
     def detections_callback(self, msg):
         now = self.get_clock().now()
-        self.detection_frame_received_at = now
         target = select_target(
             msg.data,
             self.target_classes,
@@ -391,8 +356,6 @@ class MissionManager2(Node):
         self.carried_count = 0
         self.total_pick_attempts = 0
         self.storage_pending = False
-        self.pickup_succeeded = False
-        self.grab_counted = False
         self.locked_target_class = None
         self.target_checkpoint = None
         self.approach_started_pose = None
@@ -601,8 +564,6 @@ class MissionManager2(Node):
             self.target_checkpoint = Pose2D(self.pose.x, self.pose.y, self.pose.yaw)
             self.approach_started_pose = None
             self.locked_target_class = target.class_name
-            self.pickup_succeeded = False
-            self.grab_counted = False
             self.transition(
                 MissionState.ALIGN_TARGET,
                 f'large-enough target detected: {target.class_name}',
@@ -721,15 +682,12 @@ class MissionManager2(Node):
             self.action_command_sent = True
         if self.state_age_s() < self.get_float('gripper_close_dwell_s'):
             return
-        if not self.grab_counted:
-            self.carried_count += 1
-            self.total_pick_attempts += 1
-            self.grab_counted = True
-            self.pickup_succeeded = True
-            self.get_logger().info(
-                f'Pickup attempt counted: carried={self.carried_count}, '
-                f'total={self.total_pick_attempts}'
-            )
+        self.carried_count += 1
+        self.total_pick_attempts += 1
+        self.get_logger().info(
+            f'Pickup attempt counted: carried={self.carried_count}, '
+            f'total={self.total_pick_attempts}'
+        )
         self.transition(
             MissionState.RETURN_TO_CHECKPOINT,
             'reversing to pre-target search pose',
@@ -737,7 +695,6 @@ class MissionManager2(Node):
 
     def abort_target(self, reason):
         self.stop_robot()
-        self.pickup_succeeded = False
         if self.target_checkpoint is None:
             self.fail(f'{reason}; target checkpoint is missing')
             return
@@ -774,13 +731,12 @@ class MissionManager2(Node):
         self.publish_cmd_vel(self.get_float('return_linear_x'), angular)
 
     def run_after_target_return(self):
-        succeeded = self.pickup_succeeded
         self.locked_target_class = None
         self.target_checkpoint = None
         self.approach_started_pose = None
         self.motion_started_pose = None
         self.target_cooldown_until_s = self.now_seconds() + self.get_float('target_cooldown_s')
-        if succeeded and self.carried_count >= self.pickup_capacity:
+        if self.carried_count >= self.pickup_capacity:
             self.begin_return_to_main_road(storage_pending=True)
         else:
             self.transition(MissionState.SCAN_LANE, 'search path restored')

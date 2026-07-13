@@ -17,11 +17,9 @@ class TargetObservation:
     class_id: str
     confidence: float
     x_error: float
-    center_y_ratio: float
     bottom_y_ratio: float
     area_ratio: float
     height_ratio: float
-    bbox_xyxy: tuple[float, float, float, float]
 
 
 def clamp(value: float, lower: float, upper: float) -> float:
@@ -168,15 +166,12 @@ def _convert_detection(
         return None
 
     center_x = (x1 + x2) * 0.5
-    center_y = (y1 + y2) * 0.5
     return TargetObservation(
         class_name=str(detection.get('class_name', detection.get('class_id', ''))),
         class_id=str(detection.get('class_id', '')),
         confidence=confidence,
         x_error=clamp((center_x - image_width * 0.5) / (image_width * 0.5), -1.0, 1.0),
-        center_y_ratio=clamp(center_y / image_height, 0.0, 1.0),
         bottom_y_ratio=clamp(y2 / image_height, 0.0, 1.0),
         area_ratio=clamp((width * height) / (image_width * image_height), 0.0, 1.0),
         height_ratio=clamp(height / image_height, 0.0, 1.0),
-        bbox_xyxy=(x1, y1, x2, y2),
     )
