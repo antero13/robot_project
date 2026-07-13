@@ -1,0 +1,71 @@
+mission_manager_2:
+  ros__parameters:
+    auto_start: false
+
+    # Arena coordinates use bottom-left=(0, 0), top-right=(4, 4), meters.
+    arena_width_m: 4.0
+    arena_height_m: 4.0
+    lane_x_positions: [3.25, 2.25, 1.25, 0.25]
+    main_road_y_m: 0.6656854249  # 0.4*sqrt(2)+0.1
+    upper_wall_stop_distance_m: 1.0
+    upper_wall_stop_pose_y_m: 3.0
+    storage_wall_distance_m: 0.3828427125  # 0.2*sqrt(2)+0.1
+    storage_pose_x_fallback_m: 0.45
+
+    # ToF readings are accepted as wall readings only when they agree with odometry.
+    front_sensor_offset_m: 0.15
+    wall_consistency_tolerance_m: 0.30
+    wall_alignment_timeout_s: 2.0
+    wall_angle_tolerance_deg: 2.0
+    wall_alignment_stable_ticks: 4
+    wall_alignment_gain: 1.2
+    wall_alignment_max_angular_z: 0.25
+
+    # Initial arc gets the 40 cm robot clear of the 40 cm start box before in-place turns.
+    leave_start_linear_x: 0.08
+    leave_start_angular_z: 0.22
+    leave_start_duration_s: 3.0
+
+    navigation_linear_x: 0.12
+    navigation_min_linear_x: 0.04
+    search_linear_x: 0.10
+    return_linear_x: -0.14
+    storage_linear_x: 0.08
+    heading_gain: 1.4
+    navigation_max_angular_z: 0.30
+    scan_heading_max_angular_z: 0.18
+    turn_max_angular_z: 0.40
+    turn_min_angular_z: 0.10
+    yaw_tolerance_deg: 3.0
+    position_tolerance_m: 0.05
+    distance_motion_timeout_s: 10.0
+
+    # Empty means every YOLO class is collectible. Set a comma-separated allow-list if needed.
+    target_classes: ""
+    target_min_confidence: 0.30
+    target_trigger_area_ratio: 0.008
+    target_trigger_height_ratio: 0.10
+    target_center_tolerance: 0.10
+    target_timeout_s: 0.6
+    target_align_gain: 0.90
+    target_align_max_angular_z: 0.40
+    target_approach_max_linear_x: 0.08
+    target_approach_min_linear_x: 0.03
+    target_max_approach_distance_m: 0.90
+    pickup_bottom_y_ratio: 0.70
+    final_grab_forward_distance_m: 0.10
+    final_grab_forward_linear_x: 0.06
+    target_cooldown_s: 1.0
+    pickup_capacity: 4
+
+    storage_turn_ccw_deg: 45.0
+    storage_reverse_distance_m: 0.40
+
+    gripper_enabled: true
+    gripper_type: bus
+    gripper_servo_id: 1
+    gripper_open_position: 500
+    gripper_closed_position: 750
+    gripper_move_duration_s: 0.5
+    gripper_open_dwell_s: 0.7
+    gripper_close_dwell_s: 0.8
