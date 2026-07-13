@@ -16,6 +16,7 @@ from rl_model_policy.observation import (
     OBSERVATION_NAMES,
     estimate_target_world_bearing,
     make_pose_observation,
+    pose_is_usable,
     quaternion_to_yaw,
     validate_observation,
 )
@@ -86,6 +87,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("episode_length_s", 18.0)
         self.declare_parameter("pose_timeout_s", 0.5)
         self.declare_parameter("arena_half_extent_m", 2.0)
+        self.declare_parameter("pose_bounds_tolerance_m", 0.25)
         self.declare_parameter("camera_horizontal_fov_deg", 90.0)
 
         self.declare_parameter("avoid_area_ratio", 0.20)
@@ -131,7 +133,7 @@ class RLModelPolicyNode(Node):
         self.robot_y = 0.0
         self.robot_yaw = 0.0
         self.robot_yaw_rate = 0.0
-        self.last_target_bearing = None
+        self.last_target_world_bearing = None
         self.time_since_target_seen = self.get_float("episode_length_s")
         self.last_target_direction = 1.0
         self.raw_action = [0.0, 0.0]
@@ -281,7 +283,7 @@ class RLModelPolicyNode(Node):
             self.last_target_direction = 1.0 if self.latest_target.x >= 0.0 else -1.0
         if self.is_fresh(self.latest_pose_time, "pose_timeout_s"):
             fov_rad = math.radians(self.get_float("camera_horizontal_fov_deg"))
-            self.last_target_bearing = estimate_target_world_bearing(
+            self.last_target_world_bearing = estimate_target_world_bearing(
                 self.robot_yaw,
                 self.latest_target.x,
                 fov_rad,
@@ -300,8 +302,8 @@ class RLModelPolicyNode(Node):
         )
         self.robot_yaw_rate = float(msg.twist.twist.angular.z)
         self.latest_pose_time = self.get_clock().now()
-        if self.last_target_bearing is None:
-            self.last_target_bearing = self.robot_yaw
+        if self.last_target_world_bearing is None:
+            self.last_target_world_bearing = self.robot_yaw
 
     def avoid_callback(self, msg):
         self.latest_avoid = self.make_point(msg.point.x, msg.point.y, msg.point.z)
@@ -354,7 +356,7 @@ class RLModelPolicyNode(Node):
             self.latest_target = None
             self.latest_avoid = None
             self.latest_avoid_objects = []
-            self.last_target_bearing = None
+            self.last_target_world_bearing = None
             self.time_since_target_seen = self.get_float("episode_length_s")
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
@@ -414,13 +416,20 @@ class RLModelPolicyNode(Node):
             1.0,
         )
 
+        pose_fresh = self.is_fresh(self.latest_pose_time, "pose_timeout_s")
+        pose_valid = pose_fresh and pose_is_usable(
+            self.robot_x,
+            self.robot_y,
+            self.get_float("arena_half_extent_m"),
+            self.get_float("pose_bounds_tolerance_m"),
+        )
         pose_obs = make_pose_observation(
-            pose_valid=self.is_fresh(self.latest_pose_time, "pose_timeout_s"),
+            pose_valid=pose_valid,
             robot_x=self.robot_x,
             robot_y=self.robot_y,
             yaw=self.robot_yaw,
             yaw_rate=self.robot_yaw_rate,
-            last_target_bearing=self.last_target_bearing,
+            last_target_world_bearing=self.last_target_world_bearing,
             arena_half_extent_m=self.get_float("arena_half_extent_m"),
             max_angular_speed=self.get_float("max_angular_speed"),
         )

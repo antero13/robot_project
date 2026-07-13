@@ -166,7 +166,8 @@ imu_yaw_rate_norm:
   yaw_rate / max_angular_speed, clamped to [-1, 1]
 
 last_target_bearing_sin, last_target_bearing_cos:
-  bearing from robot heading to the last known target world direction.
+  relative bearing from the current robot heading to the last known target
+  world direction: last_target_world_bearing - current_yaw.
   If exact world target bearing is unavailable, compute an approximate value
   from the latest target_x and current yaw, or keep the previous bearing.
 ```

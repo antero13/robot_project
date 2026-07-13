@@ -34,6 +34,7 @@ the current checkpoint.
 - `/odom` (`nav_msgs/Odometry`)
   - arena-center pose and calibrated/fallback yaw rate from `robot_pose_tracker`
   - stale or missing odometry sets `pose_valid=0` and zeroes observation 11-17
+  - positions outside the 4 m arena plus `pose_bounds_tolerance_m` are also invalid
 
 ## Output
 

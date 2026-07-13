@@ -13,6 +13,7 @@ def generate_launch_description():
     odometry_topic = LaunchConfiguration('odometry_topic')
     pose_timeout_s = LaunchConfiguration('pose_timeout_s')
     arena_half_extent_m = LaunchConfiguration('arena_half_extent_m')
+    pose_bounds_tolerance_m = LaunchConfiguration('pose_bounds_tolerance_m')
     camera_horizontal_fov_deg = LaunchConfiguration('camera_horizontal_fov_deg')
     gripper_enabled = LaunchConfiguration('gripper_enabled')
     gripper_type = LaunchConfiguration('gripper_type')
@@ -50,6 +51,7 @@ def generate_launch_description():
         DeclareLaunchArgument('odometry_topic', default_value='/odom'),
         DeclareLaunchArgument('pose_timeout_s', default_value='0.5'),
         DeclareLaunchArgument('arena_half_extent_m', default_value='2.0'),
+        DeclareLaunchArgument('pose_bounds_tolerance_m', default_value='0.25'),
         DeclareLaunchArgument('camera_horizontal_fov_deg', default_value='90.0'),
         DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),
@@ -86,6 +88,10 @@ def generate_launch_description():
                 'episode_length_s': 18.0,
                 'pose_timeout_s': ParameterValue(pose_timeout_s, value_type=float),
                 'arena_half_extent_m': ParameterValue(arena_half_extent_m, value_type=float),
+                'pose_bounds_tolerance_m': ParameterValue(
+                    pose_bounds_tolerance_m,
+                    value_type=float,
+                ),
                 'camera_horizontal_fov_deg': ParameterValue(
                     camera_horizontal_fov_deg,
                     value_type=float,

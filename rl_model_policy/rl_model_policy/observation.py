@@ -39,13 +39,30 @@ def estimate_target_world_bearing(yaw, target_x, camera_horizontal_fov_rad):
     return yaw - clamp(target_x, -1.0, 1.0) * camera_horizontal_fov_rad * 0.5
 
 
+def normalize_angle(angle):
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def pose_is_usable(robot_x, robot_y, arena_half_extent_m, bounds_tolerance_m):
+    limit = max(float(arena_half_extent_m), 1e-6) + max(
+        float(bounds_tolerance_m),
+        0.0,
+    )
+    return (
+        math.isfinite(float(robot_x))
+        and math.isfinite(float(robot_y))
+        and abs(float(robot_x)) <= limit
+        and abs(float(robot_y)) <= limit
+    )
+
+
 def make_pose_observation(
     pose_valid,
     robot_x,
     robot_y,
     yaw,
     yaw_rate,
-    last_target_bearing,
+    last_target_world_bearing,
     arena_half_extent_m,
     max_angular_speed,
 ):
@@ -54,7 +71,8 @@ def make_pose_observation(
 
     extent = max(float(arena_half_extent_m), 1e-6)
     angular_speed = max(abs(float(max_angular_speed)), 1e-6)
-    bearing = yaw if last_target_bearing is None else last_target_bearing
+    world_bearing = yaw if last_target_world_bearing is None else last_target_world_bearing
+    relative_bearing = normalize_angle(float(world_bearing) - float(yaw))
     return [
         1.0,
         clamp(float(robot_x) / extent, -1.0, 1.0),
@@ -62,8 +80,8 @@ def make_pose_observation(
         math.sin(float(yaw)),
         math.cos(float(yaw)),
         clamp(float(yaw_rate) / angular_speed, -1.0, 1.0),
-        math.sin(float(bearing)),
-        math.cos(float(bearing)),
+        math.sin(relative_bearing),
+        math.cos(relative_bearing),
     ]
 
 

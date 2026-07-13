@@ -5,6 +5,7 @@ from rl_model_policy.observation import (
     OBSERVATION_DIM,
     estimate_target_world_bearing,
     make_pose_observation,
+    pose_is_usable,
     quaternion_to_yaw,
     validate_observation,
 )
@@ -18,12 +19,12 @@ class ObservationTest(unittest.TestCase):
             robot_y=-1.0,
             yaw=math.pi / 2.0,
             yaw_rate=0.4,
-            last_target_bearing=math.pi,
+            last_target_world_bearing=math.pi,
             arena_half_extent_m=2.0,
             max_angular_speed=0.8,
         )
 
-        expected = [1.0, 0.5, -0.5, 1.0, 0.0, 0.5, 0.0, -1.0]
+        expected = [1.0, 0.5, -0.5, 1.0, 0.0, 0.5, 1.0, 0.0]
         for actual, wanted in zip(pose, expected):
             self.assertAlmostEqual(actual, wanted)
         self.assertEqual(len(validate_observation([0.0] * 10 + pose)), OBSERVATION_DIM)
@@ -49,6 +50,10 @@ class ObservationTest(unittest.TestCase):
     def test_observation_length_is_enforced(self):
         with self.assertRaisesRegex(ValueError, "Expected 18 observations"):
             validate_observation([0.0] * 10)
+
+    def test_pose_outside_arena_is_not_usable(self):
+        self.assertTrue(pose_is_usable(1.9, -1.9, 2.0, 0.25))
+        self.assertFalse(pose_is_usable(2.8, 0.9, 2.0, 0.25))
 
 
 if __name__ == "__main__":
