@@ -149,8 +149,6 @@ Detection JSON example:
   "frame_id": "camera",
   "detections": [
     {
-      "stable_track_id": 3,
-      "track_id": 7,
       "class_id": 0,
       "class_name": "target",
       "confidence": 0.91,
@@ -162,9 +160,14 @@ Detection JSON example:
 
 Mission nodes can subscribe to `/target_object` and `/avoid_objects`.
 `/avoid_objects` includes `x`, box-bottom `y`, bbox-center `center_y`,
-confidence, tracking ID, and bounding-box payload for each avoid object.
+confidence, and bounding-box payload for each avoid object.
 Lower-level consumers can subscribe to `/yolo/detections` for the full class,
-confidence, tracking ID, and bounding-box payload.
+confidence, and bounding-box payload.
+
+Each image is processed independently with `YOLO.predict()`. The detector does
+not run ByteTrack, assign object IDs, vote across frames, or retain detections
+when an object is missing from the current frame. `/target_object` is selected
+only from the candidates present in the same detection message.
 
 ## Annotated Normalized Coordinates
 
@@ -190,44 +193,6 @@ meters.
 ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \
   publish_annotated:=true
 ros2 run rqt_image_view rqt_image_view /yolo/annotated_image
-```
-
-ByteTrack is enabled by default in `yolo_camera_node` through Ultralytics:
-
-```text
-tracker_enabled: true
-tracker_config: bytetrack.yaml
-tracker_persist: true
-stable_tracking_enabled: true
-stable_track_timeout_s: 1.0
-stable_track_iou_threshold: 0.15
-stable_track_center_ratio: 0.75
-```
-
-`track_id` is the raw ByteTrack ID. It can change when detection briefly drops
-or the box moves abruptly. `stable_track_id` is an extra package-level ID that
-matches by raw track ID first, then by box overlap and center distance. Mission
-target locking uses this stable ID when available.
-
-When multiple target objects are visible, `detections_to_target_node` keeps a
-short target lock so the published `/target_object` does not switch left and
-right every frame. If a `stable_track_id` or ByteTrack `track_id` is available,
-that ID is used first. Otherwise, the selected target is kept while its box still
-overlaps the previous target or stays near the previous normalized x/y position.
-A new target can take over only when it is clearly closer or has a much better
-center-weighted score.
-
-Target lock defaults:
-
-```text
-target_lock_enabled: true
-target_lock_timeout_s: 0.7
-target_lock_iou_threshold: 0.20
-target_lock_x_margin: 0.30
-target_lock_y_margin: 0.20
-target_switch_y_margin: 0.12
-target_switch_score_margin: 0.25
-target_center_weight: 0.25
 ```
 
 `detections_to_target_node` removes avoid candidates whose bounding boxes

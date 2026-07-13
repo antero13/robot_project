@@ -10,7 +10,7 @@
 ```text
 USB camera
   -> v4l2_camera
-  -> image correction + YOLO + ByteTrack
+  -> image correction + per-frame YOLO prediction
   -> /target_object, /avoid_objects
 robot_pose_tracker -> /odom
   -> rl_model_policy

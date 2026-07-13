@@ -20,13 +20,6 @@ class DetectionsToTargetNode(Node):
         self.declare_parameter("target_classes", "")
         self.declare_parameter("avoid_classes", "")
         self.declare_parameter("min_confidence", 0.25)
-        self.declare_parameter("target_lock_enabled", True)
-        self.declare_parameter("target_lock_timeout_s", 0.7)
-        self.declare_parameter("target_lock_iou_threshold", 0.20)
-        self.declare_parameter("target_lock_x_margin", 0.30)
-        self.declare_parameter("target_lock_y_margin", 0.20)
-        self.declare_parameter("target_switch_y_margin", 0.12)
-        self.declare_parameter("target_switch_score_margin", 0.25)
         self.declare_parameter("target_center_weight", 0.25)
         self.declare_parameter("avoid_target_iou_threshold", 0.35)
         self.declare_parameter("image_width", 640.0)
@@ -39,21 +32,10 @@ class DetectionsToTargetNode(Node):
         self.avoid_label_topic = self.get_parameter("avoid_label_topic").value
         self.avoid_objects_topic = self.get_parameter("avoid_objects_topic").value
         self.min_confidence = float(self.get_parameter("min_confidence").value)
-        self.target_lock_enabled = bool(self.get_parameter("target_lock_enabled").value)
-        self.target_lock_timeout_s = float(self.get_parameter("target_lock_timeout_s").value)
-        self.target_lock_iou_threshold = float(self.get_parameter("target_lock_iou_threshold").value)
-        self.target_lock_x_margin = float(self.get_parameter("target_lock_x_margin").value)
-        self.target_lock_y_margin = float(self.get_parameter("target_lock_y_margin").value)
-        self.target_switch_y_margin = float(self.get_parameter("target_switch_y_margin").value)
-        self.target_switch_score_margin = float(self.get_parameter("target_switch_score_margin").value)
         self.target_center_weight = float(self.get_parameter("target_center_weight").value)
         self.avoid_target_iou_threshold = float(self.get_parameter("avoid_target_iou_threshold").value)
         self.target_classes = self.parse_class_list(self.get_parameter("target_classes").value)
         self.avoid_classes = self.parse_class_list(self.get_parameter("avoid_classes").value)
-        self.locked_target_track_id = None
-        self.locked_target_bbox = None
-        self.locked_target_point = None
-        self.locked_target_time = None
 
         self.target_pub = self.create_publisher(PointStamped, self.target_topic, 10)
         self.target_label_pub = self.create_publisher(String, self.target_label_topic, 10)
@@ -95,11 +77,11 @@ class DetectionsToTargetNode(Node):
             if converted is None:
                 continue
 
-            class_name, class_keys, point_msg, bbox_xyxy, track_id, center_y_ratio = converted
+            class_name, class_keys, point_msg, bbox_xyxy, center_y_ratio = converted
             if self.is_target(class_keys):
-                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id, center_y_ratio))
+                target_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio))
             elif self.is_avoid(class_keys):
-                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, track_id, center_y_ratio))
+                avoid_candidates.append((point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio))
 
         avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
         target_candidate = self.select_target_candidate(target_candidates)
@@ -113,7 +95,7 @@ class DetectionsToTargetNode(Node):
         image_width: float,
         image_height: float,
         header,
-    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float], int | None, float] | None:
+    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float], float] | None:
         class_name = str(detection.get("class_name", detection.get("class_id", "")))
         class_id = detection.get("class_id", "")
         class_keys = {class_name, str(class_id)}
@@ -147,7 +129,7 @@ class DetectionsToTargetNode(Node):
         out.point.x = self.clamp(normalized_x_error, -1.0, 1.0)
         out.point.y = self.clamp(bottom_y_ratio, 0.0, 1.0)
         out.point.z = confidence
-        return class_name, class_keys, out, (x1, y1, x2, y2), self.parse_track_id(detection), center_y_ratio
+        return class_name, class_keys, out, (x1, y1, x2, y2), center_y_ratio
 
     def filter_overlapping_avoid_candidates(self, avoid_candidates, target_candidates):
         threshold = self.avoid_target_iou_threshold
@@ -167,95 +149,17 @@ class DetectionsToTargetNode(Node):
 
     def select_target_candidate(self, candidates):
         if not candidates:
-            self.clear_expired_target_lock()
             return None
-        if not self.target_lock_enabled:
-            return self.update_target_lock(self.best_target_candidate(candidates))
-
-        best_candidate = self.best_target_candidate(candidates)
-        if not self.has_active_target_lock():
-            return self.update_target_lock(best_candidate)
-
-        locked_candidates = [
-            candidate for candidate in candidates
-            if self.candidate_matches_locked_target(candidate)
-        ]
-        if not locked_candidates:
-            return self.update_target_lock(best_candidate)
-
-        locked_candidate = self.best_target_candidate(locked_candidates)
-        if self.should_switch_target(best_candidate, locked_candidate):
-            return self.update_target_lock(best_candidate)
-        return self.update_target_lock(locked_candidate)
+        return self.best_target_candidate(candidates)
 
     def best_target_candidate(self, candidates):
         return max(candidates, key=self.target_candidate_score)
 
     def target_candidate_score(self, candidate):
-        _, _, point_msg, _, _, _ = candidate
+        _, _, point_msg, _, _ = candidate
         closeness = float(point_msg.point.y)
         x_error = abs(float(point_msg.point.x))
         return closeness - self.target_center_weight * x_error
-
-    def should_switch_target(self, new_candidate, locked_candidate):
-        if new_candidate is locked_candidate:
-            return False
-
-        new_y = float(new_candidate[2].point.y)
-        locked_y = float(locked_candidate[2].point.y)
-        if new_y >= locked_y + self.target_switch_y_margin:
-            return True
-
-        new_score = self.target_candidate_score(new_candidate)
-        locked_score = self.target_candidate_score(locked_candidate)
-        return new_score >= locked_score + self.target_switch_score_margin
-
-    def candidate_matches_locked_target(self, candidate):
-        if self.locked_target_bbox is None or self.locked_target_point is None:
-            return False
-
-        _, _, point_msg, bbox_xyxy, track_id, _ = candidate
-        if track_id is not None and track_id == self.locked_target_track_id:
-            return True
-
-        if self.bbox_iou(bbox_xyxy, self.locked_target_bbox) >= self.target_lock_iou_threshold:
-            return True
-
-        locked_x, locked_y = self.locked_target_point
-        x_gap = abs(float(point_msg.point.x) - locked_x)
-        y_gap = abs(float(point_msg.point.y) - locked_y)
-        return x_gap <= self.target_lock_x_margin and y_gap <= self.target_lock_y_margin
-
-    def has_active_target_lock(self):
-        if self.locked_target_time is None:
-            return False
-
-        elapsed = self.get_clock().now() - self.locked_target_time
-        if elapsed.nanoseconds / 1_000_000_000.0 > self.target_lock_timeout_s:
-            self.clear_target_lock()
-            return False
-        return True
-
-    def clear_expired_target_lock(self):
-        if self.locked_target_time is not None:
-            self.has_active_target_lock()
-
-    def update_target_lock(self, candidate):
-        if candidate is None:
-            return None
-
-        _, _, point_msg, bbox_xyxy, track_id, _ = candidate
-        self.locked_target_track_id = track_id
-        self.locked_target_bbox = bbox_xyxy
-        self.locked_target_point = (float(point_msg.point.x), float(point_msg.point.y))
-        self.locked_target_time = self.get_clock().now()
-        return candidate
-
-    def clear_target_lock(self):
-        self.locked_target_track_id = None
-        self.locked_target_bbox = None
-        self.locked_target_point = None
-        self.locked_target_time = None
 
     def publish_best(self, candidates, point_pub, label_pub) -> None:
         if not candidates:
@@ -267,7 +171,7 @@ class DetectionsToTargetNode(Node):
         if candidate is None:
             return
 
-        _, class_name, point_msg, _, _, _ = candidate
+        _, class_name, point_msg, _, _ = candidate
         point_pub.publish(point_msg)
 
         label_msg = String()
@@ -288,7 +192,6 @@ class DetectionsToTargetNode(Node):
                     "y": float(point_msg.point.y),
                     "center_y": float(center_y_ratio),
                     "confidence": float(point_msg.point.z),
-                    "track_id": track_id,
                     "bbox_xyxy": {
                         "x1": float(bbox_xyxy[0]),
                         "y1": float(bbox_xyxy[1]),
@@ -296,7 +199,7 @@ class DetectionsToTargetNode(Node):
                         "y2": float(bbox_xyxy[3]),
                     },
                 }
-                for _, class_name, point_msg, bbox_xyxy, track_id, center_y_ratio in sorted(
+                for _, class_name, point_msg, bbox_xyxy, center_y_ratio in sorted(
                     candidates,
                     key=lambda item: item[0],
                     reverse=True,
@@ -341,16 +244,6 @@ class DetectionsToTargetNode(Node):
         if isinstance(value, (list, tuple)):
             return {str(item).strip() for item in value if str(item).strip()}
         return {item.strip() for item in str(value).split(",") if item.strip()}
-
-    @staticmethod
-    def parse_track_id(detection: dict[str, Any]) -> int | None:
-        value = detection.get("stable_track_id", detection.get("track_id"))
-        if value is None:
-            return None
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
 
     @staticmethod
     def clamp(value: float, min_value: float, max_value: float) -> float:

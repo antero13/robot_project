@@ -21,7 +21,7 @@
 
 코드는 카메라 입력부터 YOLO, 목표 변환, RL 정책, `/cmd_vel`, 모터 명령까지
 모듈 경계가 비교적 명확하다. 카메라의 안정적인 USB 경로, 모터 명령 타임아웃,
-ByteTrack과 목표 잠금, 그리퍼 상태 머신, 선택적인 RViz 시각화도 실전 운용에
+프레임별 YOLO 결과 발행, 그리퍼 상태 머신, 선택적인 RViz 시각화도 실전 운용에
 도움이 된다.
 
 최신 수정으로 기본 RL 체크포인트와 런타임 코드의 observation 차원 문제는
@@ -269,7 +269,7 @@ launch, USB camera, serial motor controller, TensorRT inference는 실행하지 
 - `cmd_vel_to_motor`가 0.5초 command timeout 후 모터 정지 명령을 계속 발행한다.
 - 바퀴 반지름, 차폭, 모터 ID와 방향이 parameter로 분리돼 있다.
 - 카메라를 `/dev/v4l/by-path`로 고정해 `/dev/video*` 번호 변화를 피한다.
-- YOLO 결과에 ByteTrack과 추가 stable ID를 적용하고 target lock을 제공한다.
+- YOLO 결과가 이전 프레임 상태 없이 현재 프레임의 bbox와 confidence를 직접 제공한다.
 - 목표와 회피 객체가 겹칠 때 중복 회피를 줄이는 필터가 있다.
 - RL 그리퍼 동작이 `TRACKING -> OPENING -> FINAL_FORWARD -> CLOSING`으로
   명확히 분리돼 있다.

@@ -12,7 +12,6 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Header, String
 
 from .frame_correction import FrameCorrector
-from .temporal_stabilizer import TemporalDetectionStabilizer
 
 
 class YoloCameraNode(Node):
@@ -34,21 +33,6 @@ class YoloCameraNode(Node):
         self.declare_parameter("correction_clahe_clip_limit", 1.2)
         self.declare_parameter("correction_clahe_tile_grid", 8)
         self.declare_parameter("correction_chroma_gain", 1.3)
-        self.declare_parameter("tracker_enabled", True)
-        self.declare_parameter("tracker_config", "bytetrack.yaml")
-        self.declare_parameter("tracker_persist", True)
-        self.declare_parameter("stable_tracking_enabled", True)
-        self.declare_parameter("stable_track_timeout_s", 1.0)
-        self.declare_parameter("stable_track_iou_threshold", 0.15)
-        self.declare_parameter("stable_track_center_ratio", 0.75)
-        self.declare_parameter("stable_track_class_mismatch_threshold", 0.5)
-        self.declare_parameter("temporal_stabilization_enabled", True)
-        self.declare_parameter("temporal_class_history_size", 5)
-        self.declare_parameter("temporal_class_lock_min_votes", 3)
-        self.declare_parameter("temporal_class_lock_min_confidence", 0.4)
-        self.declare_parameter("temporal_class_switch_min_votes", 4)
-        self.declare_parameter("temporal_class_switch_min_confidence", 0.6)
-        self.declare_parameter("temporal_detection_hold_s", 0.35)
         self.declare_parameter("publish_annotated", True)
         self.declare_parameter("publish_raw", False)
         self.declare_parameter("queue_size", 1)
@@ -87,45 +71,6 @@ class YoloCameraNode(Node):
         self.correction_chroma_gain = self.get_parameter(
             "correction_chroma_gain"
         ).get_parameter_value().double_value
-        self.tracker_enabled = self.get_parameter("tracker_enabled").get_parameter_value().bool_value
-        self.tracker_config = self.get_parameter("tracker_config").get_parameter_value().string_value
-        self.tracker_persist = self.get_parameter("tracker_persist").get_parameter_value().bool_value
-        self.stable_tracking_enabled = self.get_parameter(
-            "stable_tracking_enabled"
-        ).get_parameter_value().bool_value
-        self.stable_track_timeout_s = self.get_parameter(
-            "stable_track_timeout_s"
-        ).get_parameter_value().double_value
-        self.stable_track_iou_threshold = self.get_parameter(
-            "stable_track_iou_threshold"
-        ).get_parameter_value().double_value
-        self.stable_track_center_ratio = self.get_parameter(
-            "stable_track_center_ratio"
-        ).get_parameter_value().double_value
-        self.stable_track_class_mismatch_threshold = self.get_parameter(
-            "stable_track_class_mismatch_threshold"
-        ).get_parameter_value().double_value
-        self.temporal_stabilization_enabled = self.get_parameter(
-            "temporal_stabilization_enabled"
-        ).get_parameter_value().bool_value
-        self.temporal_class_history_size = self.get_parameter(
-            "temporal_class_history_size"
-        ).get_parameter_value().integer_value
-        self.temporal_class_lock_min_votes = self.get_parameter(
-            "temporal_class_lock_min_votes"
-        ).get_parameter_value().integer_value
-        self.temporal_class_lock_min_confidence = self.get_parameter(
-            "temporal_class_lock_min_confidence"
-        ).get_parameter_value().double_value
-        self.temporal_class_switch_min_votes = self.get_parameter(
-            "temporal_class_switch_min_votes"
-        ).get_parameter_value().integer_value
-        self.temporal_class_switch_min_confidence = self.get_parameter(
-            "temporal_class_switch_min_confidence"
-        ).get_parameter_value().double_value
-        self.temporal_detection_hold_s = self.get_parameter(
-            "temporal_detection_hold_s"
-        ).get_parameter_value().double_value
         self.publish_annotated = self.get_parameter("publish_annotated").get_parameter_value().bool_value
         self.publish_raw = self.get_parameter("publish_raw").get_parameter_value().bool_value
         queue_size = self.get_parameter("queue_size").get_parameter_value().integer_value
@@ -145,8 +90,6 @@ class YoloCameraNode(Node):
 
         if self.imgsz <= 0:
             raise ValueError("imgsz must be greater than 0")
-        if not 0.0 <= self.stable_track_class_mismatch_threshold <= 1.0:
-            raise ValueError("stable_track_class_mismatch_threshold must be within 0..1")
 
         self.bridge = CvBridge()
         self.frame_corrector = FrameCorrector(
@@ -160,18 +103,6 @@ class YoloCameraNode(Node):
         self.camera = None
         self.camera_timer = None
         self.image_sub = None
-        self.stable_tracks = {}
-        self.next_stable_track_id = 1
-        self.temporal_stabilizer = TemporalDetectionStabilizer(
-            enabled=self.temporal_stabilization_enabled,
-            history_size=self.temporal_class_history_size,
-            lock_min_votes=self.temporal_class_lock_min_votes,
-            lock_min_confidence=self.temporal_class_lock_min_confidence,
-            switch_min_votes=self.temporal_class_switch_min_votes,
-            switch_min_confidence=self.temporal_class_switch_min_confidence,
-            detection_hold_s=self.temporal_detection_hold_s,
-            track_retention_s=self.stable_track_timeout_s,
-        )
 
         self.detections_pub = self.create_publisher(String, self.detections_topic, queue_size)
         self.annotated_pub = None
@@ -207,18 +138,7 @@ class YoloCameraNode(Node):
             f"clahe_tile_grid={self.correction_clahe_tile_grid}, "
             f"chroma_gain={self.correction_chroma_gain}"
         )
-        if self.tracker_enabled:
-            self.get_logger().info(f"ByteTrack enabled: tracker={self.tracker_config}")
-        if self.temporal_stabilization_enabled:
-            self.get_logger().info(
-                "Temporal stabilization enabled: "
-                f"history={self.temporal_class_history_size}, "
-                f"lock_votes={self.temporal_class_lock_min_votes}, "
-                f"lock_confidence={self.temporal_class_lock_min_confidence}, "
-                f"switch_votes={self.temporal_class_switch_min_votes}, "
-                f"switch_confidence={self.temporal_class_switch_min_confidence}, "
-                f"detection_hold_s={self.temporal_detection_hold_s}"
-            )
+        self.get_logger().info("Per-frame YOLO prediction enabled; tracking is disabled")
         self.get_logger().info(f"Publishing detections: {self.detections_topic}")
         if self.annotated_pub is not None:
             self.get_logger().info(f"Publishing annotated images: {self.annotated_topic}")
@@ -334,21 +254,13 @@ class YoloCameraNode(Node):
             if self.device:
                 inference_kwargs["device"] = self.device
 
-            if self.tracker_enabled:
-                inference_kwargs["persist"] = self.tracker_persist
-                inference_kwargs["tracker"] = self.tracker_config
-                results = self.model.track(**inference_kwargs)
-            else:
-                results = self.model.predict(**inference_kwargs)
+            results = self.model.predict(**inference_kwargs)
         except Exception as exc:
             self.get_logger().error(f"YOLO inference failed: {exc}")
             return
 
         result = results[0] if results else None
         detections = self._result_to_detections(result) if result is not None else []
-        if self.stable_tracking_enabled:
-            self._assign_stable_track_ids(detections)
-        detections = self.temporal_stabilizer.update(detections, self._now_s())
         self._publish_detections(header, detections, image_width, image_height)
 
         if self.annotated_pub is not None and result is not None:
@@ -456,149 +368,9 @@ class YoloCameraNode(Node):
                 },
             }
 
-            track_id = self._box_track_id(box)
-            if track_id is not None:
-                detection["track_id"] = track_id
-
             detections.append(detection)
 
         return detections
-
-    @staticmethod
-    def _box_track_id(box: Any) -> int | None:
-        track_id = getattr(box, "id", None)
-        if track_id is None:
-            return None
-
-        try:
-            return int(track_id[0].detach().cpu().item())
-        except (AttributeError, IndexError, TypeError, ValueError):
-            return None
-
-    def _assign_stable_track_ids(self, detections: list[dict[str, Any]]) -> None:
-        now_s = self._now_s()
-        self._prune_stable_tracks(now_s)
-
-        assigned_stable_ids = set()
-        for detection in sorted(detections, key=lambda item: item.get("confidence", 0.0), reverse=True):
-            stable_id = self._find_stable_track_match(detection, assigned_stable_ids)
-            if stable_id is None:
-                stable_id = self.next_stable_track_id
-                self.next_stable_track_id += 1
-
-            detection["stable_track_id"] = stable_id
-            self.stable_tracks[stable_id] = {
-                "bbox_xyxy": self._detection_bbox_tuple(detection),
-                "class_id": detection.get("class_id"),
-                "track_id": detection.get("track_id"),
-                "last_seen_s": now_s,
-            }
-            assigned_stable_ids.add(stable_id)
-
-    def _find_stable_track_match(self, detection: dict[str, Any], assigned_stable_ids: set[int]) -> int | None:
-        raw_track_id = detection.get("track_id")
-        class_id = detection.get("class_id")
-
-        if raw_track_id is not None:
-            for stable_id, track in self.stable_tracks.items():
-                if stable_id in assigned_stable_ids:
-                    continue
-                if track.get("track_id") == raw_track_id:
-                    return stable_id
-
-        best_stable_id = None
-        best_score = 0.0
-        detection_bbox = self._detection_bbox_tuple(detection)
-        for stable_id, track in self.stable_tracks.items():
-            if stable_id in assigned_stable_ids:
-                continue
-
-            track_bbox = track.get("bbox_xyxy")
-            if track_bbox is None:
-                continue
-
-            iou = self._bbox_iou(detection_bbox, track_bbox)
-            center_similarity = self._bbox_center_similarity(detection_bbox, track_bbox)
-            score = max(iou, center_similarity)
-            threshold = self.stable_track_iou_threshold
-            if track.get("class_id") != class_id:
-                threshold = max(threshold, self.stable_track_class_mismatch_threshold)
-            if score < threshold:
-                continue
-            if score > best_score:
-                best_score = score
-                best_stable_id = stable_id
-
-        return best_stable_id
-
-    def _prune_stable_tracks(self, now_s: float) -> None:
-        stale_ids = [
-            stable_id for stable_id, track in self.stable_tracks.items()
-            if now_s - float(track.get("last_seen_s", 0.0)) > self.stable_track_timeout_s
-        ]
-        for stable_id in stale_ids:
-            del self.stable_tracks[stable_id]
-
-    def _now_s(self) -> float:
-        return self.get_clock().now().nanoseconds / 1_000_000_000.0
-
-    @staticmethod
-    def _detection_bbox_tuple(detection: dict[str, Any]) -> tuple[float, float, float, float]:
-        bbox = detection["bbox_xyxy"]
-        return (
-            float(bbox["x1"]),
-            float(bbox["y1"]),
-            float(bbox["x2"]),
-            float(bbox["y2"]),
-        )
-
-    def _bbox_center_similarity(
-        self,
-        first: tuple[float, float, float, float],
-        second: tuple[float, float, float, float],
-    ) -> float:
-        first_x1, first_y1, first_x2, first_y2 = first
-        second_x1, second_y1, second_x2, second_y2 = second
-        first_cx = (first_x1 + first_x2) * 0.5
-        first_cy = (first_y1 + first_y2) * 0.5
-        second_cx = (second_x1 + second_x2) * 0.5
-        second_cy = (second_y1 + second_y2) * 0.5
-
-        first_width = max(1.0, first_x2 - first_x1)
-        first_height = max(1.0, first_y2 - first_y1)
-        second_width = max(1.0, second_x2 - second_x1)
-        second_height = max(1.0, second_y2 - second_y1)
-        scale = max(first_width, first_height, second_width, second_height, 1.0)
-
-        dx = first_cx - second_cx
-        dy = first_cy - second_cy
-        normalized_distance = ((dx * dx + dy * dy) ** 0.5) / scale
-        if normalized_distance > self.stable_track_center_ratio:
-            return 0.0
-        return 1.0 - normalized_distance / self.stable_track_center_ratio
-
-    @staticmethod
-    def _bbox_iou(
-        first: tuple[float, float, float, float],
-        second: tuple[float, float, float, float],
-    ) -> float:
-        first_x1, first_y1, first_x2, first_y2 = first
-        second_x1, second_y1, second_x2, second_y2 = second
-
-        intersection_x1 = max(first_x1, second_x1)
-        intersection_y1 = max(first_y1, second_y1)
-        intersection_x2 = min(first_x2, second_x2)
-        intersection_y2 = min(first_y2, second_y2)
-        intersection_width = max(0.0, intersection_x2 - intersection_x1)
-        intersection_height = max(0.0, intersection_y2 - intersection_y1)
-        intersection_area = intersection_width * intersection_height
-
-        first_area = max(0.0, first_x2 - first_x1) * max(0.0, first_y2 - first_y1)
-        second_area = max(0.0, second_x2 - second_x1) * max(0.0, second_y2 - second_y1)
-        union_area = first_area + second_area - intersection_area
-        if union_area <= 0.0:
-            return 0.0
-        return intersection_area / union_area
 
     def _publish_detections(
         self,
