@@ -12,6 +12,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Header, String
 
 from .frame_correction import FrameCorrector
+from .temporal_stabilizer import TemporalDetectionStabilizer
 
 
 class YoloCameraNode(Node):
@@ -40,6 +41,14 @@ class YoloCameraNode(Node):
         self.declare_parameter("stable_track_timeout_s", 1.0)
         self.declare_parameter("stable_track_iou_threshold", 0.15)
         self.declare_parameter("stable_track_center_ratio", 0.75)
+        self.declare_parameter("stable_track_class_mismatch_threshold", 0.5)
+        self.declare_parameter("temporal_stabilization_enabled", True)
+        self.declare_parameter("temporal_class_history_size", 5)
+        self.declare_parameter("temporal_class_lock_min_votes", 3)
+        self.declare_parameter("temporal_class_lock_min_confidence", 0.4)
+        self.declare_parameter("temporal_class_switch_min_votes", 4)
+        self.declare_parameter("temporal_class_switch_min_confidence", 0.6)
+        self.declare_parameter("temporal_detection_hold_s", 0.35)
         self.declare_parameter("publish_annotated", True)
         self.declare_parameter("publish_raw", False)
         self.declare_parameter("queue_size", 1)
@@ -93,6 +102,30 @@ class YoloCameraNode(Node):
         self.stable_track_center_ratio = self.get_parameter(
             "stable_track_center_ratio"
         ).get_parameter_value().double_value
+        self.stable_track_class_mismatch_threshold = self.get_parameter(
+            "stable_track_class_mismatch_threshold"
+        ).get_parameter_value().double_value
+        self.temporal_stabilization_enabled = self.get_parameter(
+            "temporal_stabilization_enabled"
+        ).get_parameter_value().bool_value
+        self.temporal_class_history_size = self.get_parameter(
+            "temporal_class_history_size"
+        ).get_parameter_value().integer_value
+        self.temporal_class_lock_min_votes = self.get_parameter(
+            "temporal_class_lock_min_votes"
+        ).get_parameter_value().integer_value
+        self.temporal_class_lock_min_confidence = self.get_parameter(
+            "temporal_class_lock_min_confidence"
+        ).get_parameter_value().double_value
+        self.temporal_class_switch_min_votes = self.get_parameter(
+            "temporal_class_switch_min_votes"
+        ).get_parameter_value().integer_value
+        self.temporal_class_switch_min_confidence = self.get_parameter(
+            "temporal_class_switch_min_confidence"
+        ).get_parameter_value().double_value
+        self.temporal_detection_hold_s = self.get_parameter(
+            "temporal_detection_hold_s"
+        ).get_parameter_value().double_value
         self.publish_annotated = self.get_parameter("publish_annotated").get_parameter_value().bool_value
         self.publish_raw = self.get_parameter("publish_raw").get_parameter_value().bool_value
         queue_size = self.get_parameter("queue_size").get_parameter_value().integer_value
@@ -112,6 +145,8 @@ class YoloCameraNode(Node):
 
         if self.imgsz <= 0:
             raise ValueError("imgsz must be greater than 0")
+        if not 0.0 <= self.stable_track_class_mismatch_threshold <= 1.0:
+            raise ValueError("stable_track_class_mismatch_threshold must be within 0..1")
 
         self.bridge = CvBridge()
         self.frame_corrector = FrameCorrector(
@@ -127,6 +162,16 @@ class YoloCameraNode(Node):
         self.image_sub = None
         self.stable_tracks = {}
         self.next_stable_track_id = 1
+        self.temporal_stabilizer = TemporalDetectionStabilizer(
+            enabled=self.temporal_stabilization_enabled,
+            history_size=self.temporal_class_history_size,
+            lock_min_votes=self.temporal_class_lock_min_votes,
+            lock_min_confidence=self.temporal_class_lock_min_confidence,
+            switch_min_votes=self.temporal_class_switch_min_votes,
+            switch_min_confidence=self.temporal_class_switch_min_confidence,
+            detection_hold_s=self.temporal_detection_hold_s,
+            track_retention_s=self.stable_track_timeout_s,
+        )
 
         self.detections_pub = self.create_publisher(String, self.detections_topic, queue_size)
         self.annotated_pub = None
@@ -164,6 +209,16 @@ class YoloCameraNode(Node):
         )
         if self.tracker_enabled:
             self.get_logger().info(f"ByteTrack enabled: tracker={self.tracker_config}")
+        if self.temporal_stabilization_enabled:
+            self.get_logger().info(
+                "Temporal stabilization enabled: "
+                f"history={self.temporal_class_history_size}, "
+                f"lock_votes={self.temporal_class_lock_min_votes}, "
+                f"lock_confidence={self.temporal_class_lock_min_confidence}, "
+                f"switch_votes={self.temporal_class_switch_min_votes}, "
+                f"switch_confidence={self.temporal_class_switch_min_confidence}, "
+                f"detection_hold_s={self.temporal_detection_hold_s}"
+            )
         self.get_logger().info(f"Publishing detections: {self.detections_topic}")
         if self.annotated_pub is not None:
             self.get_logger().info(f"Publishing annotated images: {self.annotated_topic}")
@@ -289,17 +344,14 @@ class YoloCameraNode(Node):
             self.get_logger().error(f"YOLO inference failed: {exc}")
             return
 
-        if not results:
-            self._publish_detections(header, [], image_width, image_height)
-            return
-
-        result = results[0]
-        detections = self._result_to_detections(result)
+        result = results[0] if results else None
+        detections = self._result_to_detections(result) if result is not None else []
         if self.stable_tracking_enabled:
             self._assign_stable_track_ids(detections)
+        detections = self.temporal_stabilizer.update(detections, self._now_s())
         self._publish_detections(header, detections, image_width, image_height)
 
-        if self.annotated_pub is not None:
+        if self.annotated_pub is not None and result is not None:
             annotated = result.plot()
             self._draw_normalized_coordinates(
                 annotated,
@@ -451,7 +503,7 @@ class YoloCameraNode(Node):
             for stable_id, track in self.stable_tracks.items():
                 if stable_id in assigned_stable_ids:
                     continue
-                if track.get("track_id") == raw_track_id and track.get("class_id") == class_id:
+                if track.get("track_id") == raw_track_id:
                     return stable_id
 
         best_stable_id = None
@@ -459,8 +511,6 @@ class YoloCameraNode(Node):
         detection_bbox = self._detection_bbox_tuple(detection)
         for stable_id, track in self.stable_tracks.items():
             if stable_id in assigned_stable_ids:
-                continue
-            if track.get("class_id") != class_id:
                 continue
 
             track_bbox = track.get("bbox_xyxy")
@@ -470,13 +520,16 @@ class YoloCameraNode(Node):
             iou = self._bbox_iou(detection_bbox, track_bbox)
             center_similarity = self._bbox_center_similarity(detection_bbox, track_bbox)
             score = max(iou, center_similarity)
+            threshold = self.stable_track_iou_threshold
+            if track.get("class_id") != class_id:
+                threshold = max(threshold, self.stable_track_class_mismatch_threshold)
+            if score < threshold:
+                continue
             if score > best_score:
                 best_score = score
                 best_stable_id = stable_id
 
-        if best_score >= self.stable_track_iou_threshold:
-            return best_stable_id
-        return None
+        return best_stable_id
 
     def _prune_stable_tracks(self, now_s: float) -> None:
         stale_ids = [
