@@ -23,6 +23,16 @@ def generate_launch_description():
     confidence = LaunchConfiguration("confidence")
     publish_annotated = LaunchConfiguration("publish_annotated")
     speed_scale = LaunchConfiguration("speed_scale")
+    odometry_topic = LaunchConfiguration("odometry_topic")
+    pose_timeout_s = LaunchConfiguration("pose_timeout_s")
+    arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
+    camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
+    initial_x = LaunchConfiguration("initial_x")
+    initial_y = LaunchConfiguration("initial_y")
+    initial_yaw_deg = LaunchConfiguration("initial_yaw_deg")
+    pose_linear_scale = LaunchConfiguration("pose_linear_scale")
+    imu_yaw_sign = LaunchConfiguration("imu_yaw_sign")
+    gyro_calibration_duration_s = LaunchConfiguration("gyro_calibration_duration_s")
     dry_run = LaunchConfiguration("dry_run")
     auto_start = LaunchConfiguration("auto_start")
     gripper_enabled = LaunchConfiguration("gripper_enabled")
@@ -70,6 +80,24 @@ def generate_launch_description():
         ])
     )
 
+    pose_tracker_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([
+            FindPackageShare("robot_pose_tracker"),
+            "launch",
+            "robot_pose_tracker.launch.py",
+        ]),
+        launch_arguments={
+            "cmd_vel_topic": "/cmd_vel",
+            "initial_x": initial_x,
+            "initial_y": initial_y,
+            "initial_yaw_deg": initial_yaw_deg,
+            "linear_scale": pose_linear_scale,
+            "imu_yaw_sign": imu_yaw_sign,
+            "gyro_calibration_duration_s": gyro_calibration_duration_s,
+            "publish_tf": "true",
+        }.items(),
+    )
+
     policy_launch = IncludeLaunchDescription(
         PathJoinSubstitution([
             FindPackageShare("rl_model_policy"),
@@ -80,6 +108,10 @@ def generate_launch_description():
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
             "dry_run": dry_run,
+            "odometry_topic": odometry_topic,
+            "pose_timeout_s": pose_timeout_s,
+            "arena_half_extent_m": arena_half_extent_m,
+            "camera_horizontal_fov_deg": camera_horizontal_fov_deg,
             "gripper_enabled": gripper_enabled,
             "gripper_type": gripper_type,
             "gripper_servo_id": gripper_servo_id,
@@ -147,6 +179,24 @@ def generate_launch_description():
         DeclareLaunchArgument("confidence", default_value="0.25"),
         DeclareLaunchArgument("publish_annotated", default_value="false"),
         DeclareLaunchArgument("speed_scale", default_value="0.25"),
+        DeclareLaunchArgument("odometry_topic", default_value="/odom"),
+        DeclareLaunchArgument("pose_timeout_s", default_value="0.5"),
+        DeclareLaunchArgument("arena_half_extent_m", default_value="2.0"),
+        DeclareLaunchArgument("camera_horizontal_fov_deg", default_value="90.0"),
+        DeclareLaunchArgument(
+            "initial_x",
+            default_value="1.8",
+            description="Start x in the arena-center coordinate frame used by training.",
+        ),
+        DeclareLaunchArgument(
+            "initial_y",
+            default_value="-1.8",
+            description="Start y in the arena-center coordinate frame used by training.",
+        ),
+        DeclareLaunchArgument("initial_yaw_deg", default_value="90.0"),
+        DeclareLaunchArgument("pose_linear_scale", default_value="1.0"),
+        DeclareLaunchArgument("imu_yaw_sign", default_value="1.0"),
+        DeclareLaunchArgument("gyro_calibration_duration_s", default_value="2.0"),
         DeclareLaunchArgument("dry_run", default_value="false"),
         DeclareLaunchArgument("gripper_enabled", default_value="true"),
         DeclareLaunchArgument("gripper_type", default_value="bus"),
@@ -172,6 +222,7 @@ def generate_launch_description():
         controller_launch,
         yolo_launch,
         motor_launch,
+        pose_tracker_launch,
         policy_launch,
         delayed_start,
     ])

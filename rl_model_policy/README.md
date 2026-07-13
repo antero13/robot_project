@@ -31,6 +31,9 @@ the current checkpoint.
   - `point.y`: normalized target bottom-y/closeness in `[0, 1]`
 - `/avoid_objects` (`std_msgs/String`)
   - JSON from `ros2_yolo_detector`
+- `/odom` (`nav_msgs/Odometry`)
+  - arena-center pose and calibrated/fallback yaw rate from `robot_pose_tracker`
+  - stale or missing odometry sets `pose_valid=0` and zeroes observation 11-17
 
 ## Output
 
@@ -90,22 +93,27 @@ The robot machine must have PyTorch available in the Python environment used by 
 
 ## One-command Jetson launch
 
-Build the policy and install its model file once after pulling the repository:
+Build the policy, pose tracker, and model package once after pulling the repository:
 
 ```bash
 cd ~/ros2_ws
 source /opt/ros/humble/setup.bash
-colcon build --packages-select mission_manager rl_model_policy --symlink-install
+colcon build --packages-up-to mission_manager robot_pose_tracker rl_model_policy --symlink-install
 source ~/ros2_ws/install/setup.bash
 ```
 
-Start the controller, camera/YOLO, motor converter, and RL policy in one terminal:
+Start the controller, camera/YOLO, motor converter, pose tracker, and RL policy
+in one terminal. The default start pose is `(1.8, -1.8, 90 deg)` in the
+arena-center coordinate frame used by training:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   yolo_model_path:=/home/airobot/ros2_ws/best.engine \
   target_classes:=0 \
-  speed_scale:=0.25
+  speed_scale:=0.25 \
+  initial_x:=1.8 \
+  initial_y:=-1.8 \
+  initial_yaw_deg:=90.0
 ```
 
 The safe default waits for a separate start command:
@@ -128,6 +136,10 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 Press `Ctrl+C` in the launch terminal to stop all processes started by this launch file.
 Do not run `mission_manager`, keyboard teleoperation, or another `/cmd_vel` publisher at
 the same time.
+
+`camera_horizontal_fov_deg` defaults to `90.0` and is used to convert target
+image x into the last target world bearing. Replace it with the calibrated
+horizontal field of view of the driving camera when that value is available.
 
 ## Automatic pickup
 

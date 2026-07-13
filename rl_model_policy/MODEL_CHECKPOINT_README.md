@@ -222,9 +222,8 @@ make_observation(...) returns exactly 18 floats
 obs_mean and obs_variance loaded from checkpoint['state_preprocessor'] are length 18
 ```
 
-At the time this document was written, the ROS runner still had an older
-10-input observation builder. If model loading fails with a tensor size mismatch,
-update the runner to the 18-value observation contract above.
+The ROS runner now implements this 18-value contract and rejects checkpoints
+whose first policy layer or state preprocessor has a different shape.
 
 Launch files that may need parameters for pose input:
 
@@ -239,10 +238,11 @@ Related pose package:
 robot_pose_tracker/
 ```
 
-If real pose is available from `robot_pose_tracker`, subscribe to its pose topic
-and use it to fill observation indices 10 through 17. If pose is not available,
-set `pose_valid = 0.0` and zero indices 11 through 17; the policy was trained
-with pose dropout, but it performs best with usable pose/IMU data.
+The ROS runner subscribes to `/odom` from `robot_pose_tracker`. This supplies
+pose and the tracker-selected yaw rate for observation indices 10 through 17.
+If odometry is stale or unavailable, it sets `pose_valid = 0.0` and zeroes all
+eight pose inputs; the policy was trained with pose dropout, but it performs
+best with usable pose/IMU data.
 
 ## Isaac Lab source of truth
 

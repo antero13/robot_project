@@ -11,6 +11,7 @@
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
   <depend>ros_robot_controller_msgs</depend>
   <depend>std_msgs</depend>
   <exec_depend>ament_index_python</exec_depend>
@@ -20,6 +21,7 @@
   <exec_depend>mission_manager</exec_depend>
   <exec_depend>ros2_yolo_detector</exec_depend>
   <exec_depend>ros_robot_controller</exec_depend>
+  <exec_depend>robot_pose_tracker</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

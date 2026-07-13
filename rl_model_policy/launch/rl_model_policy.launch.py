@@ -10,6 +10,10 @@ def generate_launch_description():
     model_path = LaunchConfiguration('model_path')
     speed_scale = LaunchConfiguration('speed_scale')
     dry_run = LaunchConfiguration('dry_run')
+    odometry_topic = LaunchConfiguration('odometry_topic')
+    pose_timeout_s = LaunchConfiguration('pose_timeout_s')
+    arena_half_extent_m = LaunchConfiguration('arena_half_extent_m')
+    camera_horizontal_fov_deg = LaunchConfiguration('camera_horizontal_fov_deg')
     gripper_enabled = LaunchConfiguration('gripper_enabled')
     gripper_type = LaunchConfiguration('gripper_type')
     gripper_servo_id = LaunchConfiguration('gripper_servo_id')
@@ -43,6 +47,10 @@ def generate_launch_description():
             default_value='false',
             description='If true, publish state but do not publish cmd_vel.',
         ),
+        DeclareLaunchArgument('odometry_topic', default_value='/odom'),
+        DeclareLaunchArgument('pose_timeout_s', default_value='0.5'),
+        DeclareLaunchArgument('arena_half_extent_m', default_value='2.0'),
+        DeclareLaunchArgument('camera_horizontal_fov_deg', default_value='90.0'),
         DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),
         DeclareLaunchArgument('gripper_servo_id', default_value='1'),
@@ -68,6 +76,7 @@ def generate_launch_description():
                 'avoid_objects_topic': '/avoid_objects',
                 'control_topic': '/rl_model_policy_control',
                 'state_topic': '/rl_model_policy_state',
+                'odometry_topic': odometry_topic,
 
                 'active_on_start': False,
                 'dry_run': dry_run,
@@ -75,6 +84,12 @@ def generate_launch_description():
                 'target_timeout_s': 0.5,
                 'avoid_timeout_s': 0.5,
                 'episode_length_s': 18.0,
+                'pose_timeout_s': ParameterValue(pose_timeout_s, value_type=float),
+                'arena_half_extent_m': ParameterValue(arena_half_extent_m, value_type=float),
+                'camera_horizontal_fov_deg': ParameterValue(
+                    camera_horizontal_fov_deg,
+                    value_type=float,
+                ),
 
                 'avoid_area_ratio': 0.20,
                 'avoid_center_band': 0.75,

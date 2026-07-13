@@ -1,15 +1,24 @@
 import json
 import math
-import os
 from pathlib import Path
 from types import SimpleNamespace
 
 import rclpy
 from geometry_msgs.msg import PointStamped, Twist
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
 from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
 from std_msgs.msg import String
+
+from rl_model_policy.observation import (
+    OBSERVATION_DIM,
+    OBSERVATION_NAMES,
+    estimate_target_world_bearing,
+    make_pose_observation,
+    quaternion_to_yaw,
+    validate_observation,
+)
 
 try:
     import torch
@@ -31,7 +40,7 @@ if torch is not None:
             super().__init__()
             self.log_std_parameter = torch.nn.Parameter(torch.zeros(2))
             self.net_container = torch.nn.Sequential(
-                torch.nn.Linear(10, 128),
+                torch.nn.Linear(OBSERVATION_DIM, 128),
                 torch.nn.ELU(),
                 torch.nn.Linear(128, 128),
                 torch.nn.ELU(),
@@ -65,6 +74,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("avoid_objects_topic", "/avoid_objects")
         self.declare_parameter("control_topic", "/rl_model_policy_control")
         self.declare_parameter("state_topic", "/rl_model_policy_state")
+        self.declare_parameter("odometry_topic", "/odom")
         self.declare_parameter("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state")
         self.declare_parameter("bus_servo_topic", "/ros_robot_controller/bus_servo/set_state")
 
@@ -74,6 +84,9 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("target_timeout_s", 0.5)
         self.declare_parameter("avoid_timeout_s", 0.5)
         self.declare_parameter("episode_length_s", 18.0)
+        self.declare_parameter("pose_timeout_s", 0.5)
+        self.declare_parameter("arena_half_extent_m", 2.0)
+        self.declare_parameter("camera_horizontal_fov_deg", 90.0)
 
         self.declare_parameter("avoid_area_ratio", 0.20)
         self.declare_parameter("avoid_center_band", 0.75)
@@ -113,6 +126,12 @@ class RLModelPolicyNode(Node):
         self.latest_avoid_time = None
         self.latest_avoid_objects = []
         self.latest_avoid_objects_time = None
+        self.latest_pose_time = None
+        self.robot_x = 0.0
+        self.robot_y = 0.0
+        self.robot_yaw = 0.0
+        self.robot_yaw_rate = 0.0
+        self.last_target_bearing = None
         self.time_since_target_seen = self.get_float("episode_length_s")
         self.last_target_direction = 1.0
         self.raw_action = [0.0, 0.0]
@@ -157,6 +176,12 @@ class RLModelPolicyNode(Node):
             self.avoid_objects_callback,
             10,
         )
+        self.odometry_sub = self.create_subscription(
+            Odometry,
+            self.get_parameter("odometry_topic").value,
+            self.odometry_callback,
+            10,
+        )
         self.control_sub = self.create_subscription(
             String,
             self.get_parameter("control_topic").value,
@@ -190,14 +215,37 @@ class RLModelPolicyNode(Node):
             return
 
         checkpoint = torch.load(str(model_path), map_location="cpu")
-        self.policy = PolicyNetwork()
-        self.policy.load_state_dict(checkpoint["policy"], strict=True)
-        self.policy.eval()
+        policy_state = checkpoint.get("policy", {})
+        first_weight = policy_state.get("net_container.0.weight")
+        if first_weight is None or tuple(first_weight.shape) != (128, OBSERVATION_DIM):
+            shape = None if first_weight is None else tuple(first_weight.shape)
+            raise RuntimeError(
+                "RL checkpoint observation contract mismatch: expected policy "
+                f"net_container.0.weight shape (128, {OBSERVATION_DIM}), got {shape}"
+            )
 
         preprocessor = checkpoint.get("state_preprocessor", {})
-        self.obs_mean = preprocessor.get("running_mean", torch.zeros(10)).float()
-        self.obs_variance = preprocessor.get("running_variance", torch.ones(10)).float()
+        obs_mean = preprocessor.get("running_mean")
+        obs_variance = preprocessor.get("running_variance")
+        if obs_mean is None or tuple(obs_mean.shape) != (OBSERVATION_DIM,):
+            raise RuntimeError(
+                f"Checkpoint running_mean must have shape ({OBSERVATION_DIM},)"
+            )
+        if obs_variance is None or tuple(obs_variance.shape) != (OBSERVATION_DIM,):
+            raise RuntimeError(
+                f"Checkpoint running_variance must have shape ({OBSERVATION_DIM},)"
+            )
+
+        self.policy = PolicyNetwork()
+        self.policy.load_state_dict(policy_state, strict=True)
+        self.policy.eval()
+
+        self.obs_mean = obs_mean.float()
+        self.obs_variance = obs_variance.float()
         self.model_path = str(model_path)
+        self.get_logger().info(
+            f"Loaded {OBSERVATION_DIM}-observation RL checkpoint: {self.model_path}"
+        )
 
     def resolve_model_path(self, raw_path):
         candidates = []
@@ -231,6 +279,29 @@ class RLModelPolicyNode(Node):
         self.latest_target_time = self.get_clock().now()
         if abs(self.latest_target.x) > 1e-6:
             self.last_target_direction = 1.0 if self.latest_target.x >= 0.0 else -1.0
+        if self.is_fresh(self.latest_pose_time, "pose_timeout_s"):
+            fov_rad = math.radians(self.get_float("camera_horizontal_fov_deg"))
+            self.last_target_bearing = estimate_target_world_bearing(
+                self.robot_yaw,
+                self.latest_target.x,
+                fov_rad,
+            )
+
+    def odometry_callback(self, msg):
+        position = msg.pose.pose.position
+        orientation = msg.pose.pose.orientation
+        self.robot_x = float(position.x)
+        self.robot_y = float(position.y)
+        self.robot_yaw = quaternion_to_yaw(
+            orientation.x,
+            orientation.y,
+            orientation.z,
+            orientation.w,
+        )
+        self.robot_yaw_rate = float(msg.twist.twist.angular.z)
+        self.latest_pose_time = self.get_clock().now()
+        if self.last_target_bearing is None:
+            self.last_target_bearing = self.robot_yaw
 
     def avoid_callback(self, msg):
         self.latest_avoid = self.make_point(msg.point.x, msg.point.y, msg.point.z)
@@ -283,6 +354,7 @@ class RLModelPolicyNode(Node):
             self.latest_target = None
             self.latest_avoid = None
             self.latest_avoid_objects = []
+            self.last_target_bearing = None
             self.time_since_target_seen = self.get_float("episode_length_s")
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
@@ -342,6 +414,16 @@ class RLModelPolicyNode(Node):
             1.0,
         )
 
+        pose_obs = make_pose_observation(
+            pose_valid=self.is_fresh(self.latest_pose_time, "pose_timeout_s"),
+            robot_x=self.robot_x,
+            robot_y=self.robot_y,
+            yaw=self.robot_yaw,
+            yaw_rate=self.robot_yaw_rate,
+            last_target_bearing=self.last_target_bearing,
+            arena_half_extent_m=self.get_float("arena_half_extent_m"),
+            max_angular_speed=self.get_float("max_angular_speed"),
+        )
         obs = [
             1.0 if visible else 0.0,
             target_x if visible else 0.0,
@@ -353,10 +435,12 @@ class RLModelPolicyNode(Node):
             right,
             nearest_x,
             nearest_y,
+            *pose_obs,
         ]
-        return obs, (left, center, right), nearest
+        return validate_observation(obs), (left, center, right), nearest
 
     def infer_action(self, obs):
+        validate_observation(obs)
         with torch.no_grad():
             obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
             scaled = (obs_tensor - self.obs_mean) / torch.sqrt(
@@ -538,6 +622,8 @@ class RLModelPolicyNode(Node):
                 "active": self.active,
                 "dry_run": self.dry_run,
                 "model_loaded": self.policy is not None,
+                "observation_dim": OBSERVATION_DIM,
+                "observation_names": OBSERVATION_NAMES,
                 "grab_state": self.grab_state,
                 "gripper_enabled": bool(self.get_parameter("gripper_enabled").value),
                 "obs": [round(v, 4) for v in obs],
