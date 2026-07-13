@@ -14,6 +14,7 @@ from std_msgs.msg import String
 from rl_model_policy.observation import (
     OBSERVATION_DIM,
     OBSERVATION_NAMES,
+    SUPPORTED_OBSERVATION_DIMS,
     estimate_target_image_x,
     estimate_target_world_bearing,
     make_pose_observation,
@@ -38,11 +39,11 @@ except ImportError:
 
 if torch is not None:
     class PolicyNetwork(torch.nn.Module):
-        def __init__(self):
+        def __init__(self, observation_dim):
             super().__init__()
             self.log_std_parameter = torch.nn.Parameter(torch.zeros(2))
             self.net_container = torch.nn.Sequential(
-                torch.nn.Linear(OBSERVATION_DIM, 128),
+                torch.nn.Linear(observation_dim, 128),
                 torch.nn.ELU(),
                 torch.nn.Linear(128, 128),
                 torch.nn.ELU(),
@@ -145,6 +146,7 @@ class RLModelPolicyNode(Node):
         self.grab_state_started_at = self.get_clock().now()
 
         self.policy = None
+        self.model_observation_dim = OBSERVATION_DIM
         self.obs_mean = None
         self.obs_variance = None
         self.model_path = None
@@ -221,26 +223,36 @@ class RLModelPolicyNode(Node):
         checkpoint = torch.load(str(model_path), map_location="cpu")
         policy_state = checkpoint.get("policy", {})
         first_weight = policy_state.get("net_container.0.weight")
-        if first_weight is None or tuple(first_weight.shape) != (128, OBSERVATION_DIM):
+        if first_weight is None or len(first_weight.shape) != 2:
             shape = None if first_weight is None else tuple(first_weight.shape)
             raise RuntimeError(
-                "RL checkpoint observation contract mismatch: expected policy "
-                f"net_container.0.weight shape (128, {OBSERVATION_DIM}), got {shape}"
+                "RL checkpoint has no valid policy net_container.0.weight; "
+                f"got {shape}"
+            )
+        observation_dim = int(first_weight.shape[1])
+        if (
+            tuple(first_weight.shape) != (128, observation_dim)
+            or observation_dim not in SUPPORTED_OBSERVATION_DIMS
+        ):
+            raise RuntimeError(
+                "RL checkpoint observation contract mismatch: supported input "
+                f"dimensions are {SUPPORTED_OBSERVATION_DIMS}, got {tuple(first_weight.shape)}"
             )
 
         preprocessor = checkpoint.get("state_preprocessor", {})
         obs_mean = preprocessor.get("running_mean")
         obs_variance = preprocessor.get("running_variance")
-        if obs_mean is None or tuple(obs_mean.shape) != (OBSERVATION_DIM,):
+        if obs_mean is None or tuple(obs_mean.shape) != (observation_dim,):
             raise RuntimeError(
-                f"Checkpoint running_mean must have shape ({OBSERVATION_DIM},)"
+                f"Checkpoint running_mean must have shape ({observation_dim},)"
             )
-        if obs_variance is None or tuple(obs_variance.shape) != (OBSERVATION_DIM,):
+        if obs_variance is None or tuple(obs_variance.shape) != (observation_dim,):
             raise RuntimeError(
-                f"Checkpoint running_variance must have shape ({OBSERVATION_DIM},)"
+                f"Checkpoint running_variance must have shape ({observation_dim},)"
             )
 
-        self.policy = PolicyNetwork()
+        self.model_observation_dim = observation_dim
+        self.policy = PolicyNetwork(observation_dim)
         self.policy.load_state_dict(policy_state, strict=True)
         self.policy.eval()
 
@@ -248,7 +260,7 @@ class RLModelPolicyNode(Node):
         self.obs_variance = obs_variance.float()
         self.model_path = str(model_path)
         self.get_logger().info(
-            f"Loaded {OBSERVATION_DIM}-observation RL checkpoint: {self.model_path}"
+            f"Loaded {observation_dim}-observation RL checkpoint: {self.model_path}"
         )
 
     def resolve_model_path(self, raw_path):
@@ -478,8 +490,9 @@ class RLModelPolicyNode(Node):
 
     def infer_action(self, obs):
         validate_observation(obs)
+        model_obs = obs[:self.model_observation_dim]
         with torch.no_grad():
-            obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0)
+            obs_tensor = torch.tensor(model_obs, dtype=torch.float32).unsqueeze(0)
             scaled = (obs_tensor - self.obs_mean) / torch.sqrt(
                 self.obs_variance + self.get_float("state_preprocessor_epsilon")
             )
@@ -659,14 +672,14 @@ class RLModelPolicyNode(Node):
                 "active": self.active,
                 "dry_run": self.dry_run,
                 "model_loaded": self.policy is not None,
-                "observation_dim": OBSERVATION_DIM,
-                "observation_names": OBSERVATION_NAMES,
+                "observation_dim": self.model_observation_dim,
+                "observation_names": OBSERVATION_NAMES[:self.model_observation_dim],
                 "pose_observation_enabled": bool(
                     self.get_parameter("pose_observation_enabled").value
                 ),
                 "grab_state": self.grab_state,
                 "gripper_enabled": bool(self.get_parameter("gripper_enabled").value),
-                "obs": [round(v, 4) for v in obs],
+                "obs": [round(v, 4) for v in obs[:self.model_observation_dim]],
                 "raw_action": [round(v, 4) for v in self.raw_action],
                 "filtered_action": [round(v, 4) for v in self.filtered_action],
                 "linear_x": round(float(linear_x), 4),

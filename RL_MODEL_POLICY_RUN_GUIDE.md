@@ -1,10 +1,10 @@
 # RL Model Policy Run Guide
 
-The current checkpoint uses the 18-observation contract documented in
-`rl_model_policy/MODEL_CHECKPOINT_README.md`. The default real-robot launch
-uses the first 10 YOLO-derived values and intentionally supplies zeros for the
-8 pose/IMU values. This keeps the checkpoint shape compatible while disabling
-pose-based control.
+The bundled `mission_manager/models/rl_avoid_search_best.pt` checkpoint uses
+10 YOLO-derived observations with no pose or IMU input. The ROS runner detects
+the checkpoint input width automatically and also keeps compatibility with the
+legacy 18-observation contract documented in
+`rl_model_policy/MODEL_CHECKPOINT_README.md`.
 
 ## Data Flow
 
@@ -68,11 +68,14 @@ Expected state:
 
 ```text
 model_loaded: true
-observation_dim: 18
-obs: 18 values
+observation_dim: 10
+obs: 10 values
 pose_observation_enabled: false
-obs[10:18]: all zeros
 ```
+
+The bundled model reports `observation_dim: 10` and never receives pose values.
+A legacy model reports `observation_dim: 18`; with pose disabled its final 8
+values are zeros.
 
 The policy keeps the last YOLO target for `target_timeout_s=0.8` seconds so a
 one- or two-frame detection gap does not immediately switch into search mode.
@@ -116,7 +119,7 @@ ros2 topic pub --once /rl_model_policy_control \
   std_msgs/msg/String "{data: stop}"
 ```
 
-The integrated launch defaults to the 18-input model installed from
-`mission_manager/models/rl_avoid_search_best.pt`. A `[128, 18]` versus
-`[128, 10]` error means old Python code remains in the install space; pull,
-rebuild `rl_model_policy`, and source the new setup in a fresh terminal.
+The integrated launch loads the model installed at
+`mission_manager/models/rl_avoid_search_best.pt`, whose first layer is
+`[128, 10]`. The runner also supports legacy `[128, 18]` checkpoints. Any other
+input width is rejected.

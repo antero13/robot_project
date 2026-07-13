@@ -10,19 +10,28 @@ Before changing this package, read:
 rl_model_policy/MODEL_CHECKPOINT_README.md
 ```
 
-The currently pushed model at
-`mission_manager/models/rl_avoid_search_best.pt` is an 18-observation-input
-checkpoint:
+The currently bundled model at
+`mission_manager/models/rl_avoid_search_best.pt` is a 10-observation-input
+checkpoint trained only from YOLO-derived values:
 
 ```text
-policy.net_container.0.weight: (128, 18)
-state_preprocessor.running_mean: (18,)
-state_preprocessor.running_variance: (18,)
+policy.net_container.0.weight: (128, 10)
+state_preprocessor.running_mean: (10,)
+state_preprocessor.running_variance: (10,)
 ```
 
-The runner must build the same 18-value observation vector described in
-`MODEL_CHECKPOINT_README.md`. A 10-value observation runner is incompatible with
-the current checkpoint.
+New training runs use only the first 10 YOLO-derived observations. The runner
+detects the checkpoint input width and supports both contracts:
+
+```text
+10 inputs: YOLO target/avoidance values only (new training)
+18 inputs: the same 10 values plus 8 legacy pose/IMU values
+```
+
+Do not resume an 18-input checkpoint in the 10-observation Isaac Lab
+environment. The bundled model and new training environment use the same
+10-input contract. The ROS runner still accepts legacy 18-input checkpoints
+when one is passed explicitly through `model_path`.
 
 ## Inputs
 
@@ -32,15 +41,14 @@ the current checkpoint.
 - `/avoid_objects` (`std_msgs/String`)
   - JSON from `ros2_yolo_detector`
 - `/odom` (`nav_msgs/Odometry`)
-  - arena-center pose and calibrated/fallback yaw rate from `robot_pose_tracker`
-  - ignored by default because `pose_observation_enabled:=false`
-  - stale or missing odometry sets `pose_valid=0` and zeroes observation 11-17
-  - positions outside the 4 m arena plus `pose_bounds_tolerance_m` are also invalid
+  - optional arena-center pose and yaw rate for legacy 18-input checkpoints
+  - ignored by the bundled 10-input model
+  - also disabled by default with `pose_observation_enabled:=false`
 
-The checkpoint remains an 18-input network. With pose observation disabled,
-the runner supplies the 10 YOLO-derived values followed by 8 zeros. Set
-`pose_observation_enabled:=true` only when the real pose source has been
-calibrated and validated.
+For a new 10-input checkpoint, pose data is never sent to the network. For a
+legacy 18-input checkpoint, disabling pose observation supplies zeros for its
+last 8 values. Set `pose_observation_enabled:=true` only when deliberately
+testing a calibrated legacy pose model.
 
 ## Output
 

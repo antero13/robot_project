@@ -21,7 +21,9 @@ OBSERVATION_NAMES = (
     "last_target_bearing_sin",
     "last_target_bearing_cos",
 )
+YOLO_OBSERVATION_DIM = 10
 OBSERVATION_DIM = len(OBSERVATION_NAMES)
+SUPPORTED_OBSERVATION_DIMS = (YOLO_OBSERVATION_DIM, OBSERVATION_DIM)
 
 
 def clamp(value, low, high):

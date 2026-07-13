@@ -12,15 +12,15 @@ Model file:
 mission_manager/models/rl_avoid_search_best.pt
 ```
 
-The currently pushed checkpoint was copied from Isaac Lab training output:
+The bundled checkpoint was copied from this Isaac Lab training run:
 
 ```text
-C:\Users\user\Documents\robot_avoid_search\robot_avoid_search\logs\skrl\robot_avoid_search_2d\2026-07-10_16-57-34_ppo_torch\checkpoints\best_agent.pt
+C:\Users\user\Documents\robot_avoid_search\robot_avoid_search\logs\skrl\robot_avoid_search_2d\2026-07-13_14-22-55_ppo_torch\checkpoints\best_agent.pt
 ```
 
-Important: this checkpoint is an **18 observation input** model. Any ROS runner
-that still builds a 10-value observation or uses `torch.nn.Linear(10, 128)` will
-not match this checkpoint.
+Important: this checkpoint is a **10 observation input** model. It receives
+only the YOLO-derived values at indices 0 through 9. Pose and IMU values are not
+part of this policy input.
 
 ## How to inspect the checkpoint
 
@@ -48,11 +48,11 @@ mean action. Do not sample random actions on the robot.
 Architecture:
 
 ```text
-obs_dim = 18
+obs_dim = 10
 action_dim = 2
 
 net_container:
-  Linear(18, 128)
+  Linear(10, 128)
   ELU
   Linear(128, 128)
   ELU
@@ -73,7 +73,7 @@ Checkpoint tensor shapes:
 
 ```text
 policy.log_std_parameter        (2,)
-policy.net_container.0.weight   (128, 18)
+policy.net_container.0.weight   (128, 10)
 policy.net_container.0.bias     (128,)
 policy.net_container.2.weight   (128, 128)
 policy.net_container.2.bias     (128,)
@@ -84,8 +84,8 @@ policy.policy_layer.bias        (2,)
 policy.value_layer.weight       (1, 64)
 policy.value_layer.bias         (1,)
 
-state_preprocessor.running_mean      (18,)
-state_preprocessor.running_variance  (18,)
+state_preprocessor.running_mean      (10,)
+state_preprocessor.running_variance  (10,)
 state_preprocessor.current_count     scalar
 ```
 
@@ -101,7 +101,7 @@ Use `epsilon = 1e-8` unless the launch parameter overrides it.
 
 ## Observation order
 
-The 18 input values must be built in exactly this order:
+The current model's 10 input values must be built in exactly this order:
 
 ```text
 0  target_visible
@@ -114,6 +114,11 @@ The 18 input values must be built in exactly this order:
 7  avoid_right
 8  nearest_avoid_x
 9  nearest_avoid_y
+```
+
+Legacy 18-input checkpoints append these values after index 9:
+
+```text
 10 pose_valid
 11 robot_x_norm
 12 robot_y_norm
@@ -149,6 +154,8 @@ avoid_left, avoid_center, avoid_right:
 nearest_avoid_x, nearest_avoid_y:
   x/y of the closest avoid object in normalized camera coordinates,
   or 0.0/0.0 when no avoid object is fresh
+
+Legacy-only pose values:
 
 pose_valid:
   1.0 when pose estimate is fresh and usable, else 0.0
@@ -215,16 +222,16 @@ Main runner:
 rl_model_policy/rl_model_policy/rl_model_policy_node.py
 ```
 
-For the current 18-input checkpoint, this file must satisfy:
+For the current 10-input checkpoint, this file must satisfy:
 
 ```text
-PolicyNetwork.net_container.0 = torch.nn.Linear(18, 128)
-make_observation(...) returns exactly 18 floats
-obs_mean and obs_variance loaded from checkpoint['state_preprocessor'] are length 18
+PolicyNetwork.net_container.0 = torch.nn.Linear(10, 128)
+the first 10 values from make_observation(...) are sent to the policy
+obs_mean and obs_variance loaded from checkpoint['state_preprocessor'] are length 10
 ```
 
-The ROS runner now implements this 18-value contract and rejects checkpoints
-whose first policy layer or state preprocessor has a different shape.
+The ROS runner detects 10- and 18-input checkpoints, builds the matching first
+layer, and rejects any other policy or state-preprocessor shape.
 
 Launch files that may need parameters for pose input:
 
@@ -239,11 +246,10 @@ Related pose package:
 robot_pose_tracker/
 ```
 
-The ROS runner subscribes to `/odom` from `robot_pose_tracker`. This supplies
-pose and the tracker-selected yaw rate for observation indices 10 through 17.
-If odometry is stale or unavailable, it sets `pose_valid = 0.0` and zeroes all
-eight pose inputs; the policy was trained with pose dropout, but it performs
-best with usable pose/IMU data.
+The current 10-input model does not consume `/odom`. For a legacy 18-input
+checkpoint, the ROS runner can subscribe to `/odom` from `robot_pose_tracker`
+and use pose/yaw-rate values at observation indices 10 through 17. With pose
+observation disabled, those eight legacy inputs are zero.
 
 ## Isaac Lab source of truth
 
@@ -257,7 +263,6 @@ Look for:
 
 ```text
 _get_observations()
-_pose_observation()
 ```
 
 The training constants are defined in:
@@ -269,13 +274,12 @@ C:\Users\user\Documents\robot_avoid_search\robot_avoid_search\source\robot_avoid
 Look for:
 
 ```text
-observation_space = 18
+observation_space = 10
 max_forward_speed
 max_reverse_speed
 max_angular_speed
-pose_xy_noise_std_m
-pose_yaw_noise_std_rad
-pose_dropout_prob
+front_capture_width_m = 0.209522
+front_penalty_extra_each_side_m = 0.010
 ```
 
 ## Quick compatibility checklist
@@ -283,9 +287,9 @@ pose_dropout_prob
 Before running the robot:
 
 ```text
-1. torch.load(model)['policy']['net_container.0.weight'].shape == (128, 18)
-2. PolicyNetwork first layer is Linear(18, 128)
-3. make_observation returns 18 values
+1. torch.load(model)['policy']['net_container.0.weight'].shape == (128, 10)
+2. the runner detects observation_dim == 10
+3. only observation values 0 through 9 are sent to the current policy
 4. state_preprocessor running_mean/running_variance are applied before inference
 5. action uses policy mean, not Gaussian sampling
 6. /cmd_vel is published by only one node
