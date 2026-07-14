@@ -9,6 +9,7 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -25,6 +26,9 @@ def generate_launch_description():
     publish_annotated = LaunchConfiguration("publish_annotated")
     speed_scale = LaunchConfiguration("speed_scale")
     target_timeout_s = LaunchConfiguration("target_timeout_s")
+    target_bearing_prediction_enabled = LaunchConfiguration(
+        "target_bearing_prediction_enabled"
+    )
     odometry_topic = LaunchConfiguration("odometry_topic")
     pose_timeout_s = LaunchConfiguration("pose_timeout_s")
     pose_observation_enabled = LaunchConfiguration("pose_observation_enabled")
@@ -53,6 +57,12 @@ def generate_launch_description():
     coverage_return_speed = LaunchConfiguration("coverage_return_speed")
     coverage_waypoint_tolerance = LaunchConfiguration("coverage_waypoint_tolerance")
     coverage_reacquire_duration_s = LaunchConfiguration("coverage_reacquire_duration_s")
+    coverage_reacquire_reverse_after_s = LaunchConfiguration(
+        "coverage_reacquire_reverse_after_s"
+    )
+    coverage_reacquire_angular_z = LaunchConfiguration(
+        "coverage_reacquire_angular_z"
+    )
     initial_x = LaunchConfiguration("initial_x")
     initial_y = LaunchConfiguration("initial_y")
     initial_yaw_deg = LaunchConfiguration("initial_yaw_deg")
@@ -69,6 +79,7 @@ def generate_launch_description():
     gripper_move_duration_s = LaunchConfiguration("gripper_move_duration_s")
     grab_center_tolerance = LaunchConfiguration("grab_center_tolerance")
     grab_area_ratio = LaunchConfiguration("grab_area_ratio")
+    grab_detection_timeout_s = LaunchConfiguration("grab_detection_timeout_s")
     final_forward_linear_x = LaunchConfiguration("final_forward_linear_x")
     final_forward_duration_s = LaunchConfiguration("final_forward_duration_s")
     grab_duration_s = LaunchConfiguration("grab_duration_s")
@@ -150,6 +161,7 @@ def generate_launch_description():
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
             "target_timeout_s": target_timeout_s,
+            "target_bearing_prediction_enabled": target_bearing_prediction_enabled,
             "dry_run": dry_run,
             "odometry_topic": odometry_topic,
             "pose_timeout_s": pose_timeout_s,
@@ -168,6 +180,10 @@ def generate_launch_description():
             "coverage_return_speed": coverage_return_speed,
             "coverage_waypoint_tolerance": coverage_waypoint_tolerance,
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
+            "coverage_reacquire_reverse_after_s": (
+                coverage_reacquire_reverse_after_s
+            ),
+            "coverage_reacquire_angular_z": coverage_reacquire_angular_z,
             "gripper_enabled": gripper_enabled,
             "gripper_type": gripper_type,
             "gripper_servo_id": gripper_servo_id,
@@ -176,6 +192,7 @@ def generate_launch_description():
             "gripper_move_duration_s": gripper_move_duration_s,
             "grab_center_tolerance": grab_center_tolerance,
             "grab_area_ratio": grab_area_ratio,
+            "grab_detection_timeout_s": grab_detection_timeout_s,
             "final_forward_linear_x": final_forward_linear_x,
             "final_forward_duration_s": final_forward_duration_s,
             "grab_duration_s": grab_duration_s,
@@ -198,26 +215,37 @@ def generate_launch_description():
         }.items(),
     )
 
-    object_mapper_launch = IncludeLaunchDescription(
-        PathJoinSubstitution([
-            FindPackageShare("rl_model_policy"),
-            "launch",
-            "rl_object_world_mapper.launch.py",
-        ]),
-        launch_arguments={
+    object_mapper_node = Node(
+        package="rl_model_policy",
+        executable="rl_object_world_mapper",
+        name="rl_object_world_mapper",
+        output="screen",
+        parameters=[{
             "detections_topic": "/yolo/detections",
             "odometry_topic": odometry_topic,
             "output_topic": "/rl_estimated_objects",
+            "policy_state_topic": "/rl_model_policy_state",
             "target_classes": target_classes,
             "avoid_classes": avoid_classes,
             "calibration_path": object_calibration_path,
-            "pose_timeout_s": pose_timeout_s,
-            "retention_s": object_retention_s,
-            "association_radius_m": object_association_radius_m,
-            "position_smoothing_alpha": object_position_smoothing_alpha,
-            "arena_half_extent_m": arena_half_extent_m,
-        }.items(),
+            "pose_timeout_s": ParameterValue(pose_timeout_s, value_type=float),
+            "retention_s": ParameterValue(object_retention_s, value_type=float),
+            "association_radius_m": ParameterValue(
+                object_association_radius_m,
+                value_type=float,
+            ),
+            "position_smoothing_alpha": ParameterValue(
+                object_position_smoothing_alpha,
+                value_type=float,
+            ),
+            "arena_half_extent_m": ParameterValue(
+                arena_half_extent_m,
+                value_type=float,
+            ),
+        }],
         condition=IfCondition(launch_object_mapper),
+        respawn=True,
+        respawn_delay=2.0,
     )
 
     delayed_start = TimerAction(
@@ -282,8 +310,13 @@ def generate_launch_description():
         DeclareLaunchArgument("speed_scale", default_value="0.25"),
         DeclareLaunchArgument(
             "target_timeout_s",
-            default_value="0.8",
+            default_value="1.0",
             description="Keep tracking the last target through short YOLO detection gaps.",
+        ),
+        DeclareLaunchArgument(
+            "target_bearing_prediction_enabled",
+            default_value="true",
+            description="Project target image x from odometry during short detection gaps.",
         ),
         DeclareLaunchArgument("odometry_topic", default_value="/odom"),
         DeclareLaunchArgument("pose_timeout_s", default_value="0.5"),
@@ -339,7 +372,12 @@ def generate_launch_description():
         DeclareLaunchArgument("coverage_transit_speed", default_value="0.18"),
         DeclareLaunchArgument("coverage_return_speed", default_value="0.20"),
         DeclareLaunchArgument("coverage_waypoint_tolerance", default_value="0.10"),
-        DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="0.8"),
+        DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="3.0"),
+        DeclareLaunchArgument(
+            "coverage_reacquire_reverse_after_s",
+            default_value="1.5",
+        ),
+        DeclareLaunchArgument("coverage_reacquire_angular_z", default_value="0.18"),
         DeclareLaunchArgument(
             "initial_x",
             default_value="1.8",
@@ -381,6 +419,7 @@ def generate_launch_description():
         DeclareLaunchArgument("gripper_move_duration_s", default_value="0.5"),
         DeclareLaunchArgument("grab_center_tolerance", default_value="0.18"),
         DeclareLaunchArgument("grab_area_ratio", default_value="0.70"),
+        DeclareLaunchArgument("grab_detection_timeout_s", default_value="0.25"),
         DeclareLaunchArgument("final_forward_linear_x", default_value="0.20"),
         DeclareLaunchArgument("final_forward_duration_s", default_value="1.0"),
         DeclareLaunchArgument("grab_duration_s", default_value="1.0"),
@@ -399,7 +438,7 @@ def generate_launch_description():
         motor_launch,
         pose_tracker_launch,
         policy_launch,
-        object_mapper_launch,
+        object_mapper_node,
         status_gui,
         delayed_start,
     ])

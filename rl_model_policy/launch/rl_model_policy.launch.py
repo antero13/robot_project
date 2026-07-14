@@ -11,6 +11,9 @@ def generate_launch_description():
     speed_scale = LaunchConfiguration('speed_scale')
     dry_run = LaunchConfiguration('dry_run')
     target_timeout_s = LaunchConfiguration('target_timeout_s')
+    target_bearing_prediction_enabled = LaunchConfiguration(
+        'target_bearing_prediction_enabled'
+    )
     odometry_topic = LaunchConfiguration('odometry_topic')
     pose_timeout_s = LaunchConfiguration('pose_timeout_s')
     pose_observation_enabled = LaunchConfiguration('pose_observation_enabled')
@@ -28,6 +31,12 @@ def generate_launch_description():
     coverage_return_speed = LaunchConfiguration('coverage_return_speed')
     coverage_waypoint_tolerance = LaunchConfiguration('coverage_waypoint_tolerance')
     coverage_reacquire_duration_s = LaunchConfiguration('coverage_reacquire_duration_s')
+    coverage_reacquire_reverse_after_s = LaunchConfiguration(
+        'coverage_reacquire_reverse_after_s'
+    )
+    coverage_reacquire_angular_z = LaunchConfiguration(
+        'coverage_reacquire_angular_z'
+    )
     gripper_enabled = LaunchConfiguration('gripper_enabled')
     gripper_type = LaunchConfiguration('gripper_type')
     gripper_servo_id = LaunchConfiguration('gripper_servo_id')
@@ -36,6 +45,7 @@ def generate_launch_description():
     gripper_move_duration_s = LaunchConfiguration('gripper_move_duration_s')
     grab_center_tolerance = LaunchConfiguration('grab_center_tolerance')
     grab_area_ratio = LaunchConfiguration('grab_area_ratio')
+    grab_detection_timeout_s = LaunchConfiguration('grab_detection_timeout_s')
     final_forward_linear_x = LaunchConfiguration('final_forward_linear_x')
     final_forward_duration_s = LaunchConfiguration('final_forward_duration_s')
     grab_duration_s = LaunchConfiguration('grab_duration_s')
@@ -78,8 +88,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'target_timeout_s',
-            default_value='0.8',
+            default_value='1.0',
             description='Keep tracking the last target through short YOLO detection gaps.',
+        ),
+        DeclareLaunchArgument(
+            'target_bearing_prediction_enabled',
+            default_value='true',
+            description='Project target image x from odometry during short detection gaps.',
         ),
         DeclareLaunchArgument('odometry_topic', default_value='/odom'),
         DeclareLaunchArgument('pose_timeout_s', default_value='0.5'),
@@ -105,7 +120,12 @@ def generate_launch_description():
         DeclareLaunchArgument('coverage_transit_speed', default_value='0.18'),
         DeclareLaunchArgument('coverage_return_speed', default_value='0.20'),
         DeclareLaunchArgument('coverage_waypoint_tolerance', default_value='0.10'),
-        DeclareLaunchArgument('coverage_reacquire_duration_s', default_value='0.8'),
+        DeclareLaunchArgument('coverage_reacquire_duration_s', default_value='3.0'),
+        DeclareLaunchArgument(
+            'coverage_reacquire_reverse_after_s',
+            default_value='1.5',
+        ),
+        DeclareLaunchArgument('coverage_reacquire_angular_z', default_value='0.18'),
         DeclareLaunchArgument('full_mission_enabled', default_value='true'),
         DeclareLaunchArgument('mission_duration_s', default_value='180.0'),
         DeclareLaunchArgument('force_return_remaining_s', default_value='30.0'),
@@ -129,6 +149,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gripper_move_duration_s', default_value='0.5'),
         DeclareLaunchArgument('grab_center_tolerance', default_value='0.18'),
         DeclareLaunchArgument('grab_area_ratio', default_value='0.70'),
+        DeclareLaunchArgument('grab_detection_timeout_s', default_value='0.25'),
         DeclareLaunchArgument('final_forward_linear_x', default_value='0.20'),
         DeclareLaunchArgument('final_forward_duration_s', default_value='1.0'),
         DeclareLaunchArgument('grab_duration_s', default_value='1.0'),
@@ -152,6 +173,10 @@ def generate_launch_description():
                 'dry_run': dry_run,
                 'timer_rate_hz': 20.0,
                 'target_timeout_s': ParameterValue(target_timeout_s, value_type=float),
+                'target_bearing_prediction_enabled': ParameterValue(
+                    target_bearing_prediction_enabled,
+                    value_type=bool,
+                ),
                 'avoid_timeout_s': 0.5,
                 'episode_length_s': 18.0,
                 'pose_timeout_s': ParameterValue(pose_timeout_s, value_type=float),
@@ -201,6 +226,14 @@ def generate_launch_description():
                 ),
                 'coverage_reacquire_duration_s': ParameterValue(
                     coverage_reacquire_duration_s,
+                    value_type=float,
+                ),
+                'coverage_reacquire_reverse_after_s': ParameterValue(
+                    coverage_reacquire_reverse_after_s,
+                    value_type=float,
+                ),
+                'coverage_reacquire_angular_z': ParameterValue(
+                    coverage_reacquire_angular_z,
                     value_type=float,
                 ),
 
@@ -286,6 +319,10 @@ def generate_launch_description():
                 'gripper_move_duration_s': ParameterValue(gripper_move_duration_s, value_type=float),
                 'grab_center_tolerance': ParameterValue(grab_center_tolerance, value_type=float),
                 'grab_area_ratio': ParameterValue(grab_area_ratio, value_type=float),
+                'grab_detection_timeout_s': ParameterValue(
+                    grab_detection_timeout_s,
+                    value_type=float,
+                ),
                 'final_forward_linear_x': ParameterValue(final_forward_linear_x, value_type=float),
                 'final_forward_duration_s': ParameterValue(final_forward_duration_s, value_type=float),
                 'grab_duration_s': ParameterValue(grab_duration_s, value_type=float),

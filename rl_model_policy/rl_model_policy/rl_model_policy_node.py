@@ -35,6 +35,7 @@ from rl_model_policy.observation import (
     validate_observation,
 )
 from rl_model_policy.pickup_trigger import pickup_is_ready
+from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 
 try:
     import torch
@@ -111,7 +112,8 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("active_on_start", False)
         self.declare_parameter("dry_run", False)
         self.declare_parameter("timer_rate_hz", 20.0)
-        self.declare_parameter("target_timeout_s", 0.8)
+        self.declare_parameter("target_timeout_s", 1.0)
+        self.declare_parameter("target_bearing_prediction_enabled", True)
         self.declare_parameter("avoid_timeout_s", 0.5)
         self.declare_parameter("episode_length_s", 18.0)
         self.declare_parameter("pose_timeout_s", 0.5)
@@ -135,8 +137,9 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("coverage_max_angular_speed", 0.40)
         self.declare_parameter("coverage_avoid_danger_threshold", 0.20)
         self.declare_parameter("coverage_avoid_angular_speed", 0.35)
-        self.declare_parameter("coverage_reacquire_duration_s", 0.8)
-        self.declare_parameter("coverage_reacquire_angular_z", 0.25)
+        self.declare_parameter("coverage_reacquire_duration_s", 3.0)
+        self.declare_parameter("coverage_reacquire_reverse_after_s", 1.5)
+        self.declare_parameter("coverage_reacquire_angular_z", 0.18)
 
         self.declare_parameter("avoid_area_ratio", 0.20)
         self.declare_parameter("avoid_center_band", 0.75)
@@ -185,6 +188,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("gripper_move_duration_s", 0.5)
         self.declare_parameter("grab_center_tolerance", 0.18)
         self.declare_parameter("grab_area_ratio", 0.70)
+        self.declare_parameter("grab_detection_timeout_s", 0.25)
         self.declare_parameter("final_forward_linear_x", 0.20)
         self.declare_parameter("final_forward_duration_s", 1.0)
         self.declare_parameter("grab_duration_s", 1.0)
@@ -598,9 +602,13 @@ class RLModelPolicyNode(Node):
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
             linear_x = 0.0
-            angular_z = (
-                -self.last_target_direction
-                * self.get_float("coverage_reacquire_angular_z")
+            angular_z = reacquire_angular_velocity(
+                last_target_direction=self.last_target_direction,
+                elapsed_s=self.target_lost_age_s(),
+                reverse_after_s=self.get_float(
+                    "coverage_reacquire_reverse_after_s"
+                ),
+                angular_speed=self.get_float("coverage_reacquire_angular_z"),
             )
         elif self.active and self.coverage_is_enabled():
             linear_x, angular_z = self.coverage_search_command(bins)
@@ -906,13 +914,18 @@ class RLModelPolicyNode(Node):
     def should_locally_reacquire(self):
         if not self.had_visible_target or self.target_lost_started_at is None:
             return False
-        elapsed = self.get_clock().now() - self.target_lost_started_at
-        elapsed_s = elapsed.nanoseconds / 1_000_000_000.0
+        elapsed_s = self.target_lost_age_s()
         if elapsed_s <= self.get_float("coverage_reacquire_duration_s"):
             return True
         self.had_visible_target = False
         self.target_lost_started_at = None
         return False
+
+    def target_lost_age_s(self):
+        if self.target_lost_started_at is None:
+            return 0.0
+        elapsed = self.get_clock().now() - self.target_lost_started_at
+        return max(0.0, elapsed.nanoseconds / 1_000_000_000.0)
 
     def coverage_search_command(self, bins):
         pose_fresh = self.is_fresh(self.latest_pose_time, "pose_timeout_s")
@@ -960,7 +973,7 @@ class RLModelPolicyNode(Node):
             self.latest_target.z,
         )
         if (
-            self.pose_observation_is_active()
+            bool(self.get_parameter("target_bearing_prediction_enabled").value)
             and self.last_target_world_bearing is not None
             and self.is_fresh(self.latest_pose_time, "pose_timeout_s")
         ):
@@ -970,6 +983,8 @@ class RLModelPolicyNode(Node):
                 self.last_target_world_bearing,
                 fov_rad,
             )
+            if abs(target.x) > 1e-6:
+                self.last_target_direction = 1.0 if target.x >= 0.0 else -1.0
         return target
 
     def make_observation(self, target, objects):
@@ -1070,6 +1085,11 @@ class RLModelPolicyNode(Node):
 
         if self.grab_state == self.GRAB_TRACKING:
             if target is None:
+                return None
+            if not self.is_fresh(
+                self.latest_target_time,
+                "grab_detection_timeout_s",
+            ):
                 return None
             if not pickup_is_ready(
                 target_x=target.x,

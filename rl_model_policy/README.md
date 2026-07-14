@@ -154,12 +154,15 @@ Do not run `mission_manager`, keyboard teleoperation, or another `/cmd_vel` publ
 the same time.
 
 `camera_horizontal_fov_deg` defaults to `80.0`, matching the training
-environment. It is used for yaw-based target prediction only when
-running a legacy 18-input model with both `launch_pose_tracker:=true` and
-`pose_observation_enabled:=true`.
+environment. With `target_bearing_prediction_enabled:=true`, odometry yaw
+projects the last target back into image x during short detection gaps. This
+works with the current 10-input policy and does not add pose values to its
+observation vector.
 
-`target_timeout_s` defaults to `0.8`. The last target x/y is kept during a
+`target_timeout_s` defaults to `1.0`. The last target x/y is kept during a
 short YOLO detection gap instead of immediately changing to search behavior.
+Pickup still requires a raw YOLO detection newer than
+`grab_detection_timeout_s` (default `0.25` seconds).
 
 ## No-target coverage search
 
@@ -167,10 +170,14 @@ The runtime is a hybrid controller. The learned policy handles a visible
 target; deterministic coverage handles the case that the target is absent:
 
 ```text
-TRACK_TARGET -> LOCAL_REACQUIRE -> COVERAGE_SEARCH
+TRACK_TARGET -> LOCAL_REACQUIRE (two-way sweep) -> COVERAGE_SEARCH
                                       |
 target detected ----------------------+--> TRACK_TARGET
 ```
+
+Local reacquisition stops forward motion and searches for three seconds. It
+turns toward the last visible target side for 1.5 seconds, then reverses the
+turn for another 1.5 seconds. Coverage search starts only if both sweeps fail.
 
 Coverage starts on the lower main road, scans four vertical lanes northward,
 reverses down each cleared lane, and shifts to the next lane on the lower road.
@@ -200,7 +207,9 @@ The default real-robot configuration is explicit below:
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   pose_observation_enabled:=false \
-  target_timeout_s:=0.8 \
+  target_timeout_s:=1.0 \
+  target_bearing_prediction_enabled:=true \
+  coverage_reacquire_duration_s:=3.0 \
   camera_horizontal_fov_deg:=80.0
 ```
 
