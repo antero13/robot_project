@@ -62,16 +62,24 @@ class ObjectWorldMapperNode(Node):
             self.calibration_path = Path(
                 get_package_share_directory("rl_model_policy")
             ) / "config" / "distance_normalized_points.csv"
-        self.localizer = CalibrationObjectLocalizer(
-            calibration_path=self.calibration_path,
-            arena_half_extent_m=self.get_float("arena_half_extent_m"),
-            horizontal_extrapolation_margin=self.get_float(
-                "horizontal_extrapolation_margin"
-            ),
-            vertical_extrapolation_margin=self.get_float(
-                "vertical_extrapolation_margin"
-            ),
-        )
+        self.localizer = None
+        self.calibration_error = None
+        try:
+            self.localizer = CalibrationObjectLocalizer(
+                calibration_path=self.calibration_path,
+                arena_half_extent_m=self.get_float("arena_half_extent_m"),
+                horizontal_extrapolation_margin=self.get_float(
+                    "horizontal_extrapolation_margin"
+                ),
+                vertical_extrapolation_margin=self.get_float(
+                    "vertical_extrapolation_margin"
+                ),
+            )
+        except (OSError, ValueError) as exc:
+            self.calibration_error = str(exc)
+            self.get_logger().error(
+                f"Object map calibration unavailable: {self.calibration_error}"
+            )
 
         self.robot_x = 0.0
         self.robot_y = 0.0
@@ -287,6 +295,8 @@ class ObjectWorldMapperNode(Node):
             del self.tracked_objects[key]
 
     def localize_detection(self, detection, image_width, image_height):
+        if self.localizer is None:
+            return None
         bbox = detection.get("bbox_xyxy", {})
         try:
             center_x = (float(bbox["x1"]) + float(bbox["x2"])) * 0.5
@@ -353,7 +363,9 @@ class ObjectWorldMapperNode(Node):
             objects.append(output)
 
         pose_fresh = self.pose_is_fresh()
-        if not pose_fresh:
+        if self.localizer is None:
+            mapper_status = "calibration_error"
+        elif not pose_fresh:
             mapper_status = "waiting_for_odometry"
         elif self.last_detection_count and not self.last_mapped_count:
             mapper_status = "detections_outside_calibration"
@@ -364,8 +376,9 @@ class ObjectWorldMapperNode(Node):
         message.data = json.dumps(
             {
                 "mapper_status": mapper_status,
-                "calibration_loaded": True,
+                "calibration_loaded": self.localizer is not None,
                 "calibration_file": self.calibration_path.name,
+                "calibration_error": self.calibration_error,
                 "localization_method": "calibration_interpolation",
                 "pose_fresh": pose_fresh,
                 "detection_count": self.last_detection_count,

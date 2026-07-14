@@ -7,6 +7,11 @@ class NormalizedDetectionPoint:
     y: float
     bottom_y: float
 
+    @property
+    def policy_y(self):
+        """RL closeness input; intentionally separate from calibration y."""
+        return self.bottom_y
+
 
 def bbox_to_normalized_point(x1, y1, x2, y2, image_width, image_height):
     image_width = float(image_width)

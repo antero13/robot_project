@@ -50,6 +50,7 @@ MAPPER_STATUS_LABELS = {
     "ready": "보정 준비",
     "waiting_for_odometry": "위치 정보 대기",
     "detections_outside_calibration": "보정 범위 밖",
+    "calibration_error": "CSV 보정 오류",
 }
 
 
@@ -132,6 +133,8 @@ def mapper_diagnostics_label(state):
     detected = int(state.get("detection_count", 0))
     mapped = int(state.get("mapped_count", 0))
     calibration = "CSV" if state.get("calibration_loaded") else "보정 없음"
+    if status == "calibration_error" and state.get("calibration_error"):
+        calibration = f"{calibration}: {state['calibration_error']}"
     return f"{status_label} · {calibration} · 감지 {detected} / 변환 {mapped}"
 
 

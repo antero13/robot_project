@@ -79,14 +79,14 @@ class DetectionsToTargetNode(Node):
             if converted is None:
                 continue
 
-            class_name, class_keys, point_msg, bbox_xyxy, bottom_y_ratio = converted
+            class_name, class_keys, point_msg, bbox_xyxy, center_y_ratio = converted
             if self.is_target(class_keys):
                 target_candidates.append(
-                    (point_msg.point.y, class_name, point_msg, bbox_xyxy, bottom_y_ratio)
+                    (point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio)
                 )
             elif self.is_avoid(class_keys):
                 avoid_candidates.append(
-                    (point_msg.point.y, class_name, point_msg, bbox_xyxy, bottom_y_ratio)
+                    (point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio)
                 )
 
         avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
@@ -135,9 +135,11 @@ class DetectionsToTargetNode(Node):
         out = PointStamped()
         out.header = header
         out.point.x = normalized.x
-        out.point.y = normalized.y
+        # RL uses bbox-bottom closeness. The GUI mapper independently reads
+        # the raw bbox center from /yolo/detections for CSV calibration.
+        out.point.y = normalized.policy_y
         out.point.z = confidence
-        return class_name, class_keys, out, (x1, y1, x2, y2), normalized.bottom_y
+        return class_name, class_keys, out, (x1, y1, x2, y2), normalized.y
 
     def filter_overlapping_avoid_candidates(self, avoid_candidates, target_candidates):
         threshold = self.avoid_target_iou_threshold
@@ -198,8 +200,8 @@ class DetectionsToTargetNode(Node):
                     "class_name": class_name,
                     "x": float(point_msg.point.x),
                     "y": float(point_msg.point.y),
-                    "center_y": float(point_msg.point.y),
-                    "bottom_y": float(bottom_y_ratio),
+                    "center_y": float(center_y_ratio),
+                    "bottom_y": float(point_msg.point.y),
                     "confidence": float(point_msg.point.z),
                     "bbox_xyxy": {
                         "x1": float(bbox_xyxy[0]),
@@ -208,7 +210,7 @@ class DetectionsToTargetNode(Node):
                         "y2": float(bbox_xyxy[3]),
                     },
                 }
-                for _, class_name, point_msg, bbox_xyxy, bottom_y_ratio in sorted(
+                for _, class_name, point_msg, bbox_xyxy, center_y_ratio in sorted(
                     candidates,
                     key=lambda item: item[0],
                     reverse=True,

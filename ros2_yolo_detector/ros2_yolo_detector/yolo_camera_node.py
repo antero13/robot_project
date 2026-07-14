@@ -311,7 +311,10 @@ class YoloCameraNode(Node):
                 )
             except ValueError:
                 continue
-            label = f"x={normalized.x:+.3f}  y={normalized.y:.3f}"
+            label = (
+                f"x={normalized.x:+.3f}  "
+                f"rl_y={normalized.policy_y:.3f}  c_y={normalized.y:.3f}"
+            )
 
             marker_x = max(0, min(image_width - 1, int(round(center_x))))
             marker_y = max(0, min(image_height - 1, int(round(center_y))))

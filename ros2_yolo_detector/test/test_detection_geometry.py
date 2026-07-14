@@ -8,12 +8,13 @@ from ros2_yolo_detector.detection_geometry import bbox_to_normalized_point
 
 
 class DetectionGeometryTest(unittest.TestCase):
-    def test_uses_bounding_box_center_for_policy_coordinates(self):
+    def test_separates_calibration_center_from_policy_closeness(self):
         point = bbox_to_normalized_point(160, 120, 320, 360, 640, 480)
 
         self.assertAlmostEqual(point.x, -0.25)
         self.assertAlmostEqual(point.y, 0.50)
         self.assertAlmostEqual(point.bottom_y, 0.75)
+        self.assertAlmostEqual(point.policy_y, 0.75)
 
     def test_clamps_boxes_that_extend_outside_the_image(self):
         point = bbox_to_normalized_point(-100, -50, 800, 600, 640, 480)

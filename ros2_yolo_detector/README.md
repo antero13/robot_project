@@ -176,19 +176,21 @@ When `publish_annotated:=true`, every YOLO box includes a yellow marker and a
 label such as:
 
 ```text
-x=-0.352  y=0.440
+x=-0.352  rl_y=0.620  c_y=0.440
 ```
 
-The values use the same calculation as `/target_object` and `/avoid_objects`:
+The values explicitly separate the RL closeness input from calibration:
 
 ```text
 x = (bbox center x - image center x) / image center x   [-1, 1]
-y = bbox center y / image height                        [0, 1]
+rl_y = bbox bottom / image height                       [0, 1]
+c_y = bbox center y / image height                      [0, 1]
 ```
 
-The yellow cross marks the bounding-box center used for calibration and policy
-input. `bottom_y` remains available in `/avoid_objects` as diagnostic metadata.
-These values are normalized camera observations, not physical meters.
+The yellow cross and `c_y` identify the bbox center used only by the CSV GUI
+mapper. `/target_object.point.y` and `/avoid_objects.y` use `rl_y`; no calibrated
+world coordinate is fed into the policy. These values are normalized camera
+observations, not physical meters.
 
 ```bash
 ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \

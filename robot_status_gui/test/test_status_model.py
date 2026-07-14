@@ -73,6 +73,15 @@ class StatusModelTest(unittest.TestCase):
             "보정 준비 · CSV · 감지 3 / 변환 2",
         )
 
+    def test_mapper_diagnostics_expose_calibration_error(self):
+        state = {
+            "mapper_status": "calibration_error",
+            "calibration_loaded": False,
+            "calibration_error": "file not found",
+        }
+        self.assertIn("CSV 보정 오류", mapper_diagnostics_label(state))
+        self.assertIn("file not found", mapper_diagnostics_label(state))
+
     def test_quaternion_yaw(self):
         yaw = quaternion_to_yaw(0.0, 0.0, math.sin(math.pi / 4), math.cos(math.pi / 4))
         self.assertAlmostEqual(yaw, math.pi / 2)
