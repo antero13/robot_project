@@ -147,7 +147,7 @@ class Vl53l1xSensorPair:
                 "The installed VL53L1X driver does not support timing configuration."
             )
     
-        # 1 = Short Range
+        # 2 = Medium Range
         set_distance_mode(self.ranging_mode)
     
         # 측정 시간 41ms, 새 측정 주기 50ms → 20Hz
