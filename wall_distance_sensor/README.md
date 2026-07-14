@@ -74,6 +74,11 @@ ros2 launch wall_distance_sensor wall_distance_angle.launch.py \
   safe_distance_m:=0.15
 ```
 
+The default sensor configuration uses short-distance mode with a 50 ms timing
+budget and a 100 ms inter-measurement period. Measurements and ROS messages are
+therefore updated at 10 Hz. These values can be overridden at launch time with
+`timing_budget_us`, `inter_measurement_period_ms`, and `update_rate_hz`.
+
 Check which Linux I2C bus numbers are exposed on your board:
 
 ```bash

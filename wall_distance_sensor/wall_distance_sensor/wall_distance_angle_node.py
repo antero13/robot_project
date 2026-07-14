@@ -38,6 +38,8 @@ class Vl53l1xSensorPair:
         right_xshut_pin: int,
         xshut_pin_mode: str,
         ranging_mode: int,
+        timing_budget_us: int,
+        inter_measurement_period_ms: int,
         distance_scale_m: float,
         logger,
     ) -> None:
@@ -50,6 +52,8 @@ class Vl53l1xSensorPair:
         self.right_xshut_pin = right_xshut_pin
         self.xshut_pin_mode = xshut_pin_mode
         self.ranging_mode = ranging_mode
+        self.timing_budget_us = timing_budget_us
+        self.inter_measurement_period_ms = inter_measurement_period_ms
         self.distance_scale_m = distance_scale_m
         self.logger = logger
         self.gpio = None
@@ -138,10 +142,19 @@ class Vl53l1xSensorPair:
         )
 
     def _start_ranging(self, sensor: Any) -> None:
-        method = getattr(sensor, "start_ranging", None)
-        if method is None:
+        set_distance_mode = getattr(sensor, "set_distance_mode", None)
+        set_timing = getattr(sensor, "set_timing", None)
+        start_ranging = getattr(sensor, "start_ranging", None)
+        if set_distance_mode is None:
+            raise RuntimeError("The installed VL53L1X Python driver has no set_distance_mode method.")
+        if set_timing is None:
+            raise RuntimeError("The installed VL53L1X Python driver has no set_timing method.")
+        if start_ranging is None:
             raise RuntimeError("The installed VL53L1X Python driver has no start_ranging method.")
-        method(self.ranging_mode)
+
+        set_distance_mode(self.ranging_mode)
+        set_timing(self.timing_budget_us, self.inter_measurement_period_ms)
+        start_ranging(0)
 
     def read(self) -> tuple[float, float]:
         return self._read_sensor_m(self.left_sensor), self._read_sensor_m(self.right_sensor)
@@ -180,13 +193,15 @@ class WallDistanceAngleNode(Node):
         self.declare_parameter("right_xshut_pin", -1)
         self.declare_parameter("xshut_pin_mode", "BOARD")
         self.declare_parameter("ranging_mode", 1)
+        self.declare_parameter("timing_budget_us", 50000)
+        self.declare_parameter("inter_measurement_period_ms", 100)
         self.declare_parameter("distance_scale_m", 0.001)
         self.declare_parameter("sensor_separation_m", 0.29)
         self.declare_parameter("safe_distance_m", 0.15)
         self.declare_parameter("min_valid_distance_m", 0.02)
         self.declare_parameter("max_valid_distance_m", 4.00)
         self.declare_parameter("filter_window_size", 3)
-        self.declare_parameter("update_rate_hz", 20.0)
+        self.declare_parameter("update_rate_hz", 10.0)
         self.declare_parameter("field_of_view_rad", 0.47)
         self.declare_parameter("measurement_frame_id", "front_wall_sensors")
         self.declare_parameter("left_frame_id", "front_left_tof")
@@ -254,6 +269,21 @@ class WallDistanceAngleNode(Node):
         if backend != "vl53l1x":
             raise ValueError("driver_backend must be 'vl53l1x' or 'mock'.")
 
+        ranging_mode = int(self.get_parameter("ranging_mode").value)
+        timing_budget_us = int(self.get_parameter("timing_budget_us").value)
+        inter_measurement_period_ms = int(
+            self.get_parameter("inter_measurement_period_ms").value
+        )
+        if ranging_mode not in (1, 2, 3):
+            raise ValueError("ranging_mode must be 1 (short), 2 (medium), or 3 (long).")
+        if timing_budget_us <= 0:
+            raise ValueError("timing_budget_us must be positive.")
+        if inter_measurement_period_ms * 1000 < timing_budget_us:
+            raise ValueError(
+                "inter_measurement_period_ms must be greater than or equal to "
+                "timing_budget_us."
+            )
+
         return Vl53l1xSensorPair(
             left_i2c_bus=int(self.get_parameter("left_i2c_bus").value),
             right_i2c_bus=int(self.get_parameter("right_i2c_bus").value),
@@ -263,7 +293,9 @@ class WallDistanceAngleNode(Node):
             left_xshut_pin=int(self.get_parameter("left_xshut_pin").value),
             right_xshut_pin=int(self.get_parameter("right_xshut_pin").value),
             xshut_pin_mode=str(self.get_parameter("xshut_pin_mode").value),
-            ranging_mode=int(self.get_parameter("ranging_mode").value),
+            ranging_mode=ranging_mode,
+            timing_budget_us=timing_budget_us,
+            inter_measurement_period_ms=inter_measurement_period_ms,
             distance_scale_m=self.get_float("distance_scale_m"),
             logger=self.get_logger(),
         )

@@ -22,6 +22,11 @@ def generate_launch_description():
             "left_i2c_bus": LaunchConfiguration("left_i2c_bus"),
             "right_i2c_bus": LaunchConfiguration("right_i2c_bus"),
             "sensor_separation_m": LaunchConfiguration("sensor_separation_m"),
+            "timing_budget_us": LaunchConfiguration("timing_budget_us"),
+            "inter_measurement_period_ms": LaunchConfiguration(
+                "inter_measurement_period_ms"
+            ),
+            "update_rate_hz": LaunchConfiguration("update_rate_hz"),
         }.items(),
     )
 
@@ -30,6 +35,9 @@ def generate_launch_description():
         DeclareLaunchArgument("left_i2c_bus", default_value="7"),
         DeclareLaunchArgument("right_i2c_bus", default_value="1"),
         DeclareLaunchArgument("sensor_separation_m", default_value="0.29"),
+        DeclareLaunchArgument("timing_budget_us", default_value="50000"),
+        DeclareLaunchArgument("inter_measurement_period_ms", default_value="100"),
+        DeclareLaunchArgument("update_rate_hz", default_value="10.0"),
         DeclareLaunchArgument("launch_motor_bridge", default_value="true"),
         DeclareLaunchArgument("auto_start", default_value="true"),
         DeclareLaunchArgument("angle_tolerance_deg", default_value="2.0"),
