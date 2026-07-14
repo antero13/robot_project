@@ -138,10 +138,23 @@ class Vl53l1xSensorPair:
         )
 
     def _start_ranging(self, sensor: Any) -> None:
-        method = getattr(sensor, "start_ranging", None)
-        if method is None:
-            raise RuntimeError("The installed VL53L1X Python driver has no start_ranging method.")
-        method(self.ranging_mode)
+        set_distance_mode = getattr(sensor, "set_distance_mode", None)
+        set_timing = getattr(sensor, "set_timing", None)
+        start_ranging = getattr(sensor, "start_ranging", None)
+    
+        if set_distance_mode is None or set_timing is None or start_ranging is None:
+            raise RuntimeError(
+                "The installed VL53L1X driver does not support timing configuration."
+            )
+    
+        # 1 = Short Range
+        set_distance_mode(self.ranging_mode)
+    
+        # 측정 시간 41ms, 새 측정 주기 50ms → 20Hz
+        set_timing(41000, 50)
+    
+        # 설정한 거리 모드와 timing을 변경하지 않고 시작
+        start_ranging(0)
 
     def read(self) -> tuple[float, float]:
         return self._read_sensor_m(self.left_sensor), self._read_sensor_m(self.right_sensor)
