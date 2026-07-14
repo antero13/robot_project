@@ -91,6 +91,63 @@ board exposes different bus numbers, pass those values as `left_i2c_bus` and
 The package can run standalone. The `mission_manager_2` launch file starts this
 node automatically with the same bus defaults.
 
+## Standalone wall-alignment test
+
+Use this test without the mission manager, teleop, or another `/cmd_vel`
+publisher. Place the robot about 0.5-1.0 m from a flat wall with enough space
+for an in-place turn. If the robot-controller driver is not already running,
+start it in a separate terminal:
+
+```bash
+ros2 launch ros_robot_controller ros_robot_controller.launch.xml
+```
+
+Then launch the test. Launching it does not move the robot:
+
+```bash
+ros2 launch wall_distance_sensor wall_alignment_test.launch.py
+```
+
+In another sourced terminal, monitor the sensor and test state:
+
+```bash
+ros2 topic echo /wall/measurement_json
+ros2 topic echo /wall_align/status
+```
+
+Start one alignment attempt only after both sensors report valid distances:
+
+```bash
+ros2 topic pub --once /wall_align/control std_msgs/msg/String "{data: align}"
+```
+
+Stop immediately if the robot rotates toward the wall or the absolute angle
+increases:
+
+```bash
+ros2 topic pub --once /wall_align/control std_msgs/msg/String "{data: stop}"
+```
+
+Run another attempt with `reset` followed by `align`:
+
+```bash
+ros2 topic pub --once /wall_align/control std_msgs/msg/String "{data: reset}"
+ros2 topic pub --once /wall_align/control std_msgs/msg/String "{data: align}"
+```
+
+The result is successful when `/wall_align/state` becomes `ALIGNED` and
+`wall_angle_deg` remains within 2 degrees for five control ticks. The test
+refuses to rotate when the closest sensor is under 0.35 m, the wall is over
+2.0 m away, measurements are stale, or the 10-second timeout expires.
+
+The launch file starts `cmd_vel_to_motor` by default. If that bridge is already
+running, avoid a duplicate by launching with:
+
+```bash
+ros2 launch wall_distance_sensor wall_alignment_test.launch.py \
+  launch_motor_bridge:=false
+```
+
 ## Test without hardware
 
 ```bash

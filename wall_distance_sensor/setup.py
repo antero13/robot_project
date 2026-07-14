@@ -24,6 +24,7 @@ setup(
     entry_points={
         "console_scripts": [
             "wall_distance_angle_node = wall_distance_sensor.wall_distance_angle_node:main",
+            "wall_alignment_test_node = wall_distance_sensor.wall_alignment_test_node:main",
         ],
     },
 )
