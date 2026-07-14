@@ -19,10 +19,10 @@ rl_model_policy/MODEL_CHECKPOINT_README.md
 Important current contract:
 
 ```text
-checkpoint input dimension: 18
+checkpoint input dimension: 10
 checkpoint action dimension: 2
-first policy layer: Linear(18, 128)
-state_preprocessor running_mean/running_variance length: 18
+first policy layer: Linear(10, 128)
+state_preprocessor running_mean/running_variance length: 10
 ```
 
 If a Codex/developer updates `rl_model_policy_node.py`, the observation order

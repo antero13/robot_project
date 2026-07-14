@@ -36,14 +36,6 @@ def generate_launch_description():
     gripper_move_duration_s = LaunchConfiguration('gripper_move_duration_s')
     grab_center_tolerance = LaunchConfiguration('grab_center_tolerance')
     grab_area_ratio = LaunchConfiguration('grab_area_ratio')
-    aligned_approach_enabled = LaunchConfiguration('aligned_approach_enabled')
-    aligned_approach_linear_x = LaunchConfiguration('aligned_approach_linear_x')
-    aligned_approach_angular_gain = LaunchConfiguration(
-        'aligned_approach_angular_gain'
-    )
-    aligned_approach_max_angular_z = LaunchConfiguration(
-        'aligned_approach_max_angular_z'
-    )
     final_forward_linear_x = LaunchConfiguration('final_forward_linear_x')
     final_forward_duration_s = LaunchConfiguration('final_forward_duration_s')
     grab_duration_s = LaunchConfiguration('grab_duration_s')
@@ -136,14 +128,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gripper_closed_position', default_value='300'),
         DeclareLaunchArgument('gripper_move_duration_s', default_value='0.5'),
         DeclareLaunchArgument('grab_center_tolerance', default_value='0.18'),
-        DeclareLaunchArgument('grab_area_ratio', default_value='0.50'),
-        DeclareLaunchArgument('aligned_approach_enabled', default_value='true'),
-        DeclareLaunchArgument('aligned_approach_linear_x', default_value='0.06'),
-        DeclareLaunchArgument('aligned_approach_angular_gain', default_value='0.8'),
-        DeclareLaunchArgument(
-            'aligned_approach_max_angular_z',
-            default_value='0.12',
-        ),
+        DeclareLaunchArgument('grab_area_ratio', default_value='0.70'),
         DeclareLaunchArgument('final_forward_linear_x', default_value='0.06'),
         DeclareLaunchArgument('final_forward_duration_s', default_value='1.6'),
         DeclareLaunchArgument('grab_duration_s', default_value='1.0'),
@@ -301,22 +286,6 @@ def generate_launch_description():
                 'gripper_move_duration_s': ParameterValue(gripper_move_duration_s, value_type=float),
                 'grab_center_tolerance': ParameterValue(grab_center_tolerance, value_type=float),
                 'grab_area_ratio': ParameterValue(grab_area_ratio, value_type=float),
-                'aligned_approach_enabled': ParameterValue(
-                    aligned_approach_enabled,
-                    value_type=bool,
-                ),
-                'aligned_approach_linear_x': ParameterValue(
-                    aligned_approach_linear_x,
-                    value_type=float,
-                ),
-                'aligned_approach_angular_gain': ParameterValue(
-                    aligned_approach_angular_gain,
-                    value_type=float,
-                ),
-                'aligned_approach_max_angular_z': ParameterValue(
-                    aligned_approach_max_angular_z,
-                    value_type=float,
-                ),
                 'final_forward_linear_x': ParameterValue(final_forward_linear_x, value_type=float),
                 'final_forward_duration_s': ParameterValue(final_forward_duration_s, value_type=float),
                 'grab_duration_s': ParameterValue(grab_duration_s, value_type=float),
