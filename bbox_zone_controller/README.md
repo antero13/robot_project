@@ -43,7 +43,7 @@ bbox bottom y >= 0.70
 -> stop
 -> open bus servo ID 1 to position 1000
 -> wait 0.5 s
--> drive forward at 0.20 m/s for 1.0 s
+-> drive forward at 0.06 m/s for 1.6 s
 -> stop and close the servo to position 300
 -> wait 1.0 s
 -> resume largest-bbox control
@@ -104,11 +104,14 @@ Speeds can be changed without editing code:
 
 ```bash
 ros2 launch bbox_zone_controller bbox_zone_drive.launch.py \
-  straight_linear_x:=0.12 \
-  avoid_turn_linear_x:=0.07 \
-  avoid_turn_angular_z:=0.50 \
-  target_forward_linear_x:=0.09
+  straight_linear_x:=0.06 \
+  avoid_turn_linear_x:=0.05 \
+  avoid_turn_angular_z:=0.25 \
+  target_forward_linear_x:=0.10
 ```
+
+These defaults match the corresponding search, curved-avoidance, approach,
+and final-forward motor values from commit `3a623ef`.
 
 The four zone points, target centering tolerance, alignment gain, minimum turn
 speed, and maximum turn speed are also launch arguments. `active_on_start` is
