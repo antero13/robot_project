@@ -102,7 +102,8 @@ start it in a separate terminal:
 ros2 launch ros_robot_controller ros_robot_controller.launch.xml
 ```
 
-Then launch the test. Launching it does not move the robot:
+Then launch the test. As soon as a valid wall measurement arrives, the robot
+automatically rotates to face the wall perpendicularly:
 
 ```bash
 ros2 launch wall_distance_sensor wall_alignment_test.launch.py
@@ -115,10 +116,11 @@ ros2 topic echo /wall/measurement_json
 ros2 topic echo /wall_align/status
 ```
 
-Start one alignment attempt only after both sensors report valid distances:
+The state changes automatically through `WAITING_FOR_SENSOR`, `ALIGNING`, and
+`ALIGNED`. To disable automatic movement and retain manual start, use:
 
 ```bash
-ros2 topic pub --once /wall_align/control std_msgs/msg/String "{data: align}"
+ros2 launch wall_distance_sensor wall_alignment_test.launch.py auto_start:=false
 ```
 
 Stop immediately if the robot rotates toward the wall or the absolute angle
@@ -128,7 +130,8 @@ increases:
 ros2 topic pub --once /wall_align/control std_msgs/msg/String "{data: stop}"
 ```
 
-Run another attempt with `reset` followed by `align`:
+Run another attempt with `align`. Use `reset` first only when returning to the
+idle state is useful:
 
 ```bash
 ros2 topic pub --once /wall_align/control std_msgs/msg/String "{data: reset}"

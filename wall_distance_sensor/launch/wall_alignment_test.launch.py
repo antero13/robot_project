@@ -31,6 +31,7 @@ def generate_launch_description():
         DeclareLaunchArgument("right_i2c_bus", default_value="1"),
         DeclareLaunchArgument("sensor_separation_m", default_value="0.29"),
         DeclareLaunchArgument("launch_motor_bridge", default_value="true"),
+        DeclareLaunchArgument("auto_start", default_value="true"),
         DeclareLaunchArgument("angle_tolerance_deg", default_value="2.0"),
         DeclareLaunchArgument("alignment_timeout_s", default_value="10.0"),
         DeclareLaunchArgument("minimum_angular_z", default_value="0.05"),
@@ -44,6 +45,10 @@ def generate_launch_description():
             name="wall_alignment_test",
             output="screen",
             parameters=[{
+                "auto_start": ParameterValue(
+                    LaunchConfiguration("auto_start"),
+                    value_type=bool,
+                ),
                 "angle_tolerance_deg": ParameterValue(
                     LaunchConfiguration("angle_tolerance_deg"),
                     value_type=float,

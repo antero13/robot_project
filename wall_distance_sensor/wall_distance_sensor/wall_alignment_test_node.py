@@ -23,6 +23,7 @@ class WallAlignmentTestNode(Node):
                 ("control_topic", "/wall_align/control"),
                 ("state_topic", "/wall_align/state"),
                 ("status_topic", "/wall_align/status"),
+                ("auto_start", False),
                 ("timer_rate_hz", 20.0),
                 ("status_rate_hz", 5.0),
                 ("measurement_timeout_s", 0.5),
@@ -82,9 +83,12 @@ class WallAlignmentTestNode(Node):
         )
         self.publish_state()
         self.publish_status(force=True)
-        self.get_logger().info(
-            "Wall alignment test ready; send 'align' on /wall_align/control."
-        )
+        if bool(self.get_parameter("auto_start").value):
+            self.start_alignment("automatic alignment after launch")
+        else:
+            self.get_logger().info(
+                "Wall alignment test ready; send 'align' on /wall_align/control."
+            )
 
     def validate_parameters(self):
         if self.get_float("timer_rate_hz") <= 0.0:
@@ -118,10 +122,7 @@ class WallAlignmentTestNode(Node):
     def control_callback(self, msg):
         command = msg.data.strip().lower()
         if command == "align":
-            self.stop_robot()
-            self.alignment_started_at = self.get_clock().now()
-            self.stable_ticks = 0
-            self.transition("WAITING_FOR_SENSOR", "waiting for a recent wall measurement")
+            self.start_alignment("alignment requested by user")
         elif command == "stop":
             self.stop_robot()
             self.alignment_started_at = None
@@ -135,6 +136,12 @@ class WallAlignmentTestNode(Node):
             self.get_logger().warning(
                 f"Unknown command {command!r}; use align, stop, or reset."
             )
+
+    def start_alignment(self, reason):
+        self.stop_robot()
+        self.alignment_started_at = self.get_clock().now()
+        self.stable_ticks = 0
+        self.transition("WAITING_FOR_SENSOR", reason)
 
     def timer_callback(self):
         if self.state not in self.ACTIVE_STATES:
