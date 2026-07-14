@@ -17,7 +17,7 @@ def generate_launch_description():
             DeclareLaunchArgument("left_xshut_pin", default_value="-1"),
             DeclareLaunchArgument("right_xshut_pin", default_value="-1"),
             DeclareLaunchArgument("xshut_pin_mode", default_value="BOARD"),
-            DeclareLaunchArgument("ranging_mode", default_value="1"),
+            DeclareLaunchArgument("ranging_mode", default_value="2"),
             DeclareLaunchArgument("distance_scale_m", default_value="0.001"),
             DeclareLaunchArgument("sensor_separation_m", default_value="0.29"),
             DeclareLaunchArgument("safe_distance_m", default_value="0.15"),
