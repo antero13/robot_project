@@ -224,7 +224,7 @@ class MissionManager2(Node):
             'target_approach_min_linear_x': 0.03,
             'target_max_approach_distance_m': 0.90,
             'pickup_bottom_y_ratio': 0.70,
-            'final_grab_forward_distance_m': 0.10,
+            'final_grab_forward_distance_m': 0.20,
             'final_grab_forward_linear_x': 0.06,
             'target_cooldown_s': 1.0,
             'pickup_capacity': 4,

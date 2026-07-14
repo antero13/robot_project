@@ -76,8 +76,8 @@ Edit `config/mission_manager_2.yaml` before a full-speed run.
 | `target_trigger_height_ratio` | `0.10` | Additional far-box rejection |
 | `target_history_frames` | `5` | Number of actual YOLO frames used for voting |
 | `target_required_frames` | `3` | Required votes in the same left/right cell |
-| `pickup_bottom_y_ratio` | `0.70` | Start the final 10 cm pickup motion |
-| `final_grab_forward_distance_m` | `0.10` | Distance travelled with gripper open |
+| `pickup_bottom_y_ratio` | `0.70` | Start the final 20 cm pickup motion |
+| `final_grab_forward_distance_m` | `0.20` | Distance travelled with gripper open |
 | `gripper_open_position` | `1000` | Servo position used for an open gripper |
 | `gripper_closed_position` | `300` | Servo position used for a closed gripper |
 
