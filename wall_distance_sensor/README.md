@@ -66,8 +66,8 @@ Default launch for this wiring:
 
 ```bash
 ros2 launch wall_distance_sensor wall_distance_angle.launch.py \
-  left_i2c_bus:=1 \
-  right_i2c_bus:=0 \
+  left_i2c_bus:=7 \
+  right_i2c_bus:=1 \
   left_address:=0x29 \
   right_address:=0x29 \
   sensor_separation_m:=0.29 \
@@ -78,15 +78,18 @@ Check which Linux I2C bus numbers are exposed on your board:
 
 ```bash
 ls /dev/i2c-*
-sudo i2cdetect -y 1
-sudo i2cdetect -y 0
+sudo i2cdetect -r -y 7
+sudo i2cdetect -r -y 1
 ```
 
-Each bus should show one sensor at `0x29`. If your board exposes different bus
-numbers, pass those values as `left_i2c_bus` and `right_i2c_bus`.
+Each bus should show one sensor at `0x29`. The header labels `I2C1` and `I2C0`
+do not match the Linux bus numbers on the Jetson Orin Nano: pins 3/5 normally
+appear as `/dev/i2c-7`, and pins 27/28 normally appear as `/dev/i2c-1`. If your
+board exposes different bus numbers, pass those values as `left_i2c_bus` and
+`right_i2c_bus`.
 
-The package is intentionally standalone. Existing mission, YOLO, and motor
-launch files do not start this node automatically.
+The package can run standalone. The `mission_manager_2` launch file starts this
+node automatically with the same bus defaults.
 
 ## Test without hardware
 

@@ -171,8 +171,8 @@ class WallDistanceAngleNode(Node):
         super().__init__("wall_distance_angle_node")
 
         self.declare_parameter("driver_backend", "vl53l1x")
-        self.declare_parameter("left_i2c_bus", 1)
-        self.declare_parameter("right_i2c_bus", 0)
+        self.declare_parameter("left_i2c_bus", 7)
+        self.declare_parameter("right_i2c_bus", 1)
         self.declare_parameter("default_address", "0x29")
         self.declare_parameter("left_address", "0x29")
         self.declare_parameter("right_address", "0x29")

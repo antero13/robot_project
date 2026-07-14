@@ -9,8 +9,8 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("driver_backend", default_value="vl53l1x"),
-            DeclareLaunchArgument("left_i2c_bus", default_value="1"),
-            DeclareLaunchArgument("right_i2c_bus", default_value="0"),
+            DeclareLaunchArgument("left_i2c_bus", default_value="7"),
+            DeclareLaunchArgument("right_i2c_bus", default_value="1"),
             DeclareLaunchArgument("default_address", default_value="0x29"),
             DeclareLaunchArgument("left_address", default_value="0x29"),
             DeclareLaunchArgument("right_address", default_value="0x29"),

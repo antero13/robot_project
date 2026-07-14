@@ -32,6 +32,10 @@ source install/setup.bash
 ros2 launch mission_manager_2 mission_manager_2.launch.py
 ```
 
+On the Jetson Orin Nano, the default sensor mapping is bus 7 for the left
+sensor on header pins 3/5 and bus 1 for the right sensor on pins 27/28. Both
+sensors retain the default `0x29` address because they use separate buses.
+
 Keep the robot still for the pose tracker's first two seconds of gyro
 calibration. Then start the mission:
 
