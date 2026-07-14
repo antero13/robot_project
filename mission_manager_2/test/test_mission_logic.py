@@ -4,12 +4,13 @@ from mission_manager_2.mission_logic import (
     MOTION_PARAMETERS,
     Pose2D,
     angular_error,
-    confirmed_side_target,
+    confirmed_visible_target,
     main_road_remaining_distance,
     pose_distance,
     select_target,
-    select_side_targets,
+    select_visible_target,
     target_observations,
+    target_in_visibility_region,
     target_is_large_enough,
     validate_motion_parameters,
     wall_matches_expected,
@@ -73,58 +74,78 @@ def test_target_size_requires_both_area_and_height():
     assert not target_is_large_enough(target, 0.05, 0.10)
 
 
-def test_side_targets_only_use_left_and_right_cells_of_middle_row():
+def test_visibility_region_includes_middle_row_and_lower_corners():
     observations = target_observations(
         detection_payload([
-            detection('left', 0.9, (40, 170, 180, 310), class_id=1),
-            detection('center', 0.9, (260, 170, 380, 310), class_id=2),
-            detection('right', 0.9, (470, 170, 610, 310), class_id=3),
-            detection('top', 0.9, (40, 20, 180, 120), class_id=4),
+            detection('middle_left', 0.9, (40, 170, 180, 310), class_id=1),
+            detection('middle_center', 0.9, (260, 170, 380, 310), class_id=2),
+            detection('middle_right', 0.9, (470, 170, 610, 310), class_id=3),
+            detection('lower_left', 0.9, (40, 350, 180, 450), class_id=4),
+            detection('lower_center', 0.9, (260, 350, 380, 450), class_id=5),
+            detection('lower_right', 0.9, (470, 350, 610, 450), class_id=6),
+            detection('top', 0.9, (260, 20, 380, 120), class_id=7),
         ]),
         set(),
         0.3,
     )
-    left, right = select_side_targets(observations, 0.008, 0.10)
-    assert left.class_name == 'left'
-    assert right.class_name == 'right'
+    by_name = {target.class_name: target for target in observations}
+    for name in (
+        'middle_left',
+        'middle_center',
+        'middle_right',
+        'lower_left',
+        'lower_right',
+    ):
+        assert target_in_visibility_region(by_name[name])
+    assert not target_in_visibility_region(by_name['lower_center'])
+    assert not target_in_visibility_region(by_name['top'])
+    assert select_visible_target(observations, 0.008, 0.10).class_name in {
+        'middle_left',
+        'middle_center',
+        'middle_right',
+        'lower_left',
+        'lower_right',
+    }
 
 
-def test_side_target_requires_three_votes_in_the_same_side_over_five_frames():
+def test_visibility_votes_can_come_from_different_allowed_cells():
     observations = target_observations(
         detection_payload([
-            detection('left', 0.9, (40, 170, 180, 310), class_id=1),
-            detection('right', 0.9, (470, 170, 610, 310), class_id=2),
+            detection('middle_left', 0.9, (40, 170, 180, 310), class_id=1),
+            detection('middle_center', 0.9, (260, 170, 380, 310), class_id=2),
+            detection('lower_right', 0.9, (470, 350, 610, 450), class_id=3),
         ]),
         set(),
         0.3,
     )
-    left, right = select_side_targets(observations, 0.008, 0.10)
+    by_name = {target.class_name: target for target in observations}
     history = [
-        (left, None),
-        (None, right),
-        (left, None),
-        (None, None),
-        (left, None),
+        by_name['middle_left'],
+        None,
+        by_name['middle_center'],
+        None,
+        by_name['lower_right'],
     ]
-    assert confirmed_side_target(history, 3, 5).class_name == 'left'
+    confirmed = confirmed_visible_target(history, 3, 5)
+    assert confirmed.class_name == 'lower_right'
 
-    split_votes = [
-        (left, None),
-        (None, right),
-        (left, None),
-        (None, right),
-        (None, None),
+    insufficient_votes = [
+        by_name['middle_left'],
+        None,
+        by_name['middle_center'],
+        None,
+        None,
     ]
-    assert confirmed_side_target(split_votes, 3, 5) is None
+    assert confirmed_visible_target(insufficient_votes, 3, 5) is None
 
 
-def test_side_target_waits_until_five_frames_are_available():
+def test_visibility_vote_waits_until_five_frames_are_available():
     target = select_target(
         detection_payload([detection('left', 0.9, (40, 170, 180, 310))]),
         set(),
         0.3,
     )
-    assert confirmed_side_target([(target, None)] * 3, 3, 5) is None
+    assert confirmed_visible_target([target] * 3, 3, 5) is None
 
 
 def test_wall_measurement_must_match_expected_distance():

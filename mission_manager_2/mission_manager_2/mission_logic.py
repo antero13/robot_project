@@ -174,30 +174,33 @@ def best_target(observations: Iterable[TargetObservation]) -> TargetObservation 
     return max(observations, key=_target_score)
 
 
-def select_side_targets(
+def target_in_visibility_region(target: TargetObservation) -> bool:
+    center_x_ratio = (target.x_error + 1.0) * 0.5
+    middle_row = 1.0 / 3.0 <= target.center_y_ratio < 2.0 / 3.0
+    lower_side_cell = (
+        target.center_y_ratio >= 2.0 / 3.0
+        and (center_x_ratio < 1.0 / 3.0 or center_x_ratio >= 2.0 / 3.0)
+    )
+    return middle_row or lower_side_cell
+
+
+def select_visible_target(
     observations: Iterable[TargetObservation],
     min_area_ratio: float,
     min_height_ratio: float,
-) -> tuple[TargetObservation | None, TargetObservation | None]:
-    left_candidates = []
-    right_candidates = []
+) -> TargetObservation | None:
+    candidates = []
     for target in observations:
         if not target_is_large_enough(target, min_area_ratio, min_height_ratio):
             continue
-        if not 1.0 / 3.0 <= target.center_y_ratio < 2.0 / 3.0:
+        if not target_in_visibility_region(target):
             continue
-
-        center_x_ratio = (target.x_error + 1.0) * 0.5
-        if center_x_ratio < 1.0 / 3.0:
-            left_candidates.append(target)
-        elif center_x_ratio >= 2.0 / 3.0:
-            right_candidates.append(target)
-
-    return best_target(left_candidates), best_target(right_candidates)
+        candidates.append(target)
+    return best_target(candidates)
 
 
-def confirmed_side_target(
-    history: Iterable[tuple[TargetObservation | None, TargetObservation | None]],
+def confirmed_visible_target(
+    history: Iterable[TargetObservation | None],
     required_frames: int,
     history_frames: int,
 ) -> TargetObservation | None:
@@ -207,21 +210,10 @@ def confirmed_side_target(
     if len(frames) < history_frames:
         return None
 
-    eligible = []
-    for side_index in (0, 1):
-        matching_indices = [
-            index for index, frame in enumerate(frames)
-            if frame[side_index] is not None
-        ]
-        if len(matching_indices) < required_frames:
-            continue
-        latest_index = matching_indices[-1]
-        target = frames[latest_index][side_index]
-        eligible.append((len(matching_indices), latest_index, _target_score(target), target))
-
-    if not eligible:
+    matching_targets = [target for target in frames if target is not None]
+    if len(matching_targets) < required_frames:
         return None
-    return max(eligible, key=lambda item: item[:3])[3]
+    return matching_targets[-1]
 
 
 def target_is_large_enough(

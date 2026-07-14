@@ -9,13 +9,20 @@ Arena coordinates use the bottom-left corner as `(0, 0)` and meters as units.
 The pose tracker starts on the main road at `(3.25, 0.6657, 90 deg)`, facing
 north at the first search-lane entrance.
 
-1. Check the north heading with IMU and a plausible upper-wall ToF reading.
+1. Orient north using the IMU heading.
 2. Search north along `x=[3.25, 2.25, 1.25, 0.25] m`.
-3. At each lane end, reverse to the main road, turn west, align perpendicular
-   to the left wall, and use the measured wall distance to reach the next lane.
+3. At each lane end, reverse to the main road, turn west using IMU heading,
+   and use odometry to reach the next lane.
 4. Split each frame into a 3x3 grid. When a sufficiently large target box has
-   its center in the left-middle or right-middle cell in at least three of the
-   latest five frames on the same side, rotate to center it and perform pickup.
+   its center in any middle-row cell or either lower corner in at least three
+   of the latest five frames, rotate to center it and perform pickup. Votes may
+   come from different allowed cells.
+
+```text
+not used | not used | not used
+allowed  | allowed  | allowed
+allowed  | not used | allowed
+```
 5. After four pickup commands, return to the main road and stop. The storage
    route is intentionally deferred.
 
@@ -78,7 +85,7 @@ Edit `config/mission_manager_2.yaml` before a full-speed run.
 | `target_trigger_area_ratio` | `0.008` | Ignore very small/far YOLO boxes |
 | `target_trigger_height_ratio` | `0.10` | Additional far-box rejection |
 | `target_history_frames` | `5` | Number of actual YOLO frames used for voting |
-| `target_required_frames` | `3` | Required votes in the same left/right cell |
+| `target_required_frames` | `3` | Required votes across all allowed cells |
 | `pickup_bottom_y_ratio` | `0.70` | Start the final 20 cm pickup motion |
 | `final_grab_forward_distance_m` | `0.20` | Distance travelled with gripper open |
 | `gripper_open_position` | `1000` | Servo position used for an open gripper |

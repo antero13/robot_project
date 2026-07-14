@@ -20,12 +20,12 @@ from mission_manager_2.mission_logic import (
     angular_error,
     best_target,
     clamp,
-    confirmed_side_target,
+    confirmed_visible_target,
     main_road_remaining_distance,
     parse_class_list,
     pose_distance,
     quaternion_to_yaw,
-    select_side_targets,
+    select_visible_target,
     target_observations,
     validate_motion_parameters,
     wall_matches_expected,
@@ -101,7 +101,7 @@ class MissionManager2(Node):
         self.finish_after_main_road = False
         self.action_command_sent = False
         self.target_cooldown_until_s = 0.0
-        self.side_target_history = deque(maxlen=self.target_history_frames)
+        self.target_visibility_history = deque(maxlen=self.target_history_frames)
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.state_pub = self.create_publisher(String, self.state_topic, 10)
@@ -366,7 +366,7 @@ class MissionManager2(Node):
         )
         if configured_target_classes != self.target_classes:
             self.target_classes = configured_target_classes
-            self.side_target_history.clear()
+            self.target_visibility_history.clear()
         observations = target_observations(
             msg.data,
             self.target_classes,
@@ -378,8 +378,8 @@ class MissionManager2(Node):
             self.latest_target = target
             self.target_received_at = now
         if self.state == MissionState.SCAN_LANE:
-            self.side_target_history.append(
-                select_side_targets(
+            self.target_visibility_history.append(
+                select_visible_target(
                     observations,
                     self.get_float('target_trigger_area_ratio'),
                     self.get_float('target_trigger_height_ratio'),
@@ -429,7 +429,7 @@ class MissionManager2(Node):
         self.lane_heading_yaw = math.pi * 0.5
         self.wall_aligned_ticks = 0
         self.target_cooldown_until_s = 0.0
-        self.side_target_history.clear()
+        self.target_visibility_history.clear()
 
     def request_pose_reset(self):
         if not self.pose_reset_client.service_is_ready():
@@ -576,8 +576,8 @@ class MissionManager2(Node):
             self.fail('search lane timed out before reaching the main road or upper limit')
             return
 
-        target = confirmed_side_target(
-            self.side_target_history,
+        target = confirmed_visible_target(
+            self.target_visibility_history,
             self.target_required_frames,
             self.target_history_frames,
         )
@@ -592,7 +592,7 @@ class MissionManager2(Node):
             self.locked_target_class = target.class_name
             self.transition(
                 MissionState.ALIGN_TARGET,
-                f'target confirmed in side-middle cell: {target.class_name}',
+                f'target confirmed in allowed 3x3 cells: {target.class_name}',
             )
             return
 
@@ -925,7 +925,7 @@ class MissionManager2(Node):
         }:
             self.wall_aligned_ticks = 0
         if state == MissionState.SCAN_LANE:
-            self.side_target_history.clear()
+            self.target_visibility_history.clear()
         self.get_logger().info(f'Mission state -> {state.value}: {reason}')
         self.publish_state(force=True)
         self.publish_status(force=True)
@@ -1002,8 +1002,9 @@ class MissionManager2(Node):
             and self.seconds_between(now, self.last_status_published_at) < self.status_period_s
         ):
             return
-        left_votes = sum(frame[0] is not None for frame in self.side_target_history)
-        right_votes = sum(frame[1] is not None for frame in self.side_target_history)
+        visibility_votes = sum(
+            target is not None for target in self.target_visibility_history
+        )
         main_road_shift = None
         if self.main_road_goal_x is not None:
             main_road_shift = {
@@ -1027,10 +1028,9 @@ class MissionManager2(Node):
             'lane_count': len(self.lane_x_positions),
             'carried_count': self.carried_count,
             'pickup_attempts': self.total_pick_attempts,
-            'side_target_votes': {
-                'left': left_votes,
-                'right': right_votes,
-                'frames': len(self.side_target_history),
+            'target_visibility_votes': {
+                'votes': visibility_votes,
+                'frames': len(self.target_visibility_history),
                 'required': self.target_required_frames,
             },
             'main_road_shift': main_road_shift,

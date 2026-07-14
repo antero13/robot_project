@@ -40,7 +40,7 @@ mission_manager_2:
     target_min_confidence: 0.30
     target_trigger_area_ratio: 0.008
     target_trigger_height_ratio: 0.10
-    # The same side-middle cell must vote in 3 of the latest 5 YOLO frames.
+    # Any allowed 3x3 cell can contribute to the 3-of-5 visibility vote.
     target_history_frames: 5
     target_required_frames: 3
     target_center_tolerance: 0.10
