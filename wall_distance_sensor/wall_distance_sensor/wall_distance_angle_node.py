@@ -1,3 +1,4 @@
+import ctypes
 import importlib
 import json
 import math
@@ -56,8 +57,29 @@ class Vl53l1xSensorPair:
         self.left_sensor = None
         self.right_sensor = None
         self.vl53l1x = importlib.import_module("VL53L1X")
+        self._configure_ctypes_signatures()
 
         self._open_sensors()
+
+    def _configure_ctypes_signatures(self) -> None:
+        """Preserve native device pointers on 64-bit platforms."""
+        library = getattr(self.vl53l1x, "_TOF_LIBRARY", None)
+        if library is None:
+            return
+
+        library.initialise.argtypes = [
+            ctypes.c_uint8,
+            ctypes.c_uint8,
+            ctypes.c_uint8,
+            ctypes.c_uint8,
+        ]
+        library.initialise.restype = ctypes.c_void_p
+        library.startRanging.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        library.startRanging.restype = ctypes.c_int
+        library.getDistance.argtypes = [ctypes.c_void_p]
+        library.getDistance.restype = ctypes.c_int32
+        library.stopRanging.argtypes = [ctypes.c_void_p]
+        library.stopRanging.restype = None
 
     def _open_sensors(self) -> None:
         if self.left_xshut_pin >= 0 and self.right_xshut_pin >= 0:
@@ -141,6 +163,7 @@ class Vl53l1xSensorPair:
         method = getattr(sensor, "start_ranging", None)
         if method is None:
             raise RuntimeError("The installed VL53L1X Python driver has no start_ranging method.")
+        self._select_sensor_bus(sensor)
         method(self.ranging_mode)
 
     def read(self) -> tuple[float, float]:
@@ -150,15 +173,27 @@ class Vl53l1xSensorPair:
         method = getattr(sensor, "get_distance", None)
         if method is None:
             raise RuntimeError("The installed VL53L1X Python driver has no get_distance method.")
+        self._select_sensor_bus(sensor)
         return float(method()) * self.distance_scale_m
 
     def stop(self) -> None:
         for sensor in (self.left_sensor, self.right_sensor):
             if sensor is not None and hasattr(sensor, "stop_ranging"):
+                self._select_sensor_bus(sensor)
                 sensor.stop_ranging()
             self._close_sensor(sensor)
         if self.gpio is not None:
             self.gpio.cleanup()
+
+    @staticmethod
+    def _select_sensor_bus(sensor: Any) -> None:
+        """Restore this sensor's callbacks before using the driver's global C API."""
+        configure = getattr(sensor, "_configure_i2c_library_functions", None)
+        if configure is None:
+            raise RuntimeError(
+                "The installed VL53L1X driver cannot switch between sensor I2C buses."
+            )
+        configure()
 
     @staticmethod
     def _close_sensor(sensor: Any) -> None:

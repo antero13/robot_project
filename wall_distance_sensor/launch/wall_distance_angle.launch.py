@@ -45,9 +45,18 @@ def generate_launch_description():
                         "driver_backend": LaunchConfiguration("driver_backend"),
                         "left_i2c_bus": ParameterValue(LaunchConfiguration("left_i2c_bus"), value_type=int),
                         "right_i2c_bus": ParameterValue(LaunchConfiguration("right_i2c_bus"), value_type=int),
-                        "default_address": LaunchConfiguration("default_address"),
-                        "left_address": LaunchConfiguration("left_address"),
-                        "right_address": LaunchConfiguration("right_address"),
+                        "default_address": ParameterValue(
+                            LaunchConfiguration("default_address"),
+                            value_type=str,
+                        ),
+                        "left_address": ParameterValue(
+                            LaunchConfiguration("left_address"),
+                            value_type=str,
+                        ),
+                        "right_address": ParameterValue(
+                            LaunchConfiguration("right_address"),
+                            value_type=str,
+                        ),
                         "left_xshut_pin": ParameterValue(LaunchConfiguration("left_xshut_pin"), value_type=int),
                         "right_xshut_pin": ParameterValue(LaunchConfiguration("right_xshut_pin"), value_type=int),
                         "xshut_pin_mode": LaunchConfiguration("xshut_pin_mode"),
