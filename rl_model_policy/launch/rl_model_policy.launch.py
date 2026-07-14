@@ -239,7 +239,7 @@ def generate_launch_description():
 
                 'avoid_area_ratio': 0.20,
                 'avoid_center_band': 0.75,
-                'avoid_center_corridor': 0.30,
+                'avoid_center_corridor': 0.15,
                 'avoid_vfh_center_weight': 2.0,
                 'avoid_only_if_closer_than_target': False,
                 'avoid_closer_ratio': 0.85,

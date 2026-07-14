@@ -143,7 +143,7 @@ class RLModelPolicyNode(Node):
 
         self.declare_parameter("avoid_area_ratio", 0.20)
         self.declare_parameter("avoid_center_band", 0.75)
-        self.declare_parameter("avoid_center_corridor", 0.30)
+        self.declare_parameter("avoid_center_corridor", 0.15)
         self.declare_parameter("avoid_vfh_center_weight", 2.0)
         self.declare_parameter("avoid_only_if_closer_than_target", False)
         self.declare_parameter("avoid_closer_ratio", 0.85)
