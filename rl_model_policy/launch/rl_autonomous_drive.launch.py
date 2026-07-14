@@ -59,6 +59,12 @@ def generate_launch_description():
     coverage_turn_in_place_threshold = LaunchConfiguration(
         "coverage_turn_in_place_threshold"
     )
+    coverage_max_angular_speed = LaunchConfiguration(
+        "coverage_max_angular_speed"
+    )
+    coverage_avoid_angular_speed = LaunchConfiguration(
+        "coverage_avoid_angular_speed"
+    )
     coverage_avoid_linear_scale = LaunchConfiguration(
         "coverage_avoid_linear_scale"
     )
@@ -188,6 +194,8 @@ def generate_launch_description():
             "coverage_turn_in_place_threshold": (
                 coverage_turn_in_place_threshold
             ),
+            "coverage_max_angular_speed": coverage_max_angular_speed,
+            "coverage_avoid_angular_speed": coverage_avoid_angular_speed,
             "coverage_avoid_linear_scale": coverage_avoid_linear_scale,
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
             "coverage_reacquire_reverse_after_s": (
@@ -408,6 +416,8 @@ def generate_launch_description():
             "coverage_turn_in_place_threshold",
             default_value="0.65",
         ),
+        DeclareLaunchArgument("coverage_max_angular_speed", default_value="1.00"),
+        DeclareLaunchArgument("coverage_avoid_angular_speed", default_value="0.45"),
         DeclareLaunchArgument("coverage_avoid_linear_scale", default_value="0.70"),
         DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="1.5"),
         DeclareLaunchArgument(
