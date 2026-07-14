@@ -179,28 +179,32 @@ Local reacquisition stops forward motion and searches for 1.5 seconds. It
 turns toward the last visible target side for 0.75 seconds, then reverses the
 turn for another 0.75 seconds. Coverage search starts only if both sweeps fail.
 
-Coverage uses a boustrophedon pattern: it scans one vertical lane northward,
-shifts at the top, then scans the next lane southward. It no longer retraces
-every lane in reverse. Storage deposit also preserves the current coverage leg,
-so the second collection run continues from the previous search progress.
+The seven legal object columns are spaced by 0.5 m. Coverage follows the three
+center corridors between column pairs 1-2, 3-4, and 5-6 at centered-frame x
+coordinates `1.25`, `0.25`, and `-0.75` m. In each corridor the robot drives
+north, turns 180 degrees in place at the top, and drives south with its front
+camera facing the travel direction. It shifts to the next corridor only on the
+lower road. Storage deposit preserves the current coverage leg, so the second
+collection run continues from the previous search progress.
 
-When a non-target object blocks the current leg, the robot turns about 32
-degrees, drives 0.45 m along the bypass heading, and then rejoins the route.
-After two failed bypasses on the same leg, it skips that blocked leg instead of
-oscillating forever between avoidance and waypoint alignment.
+Small heading errors are corrected while moving. When a non-target object gets
+too close during a lane scan, the robot keeps 70% of its forward speed and adds
+a steering correction toward the clearer side. In-place rotation is reserved
+for large direction changes such as the 180-degree turn at a lane end.
 
 If `/odom` is missing or stale, the mode becomes `WAITING_FOR_POSE` and the
 robot publishes a stop command. The default lane settings are:
 
 ```text
-x lanes: 1.25, 0.25, -0.75, -1.75 m
+x corridors: 1.25, 0.25, -0.75 m
 main road y: -1.3343 m
 scan end y: 1.0 m
-upward scan speed: 0.22 m/s
+upward scan speed: 0.24 m/s
 downward scan speed: 0.24 m/s
-lane-shift speed: 0.28 m/s
-coverage angular limit: 0.65 rad/s
-waypoint tolerance: 0.18 m
+lane-shift speed: 0.30 m/s
+coverage angular limit: 1.00 rad/s
+waypoint tolerance: 0.10 m
+curve-avoid forward scale: 0.70
 ```
 
 Inspect the current mode, waypoint, pose, and route leg with:
@@ -220,9 +224,9 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   target_timeout_s:=1.0 \
   target_bearing_prediction_enabled:=true \
   coverage_reacquire_duration_s:=1.5 \
-  coverage_avoid_turn_angle_deg:=32.0 \
-  coverage_avoid_pass_distance:=0.45 \
-  coverage_max_avoid_attempts_per_leg:=2 \
+  coverage_min_x:=-0.75 coverage_max_x:=1.25 \
+  coverage_avoid_linear_scale:=0.70 \
+  coverage_turn_in_place_threshold:=0.65 \
   camera_horizontal_fov_deg:=80.0
 ```
 

@@ -56,17 +56,11 @@ def generate_launch_description():
     coverage_transit_speed = LaunchConfiguration("coverage_transit_speed")
     coverage_return_speed = LaunchConfiguration("coverage_return_speed")
     coverage_waypoint_tolerance = LaunchConfiguration("coverage_waypoint_tolerance")
-    coverage_avoid_turn_angle_deg = LaunchConfiguration(
-        "coverage_avoid_turn_angle_deg"
+    coverage_turn_in_place_threshold = LaunchConfiguration(
+        "coverage_turn_in_place_threshold"
     )
-    coverage_avoid_pass_distance = LaunchConfiguration(
-        "coverage_avoid_pass_distance"
-    )
-    coverage_avoid_forward_speed = LaunchConfiguration(
-        "coverage_avoid_forward_speed"
-    )
-    coverage_max_avoid_attempts_per_leg = LaunchConfiguration(
-        "coverage_max_avoid_attempts_per_leg"
+    coverage_avoid_linear_scale = LaunchConfiguration(
+        "coverage_avoid_linear_scale"
     )
     coverage_reacquire_duration_s = LaunchConfiguration("coverage_reacquire_duration_s")
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
@@ -191,12 +185,10 @@ def generate_launch_description():
             "coverage_transit_speed": coverage_transit_speed,
             "coverage_return_speed": coverage_return_speed,
             "coverage_waypoint_tolerance": coverage_waypoint_tolerance,
-            "coverage_avoid_turn_angle_deg": coverage_avoid_turn_angle_deg,
-            "coverage_avoid_pass_distance": coverage_avoid_pass_distance,
-            "coverage_avoid_forward_speed": coverage_avoid_forward_speed,
-            "coverage_max_avoid_attempts_per_leg": (
-                coverage_max_avoid_attempts_per_leg
+            "coverage_turn_in_place_threshold": (
+                coverage_turn_in_place_threshold
             ),
+            "coverage_avoid_linear_scale": coverage_avoid_linear_scale,
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
             "coverage_reacquire_reverse_after_s": (
                 coverage_reacquire_reverse_after_s
@@ -403,22 +395,20 @@ def generate_launch_description():
             default_value="true",
             description="Use odometry-based lane coverage while no target is visible.",
         ),
-        DeclareLaunchArgument("coverage_min_x", default_value="-1.75"),
+        DeclareLaunchArgument("coverage_min_x", default_value="-0.75"),
         DeclareLaunchArgument("coverage_max_x", default_value="1.25"),
         DeclareLaunchArgument("coverage_main_road_y", default_value="-1.3343"),
         DeclareLaunchArgument("coverage_scan_end_y", default_value="1.0"),
         DeclareLaunchArgument("coverage_lane_spacing", default_value="1.0"),
-        DeclareLaunchArgument("coverage_scan_speed", default_value="0.22"),
-        DeclareLaunchArgument("coverage_transit_speed", default_value="0.28"),
+        DeclareLaunchArgument("coverage_scan_speed", default_value="0.24"),
+        DeclareLaunchArgument("coverage_transit_speed", default_value="0.30"),
         DeclareLaunchArgument("coverage_return_speed", default_value="0.24"),
-        DeclareLaunchArgument("coverage_waypoint_tolerance", default_value="0.18"),
-        DeclareLaunchArgument("coverage_avoid_turn_angle_deg", default_value="32.0"),
-        DeclareLaunchArgument("coverage_avoid_pass_distance", default_value="0.45"),
-        DeclareLaunchArgument("coverage_avoid_forward_speed", default_value="0.18"),
+        DeclareLaunchArgument("coverage_waypoint_tolerance", default_value="0.10"),
         DeclareLaunchArgument(
-            "coverage_max_avoid_attempts_per_leg",
-            default_value="2",
+            "coverage_turn_in_place_threshold",
+            default_value="0.65",
         ),
+        DeclareLaunchArgument("coverage_avoid_linear_scale", default_value="0.70"),
         DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="1.5"),
         DeclareLaunchArgument(
             "coverage_reacquire_reverse_after_s",

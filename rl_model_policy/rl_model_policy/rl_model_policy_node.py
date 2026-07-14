@@ -123,24 +123,22 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("camera_horizontal_fov_deg", 80.0)
 
         self.declare_parameter("coverage_enabled", True)
-        self.declare_parameter("coverage_min_x", -1.75)
+        self.declare_parameter("coverage_min_x", -0.75)
         self.declare_parameter("coverage_max_x", 1.25)
         self.declare_parameter("coverage_main_road_y", -1.3343)
         self.declare_parameter("coverage_scan_end_y", 1.0)
         self.declare_parameter("coverage_lane_spacing", 1.0)
-        self.declare_parameter("coverage_scan_speed", 0.22)
-        self.declare_parameter("coverage_transit_speed", 0.28)
+        self.declare_parameter("coverage_scan_speed", 0.24)
+        self.declare_parameter("coverage_transit_speed", 0.30)
         self.declare_parameter("coverage_return_speed", 0.24)
-        self.declare_parameter("coverage_waypoint_tolerance", 0.18)
-        self.declare_parameter("coverage_heading_tolerance", 0.20)
-        self.declare_parameter("coverage_heading_gain", 1.8)
-        self.declare_parameter("coverage_max_angular_speed", 0.65)
+        self.declare_parameter("coverage_waypoint_tolerance", 0.10)
+        self.declare_parameter("coverage_heading_tolerance", 0.08)
+        self.declare_parameter("coverage_heading_gain", 2.4)
+        self.declare_parameter("coverage_max_angular_speed", 1.00)
+        self.declare_parameter("coverage_turn_in_place_threshold", 0.65)
         self.declare_parameter("coverage_avoid_danger_threshold", 0.20)
-        self.declare_parameter("coverage_avoid_angular_speed", 0.55)
-        self.declare_parameter("coverage_avoid_turn_angle_deg", 32.0)
-        self.declare_parameter("coverage_avoid_pass_distance", 0.45)
-        self.declare_parameter("coverage_avoid_forward_speed", 0.18)
-        self.declare_parameter("coverage_max_avoid_attempts_per_leg", 2)
+        self.declare_parameter("coverage_avoid_angular_speed", 0.45)
+        self.declare_parameter("coverage_avoid_linear_scale", 0.70)
         self.declare_parameter("coverage_reacquire_duration_s", 1.5)
         self.declare_parameter("coverage_reacquire_reverse_after_s", 0.75)
         self.declare_parameter("coverage_reacquire_angular_z", 0.35)
@@ -671,10 +669,18 @@ class RLModelPolicyNode(Node):
         self.get_logger().info("Base motion resumed")
 
     def prepare_storage_return(self):
+        return_min_x = min(
+            self.get_float("coverage_min_x"),
+            self.get_float("storage_staging_x"),
+        )
+        return_max_x = max(
+            self.get_float("coverage_max_x"),
+            self.get_float("storage_staging_x"),
+        )
         self.return_lane_x = self.clamp(
             self.robot_x,
-            self.get_float("coverage_min_x"),
-            self.get_float("coverage_max_x"),
+            return_min_x,
+            return_max_x,
         )
         self.mission_waypoint = (
             self.return_lane_x,
@@ -896,25 +902,16 @@ class RLModelPolicyNode(Node):
             heading_tolerance=self.get_float("coverage_heading_tolerance"),
             heading_gain=self.get_float("coverage_heading_gain"),
             max_angular_speed=self.get_float("coverage_max_angular_speed"),
+            turn_in_place_threshold=self.get_float(
+                "coverage_turn_in_place_threshold"
+            ),
             avoid_danger_threshold=self.get_float(
                 "coverage_avoid_danger_threshold"
             ),
             avoid_angular_speed=self.get_float("coverage_avoid_angular_speed"),
-            avoid_turn_angle=math.radians(
-                self.get_float("coverage_avoid_turn_angle_deg")
+            avoid_linear_scale=self.get_float(
+                "coverage_avoid_linear_scale"
             ),
-            avoid_pass_distance=self.get_float(
-                "coverage_avoid_pass_distance"
-            ),
-            avoid_forward_speed=self.get_float(
-                "coverage_avoid_forward_speed"
-            ),
-            max_avoid_attempts_per_leg=int(
-                self.get_parameter(
-                    "coverage_max_avoid_attempts_per_leg"
-                ).value
-            ),
-            arena_half_extent=self.get_float("arena_half_extent_m"),
         )
         scan_lane_count = sum(
             leg.phase.startswith("SCAN_LANE") for leg in legs
