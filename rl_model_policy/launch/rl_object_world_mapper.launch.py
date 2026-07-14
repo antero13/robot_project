@@ -47,8 +47,14 @@ def generate_launch_description():
         "output_topic": LaunchConfiguration("output_topic"),
         "policy_state_topic": LaunchConfiguration("policy_state_topic"),
         "calibration_path": LaunchConfiguration("calibration_path"),
-        "target_classes": LaunchConfiguration("target_classes"),
-        "avoid_classes": LaunchConfiguration("avoid_classes"),
+        "target_classes": ParameterValue(
+            LaunchConfiguration("target_classes"),
+            value_type=str,
+        ),
+        "avoid_classes": ParameterValue(
+            LaunchConfiguration("avoid_classes"),
+            value_type=str,
+        ),
         "min_confirmations": ParameterValue(
             LaunchConfiguration("min_confirmations"),
             value_type=int,

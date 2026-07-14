@@ -225,8 +225,8 @@ def generate_launch_description():
             "odometry_topic": odometry_topic,
             "output_topic": "/rl_estimated_objects",
             "policy_state_topic": "/rl_model_policy_state",
-            "target_classes": target_classes,
-            "avoid_classes": avoid_classes,
+            "target_classes": ParameterValue(target_classes, value_type=str),
+            "avoid_classes": ParameterValue(avoid_classes, value_type=str),
             "calibration_path": object_calibration_path,
             "pose_timeout_s": ParameterValue(pose_timeout_s, value_type=float),
             "retention_s": ParameterValue(object_retention_s, value_type=float),
@@ -275,8 +275,8 @@ def generate_launch_description():
         output="screen",
         parameters=[{
             "detections_topic": "/yolo/detections",
-            "target_classes": target_classes,
-            "avoid_classes": avoid_classes,
+            "target_classes": ParameterValue(target_classes, value_type=str),
+            "avoid_classes": ParameterValue(avoid_classes, value_type=str),
             "calibration_path": object_calibration_path,
             "arena_half_extent_m": ParameterValue(
                 arena_half_extent_m,
