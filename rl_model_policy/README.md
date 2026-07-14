@@ -223,7 +223,7 @@ open position: 1000
 closed position: 300
 grab center tolerance: 0.18
 grab area ratio: 0.70
-final forward: 0.06 m/s for 1.6 s
+final forward: 0.20 m/s for 1.0 s
 stop after grab: false
 ```
 
@@ -236,7 +236,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   gripper_open_position:=1000 \
   gripper_closed_position:=300 \
   grab_area_ratio:=0.70 \
-  final_forward_duration_s:=1.6
+  final_forward_linear_x:=0.20 \
+  final_forward_duration_s:=1.0
 ```
 
 Monitor the pickup state:

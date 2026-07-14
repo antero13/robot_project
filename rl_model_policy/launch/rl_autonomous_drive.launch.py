@@ -381,8 +381,8 @@ def generate_launch_description():
         DeclareLaunchArgument("gripper_move_duration_s", default_value="0.5"),
         DeclareLaunchArgument("grab_center_tolerance", default_value="0.18"),
         DeclareLaunchArgument("grab_area_ratio", default_value="0.70"),
-        DeclareLaunchArgument("final_forward_linear_x", default_value="0.06"),
-        DeclareLaunchArgument("final_forward_duration_s", default_value="1.6"),
+        DeclareLaunchArgument("final_forward_linear_x", default_value="0.20"),
+        DeclareLaunchArgument("final_forward_duration_s", default_value="1.0"),
         DeclareLaunchArgument("grab_duration_s", default_value="1.0"),
         DeclareLaunchArgument("stop_after_grab", default_value="false"),
         DeclareLaunchArgument(

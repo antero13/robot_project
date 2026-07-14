@@ -185,8 +185,8 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("gripper_move_duration_s", 0.5)
         self.declare_parameter("grab_center_tolerance", 0.18)
         self.declare_parameter("grab_area_ratio", 0.70)
-        self.declare_parameter("final_forward_linear_x", 0.06)
-        self.declare_parameter("final_forward_duration_s", 1.6)
+        self.declare_parameter("final_forward_linear_x", 0.20)
+        self.declare_parameter("final_forward_duration_s", 1.0)
         self.declare_parameter("grab_duration_s", 1.0)
         self.declare_parameter("stop_after_grab", False)
 
