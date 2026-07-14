@@ -273,6 +273,28 @@ def generate_launch_description():
         executable="robot_status_gui",
         name="robot_status_gui",
         output="screen",
+        parameters=[{
+            "detections_topic": "/yolo/detections",
+            "target_classes": target_classes,
+            "avoid_classes": avoid_classes,
+            "calibration_path": object_calibration_path,
+            "arena_half_extent_m": ParameterValue(
+                arena_half_extent_m,
+                value_type=float,
+            ),
+            "object_retention_s": ParameterValue(
+                object_retention_s,
+                value_type=float,
+            ),
+            "object_association_radius_m": ParameterValue(
+                object_association_radius_m,
+                value_type=float,
+            ),
+            "object_position_smoothing_alpha": ParameterValue(
+                object_position_smoothing_alpha,
+                value_type=float,
+            ),
+        }],
         condition=IfCondition(launch_status_gui),
     )
 
@@ -346,7 +368,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "object_calibration_path",
             default_value=PathJoinSubstitution([
-                FindPackageShare("rl_model_policy"),
+                FindPackageShare("robot_status_gui"),
                 "config",
                 "distance_normalized_points.csv",
             ]),

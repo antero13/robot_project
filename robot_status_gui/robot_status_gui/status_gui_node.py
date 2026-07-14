@@ -1,7 +1,10 @@
+import json
 import math
+from pathlib import Path
 import sys
 import time
 
+from ament_index_python.packages import get_package_share_directory
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
@@ -18,6 +21,7 @@ from robot_status_gui.status_model import (
     return_reason_label,
     stored_object_label,
 )
+from robot_status_gui.object_localization import CalibrationObjectLocalizer
 
 try:
     from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
@@ -47,23 +51,75 @@ class RobotStatusGuiNode(Node):
         self.declare_parameter("odometry_topic", "/odom")
         self.declare_parameter("policy_state_topic", "/rl_model_policy_state")
         self.declare_parameter("estimated_objects_topic", "/rl_estimated_objects")
+        self.declare_parameter("detections_topic", "/yolo/detections")
         self.declare_parameter("control_topic", "/rl_model_policy_control")
+        self.declare_parameter("calibration_path", "")
+        self.declare_parameter("target_classes", "")
+        self.declare_parameter("avoid_classes", "")
         self.declare_parameter("pose_offset_x", 2.0)
         self.declare_parameter("pose_offset_y", 2.0)
         self.declare_parameter("connection_timeout_s", 2.0)
+        self.declare_parameter("arena_half_extent_m", 2.0)
+        self.declare_parameter("object_retention_s", 180.0)
+        self.declare_parameter("object_association_radius_m", 0.30)
+        self.declare_parameter("object_position_smoothing_alpha", 0.35)
 
         self.pose_offset_x = float(self.get_parameter("pose_offset_x").value)
         self.pose_offset_y = float(self.get_parameter("pose_offset_y").value)
         self.connection_timeout_s = float(
             self.get_parameter("connection_timeout_s").value
         )
+        self.target_classes = self.parse_class_list(
+            self.get_parameter("target_classes").value
+        )
+        self.avoid_classes = self.parse_class_list(
+            self.get_parameter("avoid_classes").value
+        )
+        self.object_retention_s = float(
+            self.get_parameter("object_retention_s").value
+        )
+        self.object_association_radius = float(
+            self.get_parameter("object_association_radius_m").value
+        )
+        self.object_smoothing_alpha = float(
+            self.get_parameter("object_position_smoothing_alpha").value
+        )
         self.pose = None
         self.path = []
         self.policy_state = {}
         self.object_state = {}
+        self.fallback_object_state = {}
+        self.fallback_tracks = {}
+        self.next_fallback_track_id = 1
         self.pose_received_at = None
         self.policy_received_at = None
         self.objects_received_at = None
+        self.detections_received_at = None
+        self.fallback_warning_sent = False
+
+        calibration_value = str(
+            self.get_parameter("calibration_path").value
+        ).strip()
+        if calibration_value:
+            self.calibration_path = Path(calibration_value).expanduser()
+        else:
+            self.calibration_path = Path(
+                get_package_share_directory("robot_status_gui")
+            ) / "config" / "distance_normalized_points.csv"
+        self.localizer = None
+        self.calibration_error = None
+        try:
+            self.localizer = CalibrationObjectLocalizer(
+                self.calibration_path,
+                arena_half_extent_m=float(
+                    self.get_parameter("arena_half_extent_m").value
+                ),
+            )
+        except (OSError, ValueError) as exc:
+            self.calibration_error = str(exc)
+            self.get_logger().error(
+                f"GUI object calibration unavailable: {self.calibration_error}"
+            )
 
         self.control_pub = self.create_publisher(
             String,
@@ -87,6 +143,18 @@ class RobotStatusGuiNode(Node):
             self.get_parameter("estimated_objects_topic").value,
             self.objects_callback,
             10,
+        )
+        self.detections_sub = self.create_subscription(
+            String,
+            self.get_parameter("detections_topic").value,
+            self.detections_callback,
+            10,
+        )
+
+        self.get_logger().info(
+            "GUI object fallback is active on "
+            f"{self.get_parameter('detections_topic').value}; "
+            "its calibrated coordinates are display-only and never enter RL control."
         )
 
     def odometry_callback(self, msg):
@@ -127,6 +195,200 @@ class RobotStatusGuiNode(Node):
         self.object_state = parse_json_message(msg.data)
         self.objects_received_at = time.monotonic()
 
+    def detections_callback(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError) as exc:
+            self.get_logger().warning(f"Invalid GUI detections JSON: {exc}")
+            return
+        if not isinstance(payload, dict):
+            return
+
+        now = time.monotonic()
+        self.detections_received_at = now
+        detections = payload.get("detections", [])
+        if not isinstance(detections, list):
+            detections = []
+
+        if self.localizer is None:
+            self.update_fallback_state(
+                "calibration_error",
+                len(detections),
+                0,
+            )
+            return
+        if self.pose is None or not self.topic_is_fresh(self.pose_received_at):
+            self.update_fallback_state(
+                "waiting_for_odometry",
+                len(detections),
+                0,
+            )
+            return
+
+        try:
+            image_width = float(payload.get("image_width", 0.0))
+            image_height = float(payload.get("image_height", 0.0))
+        except (TypeError, ValueError):
+            image_width = 0.0
+            image_height = 0.0
+
+        mapped = []
+        if image_width > 0.0 and image_height > 0.0:
+            for detection in detections:
+                estimate = self.localize_gui_detection(
+                    detection,
+                    image_width,
+                    image_height,
+                )
+                if estimate is not None:
+                    estimate["seen_at"] = now
+                    mapped.append(estimate)
+        self.update_fallback_tracks(mapped, now)
+        status = (
+            "detections_outside_calibration"
+            if detections and not mapped
+            else "ready"
+        )
+        self.update_fallback_state(status, len(detections), len(mapped))
+
+    def localize_gui_detection(self, detection, image_width, image_height):
+        if not isinstance(detection, dict):
+            return None
+        bbox = detection.get("bbox_xyxy", {})
+        try:
+            center_x = (float(bbox["x1"]) + float(bbox["x2"])) * 0.5
+            center_y = (float(bbox["y1"]) + float(bbox["y2"])) * 0.5
+            confidence = float(detection.get("confidence", 0.0))
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        image_x = (center_x - image_width * 0.5) / (image_width * 0.5)
+        image_y = center_y / image_height
+        localized = self.localizer.localize(
+            image_x=image_x,
+            image_y=image_y,
+            robot_x=self.pose["arena_x"],
+            robot_y=self.pose["arena_y"],
+            robot_yaw=self.pose["yaw"],
+        )
+        if localized is None:
+            return None
+
+        class_id = detection.get("class_id", "")
+        class_name = str(detection.get("class_name", class_id))
+        class_keys = {class_name, str(class_id)}
+        return {
+            "class_id": class_id,
+            "class_name": class_name,
+            "role": self.class_role(class_keys),
+            "confidence": confidence,
+            "arena_x": localized.x,
+            "arena_y": localized.y,
+            "map_x": localized.x + self.pose_offset_x,
+            "map_y": localized.y + self.pose_offset_y,
+            "method": localized.method,
+            "camera_lateral_m": localized.lateral_m,
+            "camera_forward_m": localized.forward_m,
+            "image_x": image_x,
+            "image_y": image_y,
+        }
+
+    def update_fallback_tracks(self, estimates, now):
+        matched = set()
+        for estimate in sorted(
+            estimates,
+            key=lambda item: float(item.get("confidence", 0.0)),
+            reverse=True,
+        ):
+            candidates = []
+            for track_id, tracked in self.fallback_tracks.items():
+                if track_id in matched:
+                    continue
+                if tracked.get("class_name") != estimate.get("class_name"):
+                    continue
+                distance = math.hypot(
+                    float(tracked["arena_x"]) - float(estimate["arena_x"]),
+                    float(tracked["arena_y"]) - float(estimate["arena_y"]),
+                )
+                if distance <= self.object_association_radius:
+                    candidates.append((distance, track_id))
+
+            if candidates:
+                track_id = min(candidates, key=lambda item: item[0])[1]
+                previous = self.fallback_tracks[track_id]
+                alpha = self.object_smoothing_alpha
+                estimate["arena_x"] = self.smoothed(
+                    previous["arena_x"], estimate["arena_x"], alpha
+                )
+                estimate["arena_y"] = self.smoothed(
+                    previous["arena_y"], estimate["arena_y"], alpha
+                )
+                estimate["map_x"] = estimate["arena_x"] + self.pose_offset_x
+                estimate["map_y"] = estimate["arena_y"] + self.pose_offset_y
+            else:
+                track_id = f"gui_object_{self.next_fallback_track_id:04d}"
+                self.next_fallback_track_id += 1
+            estimate["id"] = track_id
+            estimate["seen_at"] = now
+            self.fallback_tracks[track_id] = estimate
+            matched.add(track_id)
+
+        self.prune_fallback_tracks(now)
+
+    def prune_fallback_tracks(self, now):
+        self.fallback_tracks = {
+            track_id: tracked
+            for track_id, tracked in self.fallback_tracks.items()
+            if now - float(tracked.get("seen_at", 0.0))
+            <= self.object_retention_s
+        }
+
+    def update_fallback_state(self, status, detection_count, mapped_count):
+        now = time.monotonic()
+        self.prune_fallback_tracks(now)
+        objects = []
+        for tracked in sorted(
+            self.fallback_tracks.values(),
+            key=lambda item: item["id"],
+        ):
+            output = dict(tracked)
+            seen_at = output.pop("seen_at", now)
+            output["age_s"] = max(0.0, now - seen_at)
+            objects.append(output)
+        self.fallback_object_state = {
+            "mapper_status": status,
+            "source": "gui_detection_fallback",
+            "calibration_loaded": self.localizer is not None,
+            "calibration_file": self.calibration_path.name,
+            "calibration_error": self.calibration_error,
+            "localization_method": "calibration_interpolation",
+            "pose_fresh": self.topic_is_fresh(self.pose_received_at),
+            "detection_count": detection_count,
+            "mapped_count": mapped_count,
+            "objects": objects,
+        }
+
+    def class_role(self, class_keys):
+        if self.target_classes and class_keys & self.target_classes:
+            return "target"
+        if self.avoid_classes and class_keys & self.avoid_classes:
+            return "avoid"
+        if self.target_classes:
+            return "avoid" if not self.avoid_classes else "other"
+        return "target"
+
+    @staticmethod
+    def parse_class_list(value):
+        if value is None:
+            return set()
+        if isinstance(value, (list, tuple)):
+            return {str(item).strip() for item in value if str(item).strip()}
+        return {item.strip() for item in str(value).split(",") if item.strip()}
+
+    @staticmethod
+    def smoothed(previous, current, alpha):
+        return float(previous) + (float(current) - float(previous)) * float(alpha)
+
     def request_motion_pause(self, paused):
         message = String()
         message.data = "pause_motion" if paused else "resume_motion"
@@ -139,15 +401,27 @@ class RobotStatusGuiNode(Node):
         )
 
     def snapshot(self):
+        external_objects_fresh = self.topic_is_fresh(self.objects_received_at)
+        detections_fresh = self.topic_is_fresh(self.detections_received_at)
+        if external_objects_fresh:
+            object_state = self.object_state
+        else:
+            object_state = self.fallback_object_state
+            if detections_fresh and not self.fallback_warning_sent:
+                self.get_logger().warning(
+                    "/rl_estimated_objects is unavailable; the GUI is using its "
+                    "display-only /yolo/detections fallback."
+                )
+                self.fallback_warning_sent = True
         return {
             "pose": self.pose,
             "path": list(self.path),
             "policy": dict(self.policy_state),
-            "objects": list(self.object_state.get("objects", [])),
-            "object_diagnostics": dict(self.object_state),
+            "objects": list(object_state.get("objects", [])),
+            "object_diagnostics": dict(object_state),
             "pose_connected": self.topic_is_fresh(self.pose_received_at),
             "policy_connected": self.topic_is_fresh(self.policy_received_at),
-            "objects_connected": self.topic_is_fresh(self.objects_received_at),
+            "objects_connected": external_objects_fresh or detections_fresh,
         }
 
 

@@ -57,11 +57,16 @@ waypoint selected by the storage return controller.
 
 `/rl_estimated_objects` is not depth-camera ground truth. The mapper compares
 each YOLO bounding-box center with the measured samples in
-`rl_model_policy/config/distance_normalized_points.csv`. It interpolates the
+`robot_status_gui/config/distance_normalized_points.csv`. It interpolates the
 camera-relative lateral and forward distance, rotates that vector with `/odom`,
 and publishes a continuous arena coordinate. It never snaps a marker to one of
 the 42 placement points. A point is shown after two confirmations, retained for
 the match, and removed when a nearby target is reported as stored.
+
+The GUI also has a display-only fallback. If `/rl_estimated_objects` stops,
+it subscribes to `/yolo/detections` and performs the same interpolation inside
+the GUI process. This data is used only for map markers and never changes RL
+observations, mission state, or `/cmd_vel`.
 
 ```text
 calibrated forward range: 0.3 to 1.8 m
@@ -84,13 +89,15 @@ Position accuracy depends on the calibration setup matching the actual camera
 mount and on `/odom` accuracy. Detections outside the measured image region are
 rejected instead of extrapolated to a misleading map point.
 
-The GUI connection header names whichever input is missing. If it shows
-`ROS data 2/3` and `object position waiting`, inspect the mapper directly:
+The GUI connection header names whichever input is missing. Its object input is
+connected when either `/rl_estimated_objects` or `/yolo/detections` is current.
+If it still shows `ROS data 2/3` and `object position waiting`, inspect both:
 
 ```bash
 ros2 node list | grep rl_object_world_mapper
 ros2 topic hz /rl_estimated_objects
 ros2 topic echo --once /rl_estimated_objects
+ros2 topic hz /yolo/detections
 ```
 
 The diagnostics contain `mapper_status`, `pose_fresh`, `detection_count`, and

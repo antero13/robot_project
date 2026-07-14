@@ -82,6 +82,16 @@ class StatusModelTest(unittest.TestCase):
         self.assertIn("CSV 보정 오류", mapper_diagnostics_label(state))
         self.assertIn("file not found", mapper_diagnostics_label(state))
 
+    def test_mapper_diagnostics_identify_gui_fallback(self):
+        state = {
+            "source": "gui_detection_fallback",
+            "mapper_status": "ready",
+            "calibration_loaded": True,
+            "detection_count": 1,
+            "mapped_count": 1,
+        }
+        self.assertIn("GUI fallback", mapper_diagnostics_label(state))
+
     def test_quaternion_yaw(self):
         yaw = quaternion_to_yaw(0.0, 0.0, math.sin(math.pi / 4), math.cos(math.pi / 4))
         self.assertAlmostEqual(yaw, math.pi / 2)

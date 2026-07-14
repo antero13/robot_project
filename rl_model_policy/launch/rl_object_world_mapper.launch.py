@@ -19,7 +19,7 @@ def generate_launch_description():
         "vertical_extrapolation_margin": "0.012",
     }
     calibration_path = PathJoinSubstitution([
-        FindPackageShare("rl_model_policy"),
+        FindPackageShare("robot_status_gui"),
         "config",
         "distance_normalized_points.csv",
     ])

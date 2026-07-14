@@ -270,12 +270,31 @@ object's continuous arena position. It interpolates the measured bbox-center
 calibration in `config/distance_normalized_points.csv`; it does not snap object
 markers to the 42 legal placement points.
 
+The GUI also subscribes to `/yolo/detections` directly. If the standalone
+`/rl_estimated_objects` mapper stream is missing for more than two seconds, the
+GUI automatically performs the same CSV interpolation as a display-only
+fallback. These fallback coordinates are never added to the policy observation
+and never affect `/cmd_vel`. Consequently, `ROS data 3/3` means that odometry,
+policy state, and either the mapper stream or raw YOLO detections are current.
+
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   yolo_model_path:=/home/airobot/ros2_ws/best.engine \
   target_classes:=0 \
   launch_status_gui:=true
 ```
+
+Inspect all three object-display inputs on Jetson with:
+
+```bash
+ros2 topic hz /yolo/detections
+ros2 topic hz /odom
+ros2 topic hz /rl_estimated_objects
+```
+
+If `/rl_estimated_objects` is absent but the first two topics are active, the
+GUI logs that it has switched to `gui_detection_fallback` and still draws
+calibrated object markers.
 
 The GUI pause button publishes `pause_motion`; perception, policy calculations,
 and state topics continue while the published base velocity remains zero.

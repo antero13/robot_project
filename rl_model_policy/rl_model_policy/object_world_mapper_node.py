@@ -8,8 +8,8 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from rl_model_policy.object_localization import CalibrationObjectLocalizer
 from rl_model_policy.observation import quaternion_to_yaw
+from robot_status_gui.object_localization import CalibrationObjectLocalizer
 
 
 class ObjectWorldMapperNode(Node):
@@ -60,7 +60,7 @@ class ObjectWorldMapperNode(Node):
             self.calibration_path = Path(calibration_value).expanduser()
         else:
             self.calibration_path = Path(
-                get_package_share_directory("rl_model_policy")
+                get_package_share_directory("robot_status_gui")
             ) / "config" / "distance_normalized_points.csv"
         self.localizer = None
         self.calibration_error = None

@@ -135,7 +135,12 @@ def mapper_diagnostics_label(state):
     calibration = "CSV" if state.get("calibration_loaded") else "보정 없음"
     if status == "calibration_error" and state.get("calibration_error"):
         calibration = f"{calibration}: {state['calibration_error']}"
-    return f"{status_label} · {calibration} · 감지 {detected} / 변환 {mapped}"
+    source = (
+        "GUI fallback · "
+        if state.get("source") == "gui_detection_fallback"
+        else ""
+    )
+    return f"{source}{status_label} · {calibration} · 감지 {detected} / 변환 {mapped}"
 
 
 def quaternion_to_yaw(x, y, z, w):
