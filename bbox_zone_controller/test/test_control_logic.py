@@ -8,6 +8,7 @@ from bbox_zone_controller.control_logic import (
     ZoneGeometry,
     decide_motion,
     parse_class_list,
+    pickup_is_ready,
     select_largest_candidate,
 )
 
@@ -54,6 +55,7 @@ class ControlLogicTest(unittest.TestCase):
         self.assertIsNotNone(selected)
         self.assertEqual(selected.class_name, "large")
         self.assertAlmostEqual(selected.area_ratio, 0.36)
+        self.assertAlmostEqual(selected.bottom_y, 0.80)
 
     def test_outer_avoid_objects_drive_straight(self):
         for x in (-0.95, 0.95):
@@ -127,6 +129,40 @@ class ControlLogicTest(unittest.TestCase):
 
         self.assertEqual(decision.mode, "no_object_forward")
         self.assertGreater(decision.linear_x, 0.0)
+
+    def test_pickup_uses_previous_center_and_bottom_thresholds(self):
+        ready = Candidate(
+            "6",
+            "fruit_cube",
+            0.9,
+            0.18,
+            0.55,
+            0.1,
+            bottom_y=0.70,
+        )
+
+        self.assertTrue(pickup_is_ready(ready, self.targets, 0.18, 0.70))
+        self.assertFalse(
+            pickup_is_ready(
+                Candidate("6", "fruit_cube", 0.9, 0.19, 0.55, 0.1, 0.80),
+                self.targets,
+                0.18,
+                0.70,
+            )
+        )
+        self.assertFalse(
+            pickup_is_ready(
+                Candidate("6", "fruit_cube", 0.9, 0.0, 0.55, 0.1, 0.69),
+                self.targets,
+                0.18,
+                0.70,
+            )
+        )
+
+    def test_non_target_never_triggers_pickup(self):
+        avoid = Candidate("99", "cube", 0.9, 0.0, 0.55, 0.1, 0.90)
+
+        self.assertFalse(pickup_is_ready(avoid, self.targets, 0.18, 0.70))
 
 
 if __name__ == "__main__":

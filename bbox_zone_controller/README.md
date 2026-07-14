@@ -34,7 +34,23 @@ For a non-target largest box:
 | outer right | straight |
 
 For a target largest box, the robot rotates in place until the bbox center is
-within `target_center_tolerance` of `x=0`, then drives straight toward it.
+within `target_center_tolerance` of `x=0`, then drives straight toward it. The
+pickup trigger and servo sequence match the previous rule:
+
+```text
+abs(bbox center x) <= 0.18
+bbox bottom y >= 0.70
+-> stop
+-> open bus servo ID 1 to position 1000
+-> wait 0.5 s
+-> drive forward at 0.20 m/s for 1.0 s
+-> stop and close the servo to position 300
+-> wait 1.0 s
+-> resume largest-bbox control
+```
+
+Once pickup starts, temporary YOLO occlusion does not cancel this timed
+sequence.
 
 ## Build and run
 
@@ -56,6 +72,13 @@ Stop immediately with:
 
 ```bash
 ros2 topic pub --once /bbox_zone_controller/control std_msgs/msg/String "{data: stop}"
+```
+
+Manually test the same gripper commands while the controller is stopped:
+
+```bash
+ros2 topic pub --once /bbox_zone_controller/control std_msgs/msg/String "{data: open}"
+ros2 topic pub --once /bbox_zone_controller/control std_msgs/msg/String "{data: close}"
 ```
 
 For a motion-free test:
@@ -90,3 +113,8 @@ ros2 launch bbox_zone_controller bbox_zone_drive.launch.py \
 The four zone points, target centering tolerance, alignment gain, minimum turn
 speed, and maximum turn speed are also launch arguments. `active_on_start` is
 `false` by default; enable it only after dry-run validation.
+
+Pickup parameters are also launch arguments: `grab_center_tolerance`,
+`grab_area_ratio`, `grab_detection_timeout_s`, `gripper_open_position`,
+`gripper_closed_position`, `final_forward_linear_x`,
+`final_forward_duration_s`, and `grab_duration_s`.

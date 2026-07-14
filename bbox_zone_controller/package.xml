@@ -11,6 +11,7 @@
 
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
+  <depend>ros_robot_controller_msgs</depend>
   <depend>std_msgs</depend>
 
   <exec_depend>launch</exec_depend>

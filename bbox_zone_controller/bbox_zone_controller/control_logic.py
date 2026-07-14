@@ -19,6 +19,7 @@ class Candidate:
     center_x: float
     center_y: float
     area_ratio: float
+    bottom_y: float = 0.0
 
     @property
     def class_keys(self) -> set[str]:
@@ -164,6 +165,7 @@ def candidate_from_detection(
         center_x=clamp((center_x_px / image_width) * 2.0 - 1.0, -1.0, 1.0),
         center_y=clamp(center_y_px / image_height, 0.0, 1.0),
         area_ratio=area_ratio,
+        bottom_y=clamp(y2 / image_height, 0.0, 1.0),
     )
 
 
@@ -250,6 +252,24 @@ def decide_motion(
         angular_z=settings.avoid_turn_angular_z,
         mode="avoid_inner_right_turn_left",
         zone=zone,
+    )
+
+
+def pickup_is_ready(
+    candidate: Candidate | None,
+    target_classes: set[str],
+    center_tolerance: float,
+    grab_area_ratio: float,
+) -> bool:
+    if not 0.0 <= center_tolerance <= 1.0:
+        raise ValueError("center_tolerance must be between 0 and 1")
+    if not 0.0 <= grab_area_ratio <= 1.0:
+        raise ValueError("grab_area_ratio must be between 0 and 1")
+    return bool(
+        candidate is not None
+        and candidate.class_keys & target_classes
+        and abs(candidate.center_x) <= center_tolerance
+        and candidate.bottom_y >= grab_area_ratio
     )
 
 

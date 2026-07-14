@@ -109,6 +109,39 @@ def generate_launch_description():
             "target_max_angular_z": ParameterValue(
                 LaunchConfiguration("target_max_angular_z"), value_type=float
             ),
+            "gripper_enabled": ParameterValue(
+                LaunchConfiguration("gripper_enabled"), value_type=bool
+            ),
+            "gripper_servo_id": ParameterValue(
+                LaunchConfiguration("gripper_servo_id"), value_type=int
+            ),
+            "gripper_open_position": ParameterValue(
+                LaunchConfiguration("gripper_open_position"), value_type=int
+            ),
+            "gripper_closed_position": ParameterValue(
+                LaunchConfiguration("gripper_closed_position"), value_type=int
+            ),
+            "gripper_move_duration_s": ParameterValue(
+                LaunchConfiguration("gripper_move_duration_s"), value_type=float
+            ),
+            "grab_center_tolerance": ParameterValue(
+                LaunchConfiguration("grab_center_tolerance"), value_type=float
+            ),
+            "grab_area_ratio": ParameterValue(
+                LaunchConfiguration("grab_area_ratio"), value_type=float
+            ),
+            "grab_detection_timeout_s": ParameterValue(
+                LaunchConfiguration("grab_detection_timeout_s"), value_type=float
+            ),
+            "final_forward_linear_x": ParameterValue(
+                LaunchConfiguration("final_forward_linear_x"), value_type=float
+            ),
+            "final_forward_duration_s": ParameterValue(
+                LaunchConfiguration("final_forward_duration_s"), value_type=float
+            ),
+            "grab_duration_s": ParameterValue(
+                LaunchConfiguration("grab_duration_s"), value_type=float
+            ),
         }],
     )
 
@@ -155,6 +188,17 @@ def generate_launch_description():
         DeclareLaunchArgument("target_angular_gain", default_value="0.80"),
         DeclareLaunchArgument("target_min_angular_z", default_value="0.10"),
         DeclareLaunchArgument("target_max_angular_z", default_value="0.45"),
+        DeclareLaunchArgument("gripper_enabled", default_value="true"),
+        DeclareLaunchArgument("gripper_servo_id", default_value="1"),
+        DeclareLaunchArgument("gripper_open_position", default_value="1000"),
+        DeclareLaunchArgument("gripper_closed_position", default_value="300"),
+        DeclareLaunchArgument("gripper_move_duration_s", default_value="0.5"),
+        DeclareLaunchArgument("grab_center_tolerance", default_value="0.18"),
+        DeclareLaunchArgument("grab_area_ratio", default_value="0.70"),
+        DeclareLaunchArgument("grab_detection_timeout_s", default_value="0.25"),
+        DeclareLaunchArgument("final_forward_linear_x", default_value="0.20"),
+        DeclareLaunchArgument("final_forward_duration_s", default_value="1.0"),
+        DeclareLaunchArgument("grab_duration_s", default_value="1.0"),
         DeclareLaunchArgument("active_on_start", default_value="false"),
         DeclareLaunchArgument("dry_run", default_value="false"),
         DeclareLaunchArgument("launch_robot_controller", default_value="true"),

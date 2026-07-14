@@ -4,6 +4,7 @@ import math
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from ros_robot_controller_msgs.msg import BusServoState, SetBusServoState
 from std_msgs.msg import String
 
 from .control_logic import (
@@ -12,11 +13,17 @@ from .control_logic import (
     ZoneGeometry,
     decide_motion,
     parse_class_list,
+    pickup_is_ready,
     select_largest_candidate,
 )
 
 
 class BboxZoneController(Node):
+    GRAB_TRACKING = "TRACKING"
+    GRAB_OPENING = "OPENING"
+    GRAB_FINAL_FORWARD = "FINAL_FORWARD"
+    GRAB_CLOSING = "CLOSING"
+
     def __init__(self) -> None:
         super().__init__("bbox_zone_controller")
 
@@ -26,6 +33,7 @@ class BboxZoneController(Node):
             ("control_topic", "/bbox_zone_controller/control"),
             ("state_topic", "/bbox_zone_controller/state"),
             ("status_topic", "/bbox_zone_controller/status"),
+            ("bus_servo_topic", "/ros_robot_controller/bus_servo/set_state"),
             ("active_on_start", False),
             ("dry_run", False),
             ("timer_rate_hz", 20.0),
@@ -51,6 +59,17 @@ class BboxZoneController(Node):
             ("target_angular_gain", 0.80),
             ("target_min_angular_z", 0.10),
             ("target_max_angular_z", 0.45),
+            ("gripper_enabled", True),
+            ("gripper_servo_id", 1),
+            ("gripper_open_position", 1000),
+            ("gripper_closed_position", 300),
+            ("gripper_move_duration_s", 0.5),
+            ("grab_center_tolerance", 0.18),
+            ("grab_area_ratio", 0.70),
+            ("grab_detection_timeout_s", 0.25),
+            ("final_forward_linear_x", 0.20),
+            ("final_forward_duration_s", 1.0),
+            ("grab_duration_s", 1.0),
         )
         for name, value in defaults:
             self.declare_parameter(name, value)
@@ -84,6 +103,10 @@ class BboxZoneController(Node):
         self.latest_frame_received_at = None
         self.last_decision = MotionDecision(0.0, 0.0, "inactive")
         self.last_status_at = None
+        self.grab_state = self.GRAB_TRACKING
+        self.grab_state_started_at = self.get_clock().now()
+        self.pickup_label = None
+        self.picked_count = 0
 
         self.cmd_vel_pub = self.create_publisher(
             Twist,
@@ -98,6 +121,11 @@ class BboxZoneController(Node):
         self.status_pub = self.create_publisher(
             String,
             str(self.get_parameter("status_topic").value),
+            10,
+        )
+        self.bus_servo_pub = self.create_publisher(
+            SetBusServoState,
+            str(self.get_parameter("bus_servo_topic").value),
             10,
         )
         self.detections_sub = self.create_subscription(
@@ -122,6 +150,8 @@ class BboxZoneController(Node):
             f"Largest-bbox zone controller ready ({state}); "
             f"target_classes={sorted(self.target_classes)}"
         )
+        if self.active:
+            self.command_gripper(open_gripper=False)
         self.publish_state()
 
     def validate_parameters(self) -> None:
@@ -131,6 +161,10 @@ class BboxZoneController(Node):
             "detection_timeout_s",
             "fallback_image_width",
             "fallback_image_height",
+            "gripper_move_duration_s",
+            "grab_detection_timeout_s",
+            "final_forward_duration_s",
+            "grab_duration_s",
         )
         for name in positive:
             if self.get_float(name) <= 0.0:
@@ -138,6 +172,18 @@ class BboxZoneController(Node):
         confidence = self.get_float("min_confidence")
         if not 0.0 <= confidence <= 1.0:
             raise ValueError("min_confidence must be between 0 and 1")
+        for name in ("grab_center_tolerance", "grab_area_ratio"):
+            value = self.get_float(name)
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
+        if self.get_float("final_forward_linear_x") < 0.0:
+            raise ValueError("final_forward_linear_x must be nonnegative")
+        if int(self.get_parameter("gripper_servo_id").value) <= 0:
+            raise ValueError("gripper_servo_id must be positive")
+        for name in ("gripper_open_position", "gripper_closed_position"):
+            position = int(self.get_parameter(name).value)
+            if not 0 <= position <= 1000:
+                raise ValueError(f"{name} must be between 0 and 1000")
 
     def detections_callback(self, msg: String) -> None:
         try:
@@ -173,14 +219,34 @@ class BboxZoneController(Node):
     def control_callback(self, msg: String) -> None:
         command = msg.data.strip().casefold()
         if command == "start":
+            self.change_grab_state(self.GRAB_TRACKING)
+            self.pickup_label = None
+            self.command_gripper(open_gripper=False)
             self.active = True
+            self.last_decision = MotionDecision(0.0, 0.0, "waiting_for_detection")
             self.get_logger().info("Bbox zone control started")
-        elif command in ("stop", "reset"):
+        elif command == "stop":
             self.active = False
             self.stop_robot()
+            self.last_decision = MotionDecision(0.0, 0.0, "inactive")
             self.get_logger().info("Bbox zone control stopped")
+        elif command == "reset":
+            self.active = False
+            self.stop_robot()
+            self.change_grab_state(self.GRAB_TRACKING)
+            self.pickup_label = None
+            self.picked_count = 0
+            self.command_gripper(open_gripper=False)
+            self.last_decision = MotionDecision(0.0, 0.0, "inactive")
+            self.get_logger().info("Bbox zone control reset")
+        elif command == "open":
+            self.command_gripper(open_gripper=True)
+        elif command == "close":
+            self.command_gripper(open_gripper=False)
         else:
-            self.get_logger().warning("Unknown control command; use start, stop, or reset")
+            self.get_logger().warning(
+                "Unknown control command; use start, stop, reset, open, or close"
+            )
             return
         self.publish_state()
         self.publish_status(force=True)
@@ -190,19 +256,29 @@ class BboxZoneController(Node):
             self.last_decision = MotionDecision(0.0, 0.0, "inactive")
             self.stop_robot()
         elif not self.frame_is_recent():
-            self.last_decision = MotionDecision(0.0, 0.0, "detection_stale_stop")
-            self.stop_robot()
+            if self.grab_state == self.GRAB_TRACKING:
+                self.last_decision = MotionDecision(
+                    0.0,
+                    0.0,
+                    "detection_stale_stop",
+                )
+                self.stop_robot()
+            else:
+                self.run_grab_sequence()
         else:
-            self.last_decision = decide_motion(
-                self.latest_candidate,
-                self.target_classes,
-                self.geometry,
-                self.motion_settings,
-            )
-            self.publish_cmd_vel(
-                self.last_decision.linear_x,
-                self.last_decision.angular_z,
-            )
+            if self.grab_state != self.GRAB_TRACKING:
+                self.run_grab_sequence()
+            elif self.start_grab_if_ready():
+                self.apply_decision(MotionDecision(0.0, 0.0, "grab_opening", True))
+            else:
+                self.apply_decision(
+                    decide_motion(
+                        self.latest_candidate,
+                        self.target_classes,
+                        self.geometry,
+                        self.motion_settings,
+                    )
+                )
         self.publish_state()
         self.publish_status()
 
@@ -214,6 +290,65 @@ class BboxZoneController(Node):
             <= self.get_float("detection_timeout_s")
         )
 
+    def start_grab_if_ready(self) -> bool:
+        if not bool(self.get_parameter("gripper_enabled").value):
+            return False
+        if self.latest_frame_received_at is None or (
+            self.seconds_since(self.latest_frame_received_at)
+            > self.get_float("grab_detection_timeout_s")
+        ):
+            return False
+        if not pickup_is_ready(
+            self.latest_candidate,
+            self.target_classes,
+            self.get_float("grab_center_tolerance"),
+            self.get_float("grab_area_ratio"),
+        ):
+            return False
+        self.pickup_label = self.latest_candidate.class_name
+        self.stop_robot()
+        self.command_gripper(open_gripper=True)
+        self.change_grab_state(self.GRAB_OPENING)
+        return True
+
+    def run_grab_sequence(self) -> None:
+        if self.grab_state == self.GRAB_OPENING:
+            if self.grab_state_age_s() < self.get_float("gripper_move_duration_s"):
+                self.apply_decision(MotionDecision(0.0, 0.0, "grab_opening", True))
+                return
+            self.change_grab_state(self.GRAB_FINAL_FORWARD)
+
+        if self.grab_state == self.GRAB_FINAL_FORWARD:
+            if self.grab_state_age_s() < self.get_float("final_forward_duration_s"):
+                self.apply_decision(
+                    MotionDecision(
+                        self.get_float("final_forward_linear_x"),
+                        0.0,
+                        "grab_final_forward",
+                        True,
+                    )
+                )
+                return
+            self.command_gripper(open_gripper=False)
+            self.change_grab_state(self.GRAB_CLOSING)
+
+        if self.grab_state == self.GRAB_CLOSING:
+            if self.grab_state_age_s() < self.get_float("grab_duration_s"):
+                self.apply_decision(MotionDecision(0.0, 0.0, "grab_closing", True))
+                return
+            self.picked_count += 1
+            label = self.pickup_label or "unknown"
+            self.pickup_label = None
+            self.change_grab_state(self.GRAB_TRACKING)
+            self.get_logger().info(
+                f"Pickup complete: label={label}, picked_count={self.picked_count}"
+            )
+            self.apply_decision(MotionDecision(0.0, 0.0, "grab_complete", True))
+
+    def apply_decision(self, decision: MotionDecision) -> None:
+        self.last_decision = decision
+        self.publish_cmd_vel(decision.linear_x, decision.angular_z)
+
     def publish_cmd_vel(self, linear_x: float, angular_z: float) -> None:
         if self.dry_run:
             return
@@ -224,6 +359,36 @@ class BboxZoneController(Node):
 
     def stop_robot(self) -> None:
         self.publish_cmd_vel(0.0, 0.0)
+
+    def command_gripper(self, open_gripper: bool) -> None:
+        action = "open" if open_gripper else "close"
+        if not bool(self.get_parameter("gripper_enabled").value):
+            self.get_logger().info(f"Gripper {action} skipped because it is disabled")
+            return
+        if self.dry_run:
+            self.get_logger().info(f"Gripper {action} skipped in dry-run mode")
+            return
+        position_name = (
+            "gripper_open_position" if open_gripper else "gripper_closed_position"
+        )
+        state = BusServoState()
+        state.present_id = [1, int(self.get_parameter("gripper_servo_id").value)]
+        state.position = [1, int(self.get_parameter(position_name).value)]
+
+        msg = SetBusServoState()
+        msg.duration = self.get_float("gripper_move_duration_s")
+        msg.state = [state]
+        self.bus_servo_pub.publish(msg)
+        self.get_logger().info(
+            f"Gripper command: {action} position={state.position[1]}"
+        )
+
+    def change_grab_state(self, state: str) -> None:
+        self.grab_state = state
+        self.grab_state_started_at = self.get_clock().now()
+
+    def grab_state_age_s(self) -> float:
+        return self.seconds_since(self.grab_state_started_at)
 
     def publish_state(self) -> None:
         msg = String()
@@ -259,6 +424,9 @@ class BboxZoneController(Node):
                 if self.last_decision.zone is None
                 else self.last_decision.zone.value
             ),
+            "grab_state": self.grab_state,
+            "pickup_label": self.pickup_label,
+            "picked_count": self.picked_count,
             "selected": (
                 None
                 if candidate is None
@@ -268,6 +436,7 @@ class BboxZoneController(Node):
                     "confidence": candidate.confidence,
                     "center_x": candidate.center_x,
                     "center_y": candidate.center_y,
+                    "bottom_y": candidate.bottom_y,
                     "area_ratio": candidate.area_ratio,
                     "left_boundary_x": left_boundary,
                     "right_boundary_x": right_boundary,
