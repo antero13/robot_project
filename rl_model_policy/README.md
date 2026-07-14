@@ -218,11 +218,11 @@ Default bus-servo and pickup settings:
 ```text
 servo ID: 1
 open position: 1000
-closed position: 250
+closed position: 300
 grab center tolerance: 0.12
 grab area ratio: 0.50
 final forward: 0.06 m/s for 1.6 s
-stop after grab: true
+stop after grab: false
 ```
 
 Override values from the integrated launch when needed:
@@ -232,7 +232,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   yolo_model_path:=/home/airobot/ros2_ws/best.engine \
   target_classes:=0 \
   gripper_open_position:=1000 \
-  gripper_closed_position:=250 \
+  gripper_closed_position:=300 \
   final_forward_duration_s:=1.6
 ```
 
@@ -264,3 +264,45 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 
 The GUI pause button publishes `pause_motion`; perception, policy calculations,
 and state topics continue while the published base velocity remains zero.
+
+## Full competition mission
+
+The RL target controller now runs below a deterministic mission coordinator:
+
+```text
+COLLECTING
+  -> RETURN_MAIN_ROAD
+  -> RETURN_STAGING
+  -> ENTER_STORAGE
+  -> DEPOSIT
+  -> EXIT_STORAGE
+  -> CLOSE_AFTER_DEPOSIT
+  -> COLLECTING or COMPLETE
+```
+
+The default capacity is four objects and the mission target is seven objects.
+After four pickups, or after collecting the seventh object, the robot follows
+odometry waypoints to the lower-left Storage Zone. With 30 seconds remaining it
+also returns whenever at least one object is onboard. An empty robot continues
+searching until it picks an object or the 180 second match expires.
+
+Inside storage the gripper opens, the robot reverses back to the staging point,
+and the gripper closes before collection resumes. The default centered-frame
+waypoints are:
+
+```text
+main road y: -1.3343 m
+storage staging: (-1.75, -1.25) m
+storage center:  (-1.75, -1.75) m
+entry heading:   -90 deg
+```
+
+Tune these from the integrated launch if the real robot center does not land
+inside the 40 cm Storage Zone:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  storage_staging_x:=-1.75 storage_staging_y:=-1.25 \
+  storage_center_x:=-1.75 storage_center_y:=-1.75 \
+  storage_entry_yaw_deg:=-90.0
+```

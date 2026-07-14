@@ -9,6 +9,33 @@ MODE_LABELS = {
     "COVERAGE_SEARCH": "경기장 탐색 중",
     "WAITING_FOR_POSE": "위치 정보 대기 중",
     "GRAB_SEQUENCE": "물체 수납 동작 중",
+    "RETURN_TO_STORAGE": "보관함으로 복귀 중",
+    "ENTER_STORAGE": "보관함 진입 중",
+    "DEPOSIT": "물체 배출 중",
+    "EXIT_STORAGE": "보관함에서 후진 중",
+    "MISSION_COMPLETE": "미션 완료",
+    "MISSION_TIMEOUT": "경기 시간 종료",
+}
+
+MISSION_LABELS = {
+    "IDLE": "미션 대기",
+    "COLLECTING": "물체 탐색 및 수집",
+    "RETURN_MAIN_ROAD": "보관함 복귀 · 주 경로 이동",
+    "RETURN_STAGING": "보관함 복귀 · 진입 위치 이동",
+    "ENTER_STORAGE": "보관함 진입",
+    "DEPOSIT": "수납 물체 배출",
+    "EXIT_STORAGE": "보관함에서 후진",
+    "CLOSE_AFTER_DEPOSIT": "수납구 닫기",
+    "COMPLETE": "목표 7개 운반 완료",
+    "TIMEOUT": "3분 경기 종료",
+    "STOPPED": "미션 정지",
+}
+
+RETURN_REASON_LABELS = {
+    "CAPACITY": "내부 수납 한도 4개",
+    "TARGET_COUNT": "목표 7개 수집",
+    "TIME_LIMIT": "남은 시간 30초",
+    "MANUAL": "운영자 복귀 명령",
 }
 
 GRAB_LABELS = {
@@ -33,6 +60,10 @@ def parse_json_message(raw, fallback=None):
 def mode_label(state):
     if state.get("motion_paused"):
         return "주행 일시정지"
+    mission = state.get("mission", {})
+    phase = mission.get("phase") if isinstance(mission, dict) else None
+    if phase not in (None, "IDLE", "COLLECTING"):
+        return MISSION_LABELS.get(str(phase), str(phase))
     mode = str(state.get("control_mode", "IDLE"))
     if mode == "GRAB_SEQUENCE":
         grab = GRAB_LABELS.get(str(state.get("grab_state", "")), "수납 동작")
@@ -53,6 +84,38 @@ def stored_object_label(state):
         name if count == 1 else f"{name} × {count}"
         for name, count in counts.items()
     )
+
+
+def mission_progress_label(state):
+    mission = state.get("mission", {})
+    if not isinstance(mission, dict):
+        return "-"
+    onboard = int(mission.get("onboard_count", 0))
+    capacity = int(mission.get("storage_capacity", 4))
+    delivered = int(mission.get("delivered_count", 0))
+    total = int(mission.get("total_collected_count", onboard + delivered))
+    target = int(mission.get("target_object_count", 7))
+    return (
+        f"수집 {total}/{target} · 내부 {onboard}/{capacity} · "
+        f"배출 {delivered}/{target}"
+    )
+
+
+def mission_time_label(state):
+    mission = state.get("mission", {})
+    if not isinstance(mission, dict):
+        return "-"
+    remaining = max(0, int(math.ceil(float(mission.get("remaining_s", 0.0)))))
+    minutes, seconds = divmod(remaining, 60)
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def return_reason_label(state):
+    mission = state.get("mission", {})
+    if not isinstance(mission, dict):
+        return "-"
+    reason = mission.get("return_reason")
+    return RETURN_REASON_LABELS.get(str(reason), "-") if reason else "-"
 
 
 def quaternion_to_yaw(x, y, z, w):

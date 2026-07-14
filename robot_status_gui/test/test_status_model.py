@@ -3,9 +3,12 @@ import unittest
 
 from robot_status_gui.status_model import (
     centered_pose_to_map,
+    mission_progress_label,
+    mission_time_label,
     mode_label,
     parse_json_message,
     quaternion_to_yaw,
+    return_reason_label,
     stored_object_label,
 )
 
@@ -27,6 +30,32 @@ class StatusModelTest(unittest.TestCase):
     def test_stored_objects_are_counted(self):
         state = {"stored_objects": ["apple", "apple", "banana"]}
         self.assertEqual(stored_object_label(state), "apple × 2, banana")
+
+    def test_storage_return_phase_overrides_low_level_mode(self):
+        state = {
+            "control_mode": "TRACK_TARGET",
+            "mission": {"phase": "RETURN_STAGING"},
+        }
+        self.assertIn("보관함 복귀", mode_label(state))
+
+    def test_mission_progress_and_timer_are_formatted(self):
+        state = {
+            "mission": {
+                "onboard_count": 3,
+                "storage_capacity": 4,
+                "delivered_count": 4,
+                "total_collected_count": 7,
+                "target_object_count": 7,
+                "remaining_s": 29.2,
+                "return_reason": "TIME_LIMIT",
+            }
+        }
+        self.assertEqual(
+            mission_progress_label(state),
+            "수집 7/7 · 내부 3/4 · 배출 4/7",
+        )
+        self.assertEqual(mission_time_label(state), "00:30")
+        self.assertEqual(return_reason_label(state), "남은 시간 30초")
 
     def test_invalid_json_uses_empty_dictionary(self):
         self.assertEqual(parse_json_message("not-json"), {})

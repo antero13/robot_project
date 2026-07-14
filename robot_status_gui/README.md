@@ -4,7 +4,9 @@ PyQt5 operator GUI for real-robot tests. It shows:
 
 - robot position and heading in the 4 m x 4 m arena
 - RL/search/grab state and the currently stored object classes
+- full-mission phase, remaining match time, onboard capacity, and delivered count
 - YOLO object positions estimated from `/odom` and camera geometry
+- the active odometry waypoint while returning to Storage Zone
 - a base-motion pause/resume button
 
 The map uses the competition drawing's lower-left origin. Internally, `/odom`
@@ -45,6 +47,11 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 
 The GUI is optional and defaults to off so the autonomous launch still works
 over a headless SSH session.
+
+During the full mission the sidebar shows `collected/7`, `onboard/4`, and
+`delivered/7`. Storage return reasons distinguish capacity, seventh-object,
+30-second, and manual returns. The yellow `W` marker is the next centered-frame
+waypoint selected by the storage return controller.
 
 ## Object position calibration
 

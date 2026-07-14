@@ -15,6 +15,13 @@ from rl_model_policy.coverage_controller import (
     CoverageController,
     generate_coverage_legs,
 )
+from rl_model_policy.mission_coordinator import (
+    MissionCoordinator,
+    MissionPhase,
+    ReturnReason,
+    reverse_exit_command,
+    waypoint_command,
+)
 from rl_model_policy.observation import (
     OBSERVATION_DIM,
     OBSERVATION_NAMES,
@@ -72,6 +79,12 @@ class RLModelPolicyNode(Node):
     MODE_COVERAGE_SEARCH = "COVERAGE_SEARCH"
     MODE_WAITING_FOR_POSE = "WAITING_FOR_POSE"
     MODE_GRAB_SEQUENCE = "GRAB_SEQUENCE"
+    MODE_RETURN_TO_STORAGE = "RETURN_TO_STORAGE"
+    MODE_ENTER_STORAGE = "ENTER_STORAGE"
+    MODE_DEPOSIT = "DEPOSIT"
+    MODE_EXIT_STORAGE = "EXIT_STORAGE"
+    MODE_MISSION_COMPLETE = "MISSION_COMPLETE"
+    MODE_MISSION_TIMEOUT = "MISSION_TIMEOUT"
 
     GRAB_TRACKING = "TRACKING"
     GRAB_OPENING = "OPENING"
@@ -141,18 +154,40 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("publish_stop_when_inactive", True)
         self.declare_parameter("state_preprocessor_epsilon", 1e-8)
 
+        self.declare_parameter("full_mission_enabled", True)
+        self.declare_parameter("mission_duration_s", 180.0)
+        self.declare_parameter("force_return_remaining_s", 30.0)
+        self.declare_parameter("storage_capacity", 4)
+        self.declare_parameter("target_object_count", 7)
+        self.declare_parameter("storage_main_road_y", -1.3343)
+        self.declare_parameter("storage_staging_x", -1.75)
+        self.declare_parameter("storage_staging_y", -1.25)
+        self.declare_parameter("storage_center_x", -1.75)
+        self.declare_parameter("storage_center_y", -1.75)
+        self.declare_parameter("storage_entry_yaw_deg", -90.0)
+        self.declare_parameter("storage_return_speed", 0.18)
+        self.declare_parameter("storage_entry_speed", 0.08)
+        self.declare_parameter("storage_exit_reverse_speed", 0.10)
+        self.declare_parameter("storage_waypoint_tolerance", 0.10)
+        self.declare_parameter("storage_entry_tolerance", 0.04)
+        self.declare_parameter("storage_heading_tolerance", 0.14)
+        self.declare_parameter("storage_final_yaw_tolerance", 0.12)
+        self.declare_parameter("storage_heading_gain", 1.5)
+        self.declare_parameter("storage_max_angular_speed", 0.40)
+        self.declare_parameter("storage_avoid_danger_threshold", 0.20)
+
         self.declare_parameter("gripper_enabled", True)
         self.declare_parameter("gripper_type", "bus")
         self.declare_parameter("gripper_servo_id", 1)
         self.declare_parameter("gripper_open_position", 1000)
-        self.declare_parameter("gripper_closed_position", 250)
+        self.declare_parameter("gripper_closed_position", 300)
         self.declare_parameter("gripper_move_duration_s", 0.5)
         self.declare_parameter("grab_center_tolerance", 0.12)
         self.declare_parameter("grab_area_ratio", 0.50)
         self.declare_parameter("final_forward_linear_x", 0.06)
         self.declare_parameter("final_forward_duration_s", 1.6)
         self.declare_parameter("grab_duration_s", 1.0)
-        self.declare_parameter("stop_after_grab", True)
+        self.declare_parameter("stop_after_grab", False)
 
         self.active = bool(self.get_parameter("active_on_start").value)
         self.dry_run = bool(self.get_parameter("dry_run").value)
@@ -180,11 +215,25 @@ class RLModelPolicyNode(Node):
         self.grab_state_elapsed_offset_s = 0.0
         self.motion_paused = False
         self.pickup_label = None
-        self.stored_objects = []
         self.control_mode = self.MODE_IDLE
         self.had_visible_target = False
         self.target_lost_started_at = None
         self.coverage_command = None
+        self.mission_waypoint = None
+        self.return_lane_x = 0.0
+
+        self.mission = MissionCoordinator(
+            storage_capacity=int(self.get_parameter("storage_capacity").value),
+            target_object_count=int(
+                self.get_parameter("target_object_count").value
+            ),
+            mission_duration_s=self.get_float("mission_duration_s"),
+            force_return_remaining_s=self.get_float(
+                "force_return_remaining_s"
+            ),
+        )
+        if self.active:
+            self.mission.start(self.now_s())
 
         self.policy = None
         self.model_observation_dim = OBSERVATION_DIM
@@ -231,7 +280,11 @@ class RLModelPolicyNode(Node):
             10,
         )
         self.odometry_sub = None
-        if self.pose_observation_is_active() or self.coverage_is_enabled():
+        if (
+            self.pose_observation_is_active()
+            or self.coverage_is_enabled()
+            or self.full_mission_is_enabled()
+        ):
             self.odometry_sub = self.create_subscription(
                 Odometry,
                 self.get_parameter("odometry_topic").value,
@@ -422,8 +475,10 @@ class RLModelPolicyNode(Node):
             if self.policy is None:
                 self.get_logger().error("Cannot start: model is not loaded")
                 return
+            self.mission.start(self.now_s())
             self.coverage_controller.reset()
             self.coverage_command = None
+            self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.motion_paused = False
@@ -438,6 +493,7 @@ class RLModelPolicyNode(Node):
             self.set_motion_paused(False)
         elif command == "stop":
             self.active = False
+            self.mission.stop(self.now_s())
             self.motion_paused = False
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
@@ -447,6 +503,7 @@ class RLModelPolicyNode(Node):
             self.get_logger().info("RL model policy stopped")
         elif command == "reset":
             self.active = False
+            self.mission.reset()
             self.latest_target = None
             self.latest_target_label = None
             self.latest_target_label_time = None
@@ -462,35 +519,64 @@ class RLModelPolicyNode(Node):
             self.target_lost_started_at = None
             self.motion_paused = False
             self.pickup_label = None
-            self.stored_objects = []
+            self.mission_waypoint = None
             self.set_control_mode(self.MODE_IDLE)
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
             self.publish_cmd(0.0, 0.0)
             self.get_logger().info("RL model policy reset")
+        elif command in ("return", "return_storage"):
+            if self.mission.begin_return(ReturnReason.MANUAL, self.now_s()):
+                self.prepare_storage_return()
+                self.get_logger().info("Manual return to storage requested")
+            else:
+                self.get_logger().info(
+                    "Ignoring storage return request because the robot is empty"
+                )
         elif command == "open":
             self.command_gripper(open_gripper=True)
         elif command == "close":
             self.command_gripper(open_gripper=False)
 
     def tick(self):
+        now_s = self.now_s()
         target = self.current_target()
         objects = self.current_avoid_objects(target)
         obs, bins, nearest = self.make_observation(target, objects)
-        self.update_target_history(target)
+        if self.active and self.full_mission_is_enabled():
+            previous_phase = self.mission.phase
+            self.mission.update_time(now_s)
+            if (
+                self.mission.is_storage_phase()
+                and previous_phase not in MissionPhase.STORAGE_PHASES
+            ):
+                self.prepare_storage_return()
+            if self.mission.phase == MissionPhase.TIMEOUT:
+                self.active = False
+                self.set_control_mode(self.MODE_MISSION_TIMEOUT)
+                self.get_logger().warning("Mission time expired; stopping the robot")
+
+        collecting = (
+            not self.full_mission_is_enabled()
+            or self.mission.phase == MissionPhase.COLLECTING
+        )
+        if collecting:
+            self.update_target_history(target)
         grab_cmd = (
             self.update_grab_sequence(target)
-            if self.active and not self.motion_paused
+            if self.active and collecting and not self.motion_paused
             else None
         )
 
-        if (
-            self.active
-            and self.motion_paused
-            and self.grab_state != self.GRAB_TRACKING
-        ):
-            self.set_control_mode(self.MODE_GRAB_SEQUENCE)
+        if self.active and self.motion_paused:
+            if self.grab_state != self.GRAB_TRACKING:
+                self.set_control_mode(self.MODE_GRAB_SEQUENCE)
             linear_x, angular_z = (0.0, 0.0)
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+            self.coverage_command = None
+        elif self.active and self.mission.is_storage_phase():
+            linear_x, angular_z = self.storage_mission_command(bins, now_s)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
@@ -527,7 +613,12 @@ class RLModelPolicyNode(Node):
             linear_x, angular_z = self.action_to_cmd(self.filtered_action)
             self.coverage_command = None
         else:
-            self.set_control_mode(self.MODE_IDLE)
+            if self.mission.phase == MissionPhase.COMPLETE:
+                self.set_control_mode(self.MODE_MISSION_COMPLETE)
+            elif self.mission.phase == MissionPhase.TIMEOUT:
+                self.set_control_mode(self.MODE_MISSION_TIMEOUT)
+            else:
+                self.set_control_mode(self.MODE_IDLE)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
             linear_x, angular_z = (0.0, 0.0)
@@ -566,6 +657,215 @@ class RLModelPolicyNode(Node):
         self.motion_paused = False
         self.grab_state_started_at = self.get_clock().now()
         self.get_logger().info("Base motion resumed")
+
+    def prepare_storage_return(self):
+        self.return_lane_x = self.clamp(
+            self.robot_x,
+            self.get_float("coverage_min_x"),
+            self.get_float("coverage_max_x"),
+        )
+        self.mission_waypoint = (
+            self.return_lane_x,
+            self.get_float("storage_main_road_y"),
+        )
+        self.latest_target = None
+        self.latest_target_time = None
+        self.had_visible_target = False
+        self.target_lost_started_at = None
+        self.filtered_action = [0.0, 0.0]
+        self.get_logger().info(
+            "Returning to storage: "
+            f"reason={self.mission.return_reason}, "
+            f"onboard={self.mission.onboard_count}, "
+            f"delivered={self.mission.delivered_count}"
+        )
+
+    def storage_mission_command(self, bins, now_s):
+        if not self.storage_pose_is_valid():
+            self.mission_waypoint = None
+            self.set_control_mode(self.MODE_WAITING_FOR_POSE)
+            return (0.0, 0.0)
+
+        phase = self.mission.phase
+        entry_yaw = math.radians(self.get_float("storage_entry_yaw_deg"))
+
+        if phase == MissionPhase.RETURN_MAIN_ROAD:
+            self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
+            command = self.storage_waypoint_command(
+                bins,
+                self.return_lane_x,
+                self.get_float("storage_main_road_y"),
+                self.get_float("storage_return_speed"),
+            )
+            if command.reached:
+                self.mission.set_phase(MissionPhase.RETURN_STAGING, now_s)
+                self.mission_waypoint = (
+                    self.get_float("storage_staging_x"),
+                    self.get_float("storage_staging_y"),
+                )
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.RETURN_STAGING:
+            self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
+            command = self.storage_waypoint_command(
+                bins,
+                self.get_float("storage_staging_x"),
+                self.get_float("storage_staging_y"),
+                self.get_float("storage_return_speed"),
+                final_yaw=entry_yaw,
+            )
+            if command.reached:
+                self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
+                self.mission_waypoint = (
+                    self.get_float("storage_center_x"),
+                    self.get_float("storage_center_y"),
+                )
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.ENTER_STORAGE:
+            self.set_control_mode(self.MODE_ENTER_STORAGE)
+            command = self.storage_waypoint_command(
+                (0.0, 0.0, 0.0),
+                self.get_float("storage_center_x"),
+                self.get_float("storage_center_y"),
+                self.get_float("storage_entry_speed"),
+                final_yaw=entry_yaw,
+                waypoint_tolerance=self.get_float(
+                    "storage_entry_tolerance"
+                ),
+            )
+            if command.reached:
+                self.publish_cmd(0.0, 0.0)
+                self.command_gripper(open_gripper=True)
+                self.mission.set_phase(MissionPhase.DEPOSIT, now_s)
+                self.mission_waypoint = None
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.DEPOSIT:
+            self.set_control_mode(self.MODE_DEPOSIT)
+            self.mission_waypoint = None
+            if self.mission.phase_age_s(now_s) >= self.get_float(
+                "gripper_move_duration_s"
+            ):
+                deposited_count = self.mission.onboard_count
+                self.mission.record_deposit(now_s)
+                self.get_logger().info(
+                    f"Deposited {deposited_count} object(s); "
+                    f"total delivered={self.mission.delivered_count}"
+                )
+            return (0.0, 0.0)
+
+        if phase == MissionPhase.EXIT_STORAGE:
+            self.set_control_mode(self.MODE_EXIT_STORAGE)
+            self.mission_waypoint = (
+                self.get_float("storage_staging_x"),
+                self.get_float("storage_staging_y"),
+            )
+            command = reverse_exit_command(
+                robot_y=self.robot_y,
+                robot_yaw=self.robot_yaw,
+                exit_y=self.get_float("storage_staging_y"),
+                desired_yaw=entry_yaw,
+                reverse_speed=self.get_float("storage_exit_reverse_speed"),
+                y_tolerance=self.get_float("storage_waypoint_tolerance"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_max_angular_speed"),
+            )
+            if command.reached:
+                self.publish_cmd(0.0, 0.0)
+                self.command_gripper(open_gripper=False)
+                self.mission.set_phase(MissionPhase.CLOSE_AFTER_DEPOSIT, now_s)
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.CLOSE_AFTER_DEPOSIT:
+            self.set_control_mode(self.MODE_EXIT_STORAGE)
+            if self.mission.phase_age_s(now_s) < self.get_float(
+                "gripper_move_duration_s"
+            ):
+                return (0.0, 0.0)
+            next_phase = self.mission.finish_storage_exit(now_s)
+            self.mission_waypoint = None
+            if next_phase == MissionPhase.COMPLETE:
+                self.active = False
+                self.set_control_mode(self.MODE_MISSION_COMPLETE)
+                self.get_logger().info(
+                    f"Mission complete: {self.mission.delivered_count} objects delivered"
+                )
+                return (0.0, 0.0)
+            self.resume_collection_after_storage()
+            return (0.0, 0.0)
+
+        return (0.0, 0.0)
+
+    def storage_waypoint_command(
+        self,
+        bins,
+        target_x,
+        target_y,
+        speed,
+        final_yaw=None,
+        waypoint_tolerance=None,
+    ):
+        self.mission_waypoint = (float(target_x), float(target_y))
+        if float(bins[1]) >= self.get_float("storage_avoid_danger_threshold"):
+            direction = 1.0 if float(bins[0]) <= float(bins[2]) else -1.0
+            return SimpleNamespace(
+                linear_x=0.0,
+                angular_z=direction
+                * self.get_float("coverage_avoid_angular_speed"),
+                reached=False,
+            )
+        return waypoint_command(
+            robot_x=self.robot_x,
+            robot_y=self.robot_y,
+            robot_yaw=self.robot_yaw,
+            target_x=target_x,
+            target_y=target_y,
+            speed=speed,
+            waypoint_tolerance=(
+                self.get_float("storage_waypoint_tolerance")
+                if waypoint_tolerance is None
+                else float(waypoint_tolerance)
+            ),
+            heading_tolerance=self.get_float("storage_heading_tolerance"),
+            heading_gain=self.get_float("storage_heading_gain"),
+            max_angular_speed=self.get_float("storage_max_angular_speed"),
+            final_yaw=final_yaw,
+            final_yaw_tolerance=self.get_float(
+                "storage_final_yaw_tolerance"
+            ),
+        )
+
+    def storage_pose_is_valid(self):
+        return self.is_fresh(
+            self.latest_pose_time,
+            "pose_timeout_s",
+        ) and pose_is_usable(
+            self.robot_x,
+            self.robot_y,
+            self.get_float("arena_half_extent_m"),
+            self.get_float("pose_bounds_tolerance_m"),
+        )
+
+    def resume_collection_after_storage(self):
+        self.coverage_controller.reset()
+        self.coverage_command = None
+        self.latest_target = None
+        self.latest_target_time = None
+        self.latest_target_label = None
+        self.latest_target_label_time = None
+        self.had_visible_target = False
+        self.target_lost_started_at = None
+        self.change_grab_state(self.GRAB_TRACKING)
+        self.set_control_mode(self.MODE_COVERAGE_SEARCH)
+        self.get_logger().info(
+            "Storage exit complete; resuming collection with "
+            f"{self.mission.delivered_count}/{self.mission.target_object_count} delivered"
+        )
 
     def create_coverage_controller(self):
         legs = generate_coverage_legs(
@@ -800,11 +1100,19 @@ class RLModelPolicyNode(Node):
         if self.grab_state == self.GRAB_CLOSING:
             if self.grab_state_age_s() < self.get_float("grab_duration_s"):
                 return (0.0, 0.0)
-            if self.pickup_label is not None:
-                self.stored_objects.append(self.pickup_label)
-                self.pickup_label = None
+            label = self.pickup_label or "unknown"
+            if self.full_mission_is_enabled():
+                return_reason = self.mission.record_pickup(label, self.now_s())
+                if return_reason is not None:
+                    self.prepare_storage_return()
+            else:
+                self.mission.onboard_objects.append(label)
+            self.pickup_label = None
             self.change_grab_state(self.GRAB_COMPLETE)
-            if bool(self.get_parameter("stop_after_grab").value):
+            if (
+                not self.full_mission_is_enabled()
+                and bool(self.get_parameter("stop_after_grab").value)
+            ):
                 self.active = False
                 self.get_logger().info("Object grabbed; RL drive stopped")
             else:
@@ -938,6 +1246,8 @@ class RLModelPolicyNode(Node):
     ):
         pose_fresh = self.is_fresh(self.latest_pose_time, "pose_timeout_s")
         coverage = self.coverage_command
+        now_s = self.now_s()
+        mission_waypoint = self.mission_waypoint
         msg = String()
         msg.data = json.dumps(
             {
@@ -956,7 +1266,33 @@ class RLModelPolicyNode(Node):
                 "gripper_enabled": bool(self.get_parameter("gripper_enabled").value),
                 "target_label": self.current_target_label(),
                 "pickup_label": self.pickup_label,
-                "stored_objects": list(self.stored_objects),
+                "stored_objects": list(self.mission.onboard_objects),
+                "delivered_objects": list(self.mission.delivered_objects),
+                "mission_phase": self.mission.phase,
+                "mission": {
+                    "enabled": self.full_mission_is_enabled(),
+                    "phase": self.mission.phase,
+                    "return_reason": self.mission.return_reason,
+                    "elapsed_s": round(self.mission.elapsed_s(now_s), 2),
+                    "remaining_s": round(self.mission.remaining_s(now_s), 2),
+                    "duration_s": self.mission.mission_duration_s,
+                    "force_return_remaining_s": (
+                        self.mission.force_return_remaining_s
+                    ),
+                    "storage_capacity": self.mission.storage_capacity,
+                    "target_object_count": self.mission.target_object_count,
+                    "onboard_count": self.mission.onboard_count,
+                    "delivered_count": self.mission.delivered_count,
+                    "total_collected_count": (
+                        self.mission.total_collected_count
+                    ),
+                    "waypoint": None
+                    if mission_waypoint is None
+                    else {
+                        "x": round(float(mission_waypoint[0]), 4),
+                        "y": round(float(mission_waypoint[1]), 4),
+                    },
+                },
                 "obs": [round(v, 4) for v in obs[:self.model_observation_dim]],
                 "raw_action": [round(v, 4) for v in self.raw_action],
                 "filtered_action": [round(v, 4) for v in self.filtered_action],
@@ -998,6 +1334,9 @@ class RLModelPolicyNode(Node):
     def coverage_is_enabled(self):
         return bool(self.get_parameter("coverage_enabled").value)
 
+    def full_mission_is_enabled(self):
+        return bool(self.get_parameter("full_mission_enabled").value)
+
     def pose_observation_is_active(self):
         return model_uses_pose_observation(
             self.model_observation_dim,
@@ -1012,6 +1351,9 @@ class RLModelPolicyNode(Node):
 
     def get_float(self, name):
         return float(self.get_parameter(name).value)
+
+    def now_s(self):
+        return self.get_clock().now().nanoseconds / 1_000_000_000.0
 
     @staticmethod
     def make_point(x, y, z):

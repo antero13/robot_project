@@ -20,8 +20,9 @@ robot_pose_tracker -> /odom
   -> DC motors
 ```
 
-현재 구현은 목표 객체 하나를 찾아 접근하고 그리퍼로 집는 데까지다. 다중 객체
-수집 완료 판단, Storage Zone 복귀, 태극기 정렬, 배출은 아직 없다.
+현재 구현은 경기장을 탐색하면서 최대 4개를 수납하고, odometry 경로로 Storage
+Zone에 복귀해 배출한 뒤 다시 탐색한다. 총 7개 배출 시 완료하며, 남은 시간이
+30초 이하일 때 내부에 물체가 있으면 즉시 복귀한다. 태극기 인식은 사용하지 않는다.
 
 ### 18개 observation
 
@@ -236,9 +237,9 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   gripper_type:=bus \
   gripper_servo_id:=1 \
   gripper_open_position:=1000 \
-  gripper_closed_position:=250 \
+  gripper_closed_position:=300 \
   publish_annotated:=true \
-  stop_after_grab:=true \
+  stop_after_grab:=false \
   auto_start:=false
 ```
 
@@ -330,9 +331,9 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   gripper_type:=bus \
   gripper_servo_id:=1 \
   gripper_open_position:=1000 \
-  gripper_closed_position:=250 \
+  gripper_closed_position:=300 \
   publish_annotated:=true \
-  stop_after_grab:=true \
+  stop_after_grab:=false \
   auto_start:=false
 ```
 
@@ -400,7 +401,7 @@ ros2 topic echo /yolo/detections
 ```text
 servo ID: 1
 open: 1000
-closed: 250
+closed: 300
 move duration: 0.5 s
 ```
 
@@ -410,9 +411,21 @@ RL은 목표가 중앙에 있고 가까워지면 다음 순서로 동작한다.
 TRACKING -> OPENING -> FINAL_FORWARD -> CLOSING -> GRABBED
 ```
 
-기본값 `stop_after_grab:=true`는 객체 하나를 집은 뒤 주행을 멈춘다.
-`false`로 바꾸면 다시 추적 상태로 돌아가지만 목표 개수 계산이나 보관함 복귀는
-추가되지 않는다.
+기본값 `stop_after_grab:=false`, `full_mission_enabled:=true`에서는 상위 미션
+상태기가 수납 개수와 남은 시간을 판단한다. 네 번째 수납 또는 일곱 번째 수집,
+내부 물체가 있는 상태에서 남은 시간 30초 조건이 되면 보관함 복귀가 시작된다.
+
+기본 보관함 경로는 경기장 중심 좌표계에서 다음과 같다.
+
+```text
+주 경로: y=-1.3343
+진입 대기점: (-1.75, -1.25)
+보관함 내부: (-1.75, -1.75)
+진입 방향: -90도
+```
+
+실제 시험에서는 로봇 중심이 보관함 안에 들어오는지 저속으로 확인한 뒤
+`storage_staging_*`, `storage_center_*` launch 파라미터를 조정한다.
 
 수동 그리퍼 시험:
 

@@ -70,6 +70,21 @@ def generate_launch_description():
     final_forward_duration_s = LaunchConfiguration("final_forward_duration_s")
     grab_duration_s = LaunchConfiguration("grab_duration_s")
     stop_after_grab = LaunchConfiguration("stop_after_grab")
+    full_mission_enabled = LaunchConfiguration("full_mission_enabled")
+    mission_duration_s = LaunchConfiguration("mission_duration_s")
+    force_return_remaining_s = LaunchConfiguration("force_return_remaining_s")
+    storage_capacity = LaunchConfiguration("storage_capacity")
+    target_object_count = LaunchConfiguration("target_object_count")
+    storage_main_road_y = LaunchConfiguration("storage_main_road_y")
+    storage_staging_x = LaunchConfiguration("storage_staging_x")
+    storage_staging_y = LaunchConfiguration("storage_staging_y")
+    storage_center_x = LaunchConfiguration("storage_center_x")
+    storage_center_y = LaunchConfiguration("storage_center_y")
+    storage_entry_yaw_deg = LaunchConfiguration("storage_entry_yaw_deg")
+    storage_return_speed = LaunchConfiguration("storage_return_speed")
+    storage_entry_speed = LaunchConfiguration("storage_entry_speed")
+    storage_exit_reverse_speed = LaunchConfiguration("storage_exit_reverse_speed")
+    storage_entry_tolerance = LaunchConfiguration("storage_entry_tolerance")
 
     controller_launch = IncludeLaunchDescription(
         PathJoinSubstitution([
@@ -162,6 +177,21 @@ def generate_launch_description():
             "final_forward_duration_s": final_forward_duration_s,
             "grab_duration_s": grab_duration_s,
             "stop_after_grab": stop_after_grab,
+            "full_mission_enabled": full_mission_enabled,
+            "mission_duration_s": mission_duration_s,
+            "force_return_remaining_s": force_return_remaining_s,
+            "storage_capacity": storage_capacity,
+            "target_object_count": target_object_count,
+            "storage_main_road_y": storage_main_road_y,
+            "storage_staging_x": storage_staging_x,
+            "storage_staging_y": storage_staging_y,
+            "storage_center_x": storage_center_x,
+            "storage_center_y": storage_center_y,
+            "storage_entry_yaw_deg": storage_entry_yaw_deg,
+            "storage_return_speed": storage_return_speed,
+            "storage_entry_speed": storage_entry_speed,
+            "storage_exit_reverse_speed": storage_exit_reverse_speed,
+            "storage_entry_tolerance": storage_entry_tolerance,
         }.items(),
     )
 
@@ -314,18 +344,36 @@ def generate_launch_description():
         DeclareLaunchArgument("imu_yaw_sign", default_value="1.0"),
         DeclareLaunchArgument("gyro_calibration_duration_s", default_value="2.0"),
         DeclareLaunchArgument("dry_run", default_value="false"),
+        DeclareLaunchArgument("full_mission_enabled", default_value="true"),
+        DeclareLaunchArgument("mission_duration_s", default_value="180.0"),
+        DeclareLaunchArgument("force_return_remaining_s", default_value="30.0"),
+        DeclareLaunchArgument("storage_capacity", default_value="4"),
+        DeclareLaunchArgument("target_object_count", default_value="7"),
+        DeclareLaunchArgument("storage_main_road_y", default_value="-1.3343"),
+        DeclareLaunchArgument("storage_staging_x", default_value="-1.75"),
+        DeclareLaunchArgument("storage_staging_y", default_value="-1.25"),
+        DeclareLaunchArgument("storage_center_x", default_value="-1.75"),
+        DeclareLaunchArgument("storage_center_y", default_value="-1.75"),
+        DeclareLaunchArgument("storage_entry_yaw_deg", default_value="-90.0"),
+        DeclareLaunchArgument("storage_return_speed", default_value="0.18"),
+        DeclareLaunchArgument("storage_entry_speed", default_value="0.08"),
+        DeclareLaunchArgument(
+            "storage_exit_reverse_speed",
+            default_value="0.10",
+        ),
+        DeclareLaunchArgument("storage_entry_tolerance", default_value="0.04"),
         DeclareLaunchArgument("gripper_enabled", default_value="true"),
         DeclareLaunchArgument("gripper_type", default_value="bus"),
         DeclareLaunchArgument("gripper_servo_id", default_value="1"),
         DeclareLaunchArgument("gripper_open_position", default_value="1000"),
-        DeclareLaunchArgument("gripper_closed_position", default_value="250"),
+        DeclareLaunchArgument("gripper_closed_position", default_value="300"),
         DeclareLaunchArgument("gripper_move_duration_s", default_value="0.5"),
         DeclareLaunchArgument("grab_center_tolerance", default_value="0.12"),
         DeclareLaunchArgument("grab_area_ratio", default_value="0.50"),
         DeclareLaunchArgument("final_forward_linear_x", default_value="0.06"),
         DeclareLaunchArgument("final_forward_duration_s", default_value="1.6"),
         DeclareLaunchArgument("grab_duration_s", default_value="1.0"),
-        DeclareLaunchArgument("stop_after_grab", default_value="true"),
+        DeclareLaunchArgument("stop_after_grab", default_value="false"),
         DeclareLaunchArgument(
             "auto_start",
             default_value="false",

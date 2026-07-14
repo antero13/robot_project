@@ -102,7 +102,8 @@ subscriber를 기다릴 수도 있다.
 ### [P1] 현재 코드는 대회 전체 미션을 완료하지 않는다
 
 RL 그리퍼 상태 머신은 목표가 가까워지면 열기, 최종 전진, 닫기를 수행한다.
-기본값 `stop_after_grab=true`로 객체 하나를 집은 뒤 RL 주행을 중지한다.
+기본값 `stop_after_grab=false`, `full_mission_enabled=true`로 반복 수집과
+odometry 기반 Storage Zone 왕복을 수행한다.
 
 - `rl_model_policy/rl_model_policy/rl_model_policy_node.py:106`
 - `rl_model_policy/rl_model_policy/rl_model_policy_node.py:389`

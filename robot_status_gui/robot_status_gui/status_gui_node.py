@@ -9,9 +9,12 @@ from std_msgs.msg import String
 
 from robot_status_gui.status_model import (
     centered_pose_to_map,
+    mission_progress_label,
+    mission_time_label,
     mode_label,
     parse_json_message,
     quaternion_to_yaw,
+    return_reason_label,
     stored_object_label,
 )
 
@@ -174,6 +177,7 @@ class ArenaMapWidget(QWidget):
         self.draw_zones(painter, arena)
         self.draw_candidate_points(painter, arena)
         self.draw_path(painter, arena)
+        self.draw_mission_waypoint(painter, arena)
         self.draw_objects(painter, arena)
         self.draw_robot(painter, arena)
 
@@ -240,6 +244,35 @@ class ArenaMapWidget(QWidget):
         painter.setPen(QPen(QColor(46, 215, 190, 115), 2.0))
         painter.setBrush(Qt.NoBrush)
         painter.drawPath(path)
+
+    def draw_mission_waypoint(self, painter, arena):
+        policy = self.snapshot.get("policy", {})
+        mission = policy.get("mission", {}) if isinstance(policy, dict) else {}
+        waypoint = mission.get("waypoint") if isinstance(mission, dict) else None
+        if not isinstance(waypoint, dict):
+            return
+        try:
+            waypoint_x = float(waypoint["x"]) + 2.0
+            waypoint_y = float(waypoint["y"]) + 2.0
+        except (KeyError, TypeError, ValueError):
+            return
+
+        pixel_x, pixel_y = self.to_pixel(waypoint_x, waypoint_y, arena)
+        pose = self.snapshot.get("pose")
+        if pose:
+            robot_x, robot_y = self.to_pixel(pose["map_x"], pose["map_y"], arena)
+            painter.setPen(QPen(QColor("#f5df4d"), 2.0, Qt.DashLine))
+            painter.drawLine(QPointF(robot_x, robot_y), QPointF(pixel_x, pixel_y))
+        painter.setPen(QPen(QColor("#11161a"), 2.0))
+        painter.setBrush(QColor("#f5df4d"))
+        painter.drawEllipse(QPointF(pixel_x, pixel_y), 9.0, 9.0)
+        painter.setPen(QColor("#11161a"))
+        painter.setFont(QFont("Sans", 7, QFont.Bold))
+        painter.drawText(
+            QRectF(pixel_x - 9.0, pixel_y - 8.0, 18.0, 16.0),
+            Qt.AlignCenter,
+            "W",
+        )
 
     def draw_objects(self, painter, arena):
         for item in self.snapshot.get("objects", []):
@@ -357,7 +390,7 @@ class RobotStatusWindow(QMainWindow):
         self.node = node
         self.setWindowTitle("AI Robot Challenge · Robot Status")
         self.resize(1180, 780)
-        self.setMinimumSize(980, 680)
+        self.setMinimumSize(1040, 680)
         self.build_ui()
 
     def build_ui(self):
@@ -390,7 +423,7 @@ class RobotStatusWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(330)
+        sidebar.setFixedWidth(350)
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(20, 20, 20, 20)
         side.setSpacing(12)
@@ -401,9 +434,15 @@ class RobotStatusWindow(QMainWindow):
         side.addWidget(self.section_label("현재 상태"))
         side.addWidget(self.mode_label)
 
+        self.progress_label = self.value_label("미션 진행", "-")
+        self.time_label = self.value_label("남은 시간", "03:00")
+        self.return_reason_label = self.value_label("복귀 사유", "-")
         self.target_label = self.value_label("감지 목표", "-")
-        self.stored_label = self.value_label("수납 객체", "없음")
+        self.stored_label = self.value_label("로봇 내부", "없음")
         self.coverage_label = self.value_label("탐색 단계", "-")
+        side.addWidget(self.progress_label)
+        side.addWidget(self.time_label)
+        side.addWidget(self.return_reason_label)
         side.addWidget(self.target_label)
         side.addWidget(self.stored_label)
         side.addWidget(self.coverage_label)
@@ -481,11 +520,20 @@ class RobotStatusWindow(QMainWindow):
 
         self.map_widget.set_snapshot(snapshot)
         self.mode_label.setText(mode_label(policy))
+        self.progress_label.setText(
+            f"미션 진행   {mission_progress_label(policy)}"
+        )
+        self.time_label.setText(
+            f"남은 시간   {mission_time_label(policy)}"
+        )
+        self.return_reason_label.setText(
+            f"복귀 사유   {return_reason_label(policy)}"
+        )
         self.target_label.setText(
             f"감지 목표   {policy.get('target_label') or '-'}"
         )
         self.stored_label.setText(
-            f"수납 객체   {stored_object_label(policy)}"
+            f"로봇 내부   {stored_object_label(policy)}"
         )
         coverage = policy.get("coverage", {})
         phase = coverage.get("phase") if isinstance(coverage, dict) else None

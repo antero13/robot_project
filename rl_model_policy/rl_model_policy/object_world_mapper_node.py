@@ -180,12 +180,22 @@ class ObjectWorldMapperNode(Node):
             payload = json.loads(msg.data)
         except json.JSONDecodeError:
             return
-        stored_objects = payload.get("stored_objects", [])
-        if not isinstance(stored_objects, list):
+        mission = payload.get("mission", {})
+        if isinstance(mission, dict) and "total_collected_count" in mission:
+            try:
+                new_count = int(mission["total_collected_count"])
+            except (TypeError, ValueError):
+                return
+        else:
+            stored_objects = payload.get("stored_objects", [])
+            if not isinstance(stored_objects, list):
+                return
+            new_count = len(stored_objects)
+        if new_count < self.stored_object_count:
+            self.stored_object_count = new_count
+            self.tracked_objects.clear()
             return
-
-        new_count = len(stored_objects)
-        removed_count = max(0, new_count - self.stored_object_count)
+        removed_count = new_count - self.stored_object_count
         self.stored_object_count = new_count
         for _ in range(removed_count):
             self.remove_nearest_collected_target()
