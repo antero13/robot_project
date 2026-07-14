@@ -183,6 +183,7 @@ class ArenaMapWidget(QWidget):
         self.draw_robot(painter, arena)
 
         painter.setPen(QPen(QColor("#f4f6f7"), 3.0))
+        painter.setBrush(Qt.NoBrush)
         painter.drawRect(arena)
         self.draw_axes(painter, arena)
         self.draw_legend(painter, arena)

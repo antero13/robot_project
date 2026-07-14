@@ -24,6 +24,10 @@ class StatusModelTest(unittest.TestCase):
         state = {"control_mode": "TRACK_TARGET", "motion_paused": True}
         self.assertEqual(mode_label(state), "주행 일시정지")
 
+    def test_aligned_approach_has_operator_facing_label(self):
+        state = {"control_mode": "ALIGNED_APPROACH"}
+        self.assertNotEqual(mode_label(state), "ALIGNED_APPROACH")
+
     def test_grab_state_is_described(self):
         state = {"control_mode": "GRAB_SEQUENCE", "grab_state": "CLOSING"}
         self.assertIn("수납구 닫기", mode_label(state))

@@ -206,9 +206,12 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 
 ## Automatic pickup
 
-The policy keeps the gripper closed when a run starts. When the target is
-centered and its bbox bottom y reaches `grab_area_ratio`, the policy temporarily
-pauses RL control and runs this sequence:
+The policy keeps the gripper closed when a run starts. RL aligns a visible
+target until its horizontal offset enters `grab_center_tolerance`. The runtime
+then switches to `ALIGNED_APPROACH`: it drives forward deterministically with a
+small steering correction instead of allowing the learned policy to stop or
+reverse. When the bbox bottom y reaches `grab_area_ratio`, the pickup sequence
+takes over:
 
 ```text
 TRACKING -> OPENING -> FINAL_FORWARD -> CLOSING -> GRABBED
@@ -220,8 +223,9 @@ Default bus-servo and pickup settings:
 servo ID: 1
 open position: 1000
 closed position: 300
-grab center tolerance: 0.12
+grab center tolerance: 0.18
 grab area ratio: 0.50
+aligned approach: 0.06 m/s, max correction 0.12 rad/s
 final forward: 0.06 m/s for 1.6 s
 stop after grab: false
 ```
@@ -234,6 +238,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   target_classes:=0 \
   gripper_open_position:=1000 \
   gripper_closed_position:=300 \
+  aligned_approach_linear_x:=0.06 \
   final_forward_duration_s:=1.6
 ```
 

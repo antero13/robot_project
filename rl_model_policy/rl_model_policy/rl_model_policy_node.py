@@ -34,6 +34,7 @@ from rl_model_policy.observation import (
     quaternion_to_yaw,
     validate_observation,
 )
+from rl_model_policy.target_approach import aligned_approach_command
 
 try:
     import torch
@@ -75,6 +76,7 @@ class RLModelPolicyNode(Node):
 
     MODE_IDLE = "IDLE"
     MODE_TRACK_TARGET = "TRACK_TARGET"
+    MODE_ALIGNED_APPROACH = "ALIGNED_APPROACH"
     MODE_LOCAL_REACQUIRE = "LOCAL_REACQUIRE"
     MODE_COVERAGE_SEARCH = "COVERAGE_SEARCH"
     MODE_WAITING_FOR_POSE = "WAITING_FOR_POSE"
@@ -182,8 +184,12 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("gripper_open_position", 1000)
         self.declare_parameter("gripper_closed_position", 300)
         self.declare_parameter("gripper_move_duration_s", 0.5)
-        self.declare_parameter("grab_center_tolerance", 0.12)
+        self.declare_parameter("grab_center_tolerance", 0.18)
         self.declare_parameter("grab_area_ratio", 0.50)
+        self.declare_parameter("aligned_approach_enabled", True)
+        self.declare_parameter("aligned_approach_linear_x", 0.06)
+        self.declare_parameter("aligned_approach_angular_gain", 0.8)
+        self.declare_parameter("aligned_approach_max_angular_z", 0.12)
         self.declare_parameter("final_forward_linear_x", 0.06)
         self.declare_parameter("final_forward_duration_s", 1.6)
         self.declare_parameter("grab_duration_s", 1.0)
@@ -567,6 +573,11 @@ class RLModelPolicyNode(Node):
             if self.active and collecting and not self.motion_paused
             else None
         )
+        approach_cmd = (
+            self.aligned_target_approach_command(target)
+            if self.active and collecting and not self.motion_paused
+            else None
+        )
 
         if self.active and self.motion_paused:
             if self.grab_state != self.GRAB_TRACKING:
@@ -583,6 +594,12 @@ class RLModelPolicyNode(Node):
         elif grab_cmd is not None:
             self.set_control_mode(self.MODE_GRAB_SEQUENCE)
             linear_x, angular_z = grab_cmd
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+            self.coverage_command = None
+        elif approach_cmd is not None:
+            self.set_control_mode(self.MODE_ALIGNED_APPROACH)
+            linear_x, angular_z = approach_cmd
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
@@ -1063,6 +1080,25 @@ class RLModelPolicyNode(Node):
         angular_z = angular_action * self.get_float("max_angular_speed")
         scale = self.get_float("speed_scale")
         return linear_x * scale, angular_z * scale
+
+    def aligned_target_approach_command(self, target):
+        if target is None:
+            return None
+        if not bool(self.get_parameter("aligned_approach_enabled").value):
+            return None
+
+        command = aligned_approach_command(
+            target_x=target.x,
+            target_y=target.y,
+            center_tolerance=self.get_float("grab_center_tolerance"),
+            grab_area_ratio=self.get_float("grab_area_ratio"),
+            linear_speed=self.get_float("aligned_approach_linear_x"),
+            angular_gain=self.get_float("aligned_approach_angular_gain"),
+            max_angular_speed=self.get_float("aligned_approach_max_angular_z"),
+        )
+        if command is None:
+            return None
+        return command.linear_x, command.angular_z
 
     def update_grab_sequence(self, target):
         if not bool(self.get_parameter("gripper_enabled").value):
