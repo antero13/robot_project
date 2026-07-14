@@ -186,6 +186,7 @@ class MissionManager2(Node):
             'main_road_y_m': 0.6656854249,
             'upper_wall_stop_distance_m': 1.0,
             'upper_wall_stop_pose_y_m': 3.0,
+            'wall_correction_enabled': False,
             'front_sensor_offset_m': 0.15,
             'wall_consistency_tolerance_m': 0.30,
             'wall_alignment_timeout_s': 2.0,
@@ -203,8 +204,8 @@ class MissionManager2(Node):
             'scan_heading_max_angular_z': 0.18,
             'turn_max_angular_z': 0.40,
             'turn_min_angular_z': 0.10,
-            'yaw_tolerance_deg': 3.0,
-            'position_tolerance_m': 0.05,
+            'yaw_tolerance_deg': 1.0,
+            'position_tolerance_m': 0.01,
             'navigation_timeout_s': 30.0,
             'lane_timeout_s': 75.0,
             'return_timeout_s': 40.0,
@@ -500,6 +501,13 @@ class MissionManager2(Node):
         )
 
     def run_align_lane_with_wall(self):
+        if not self.wall_correction_is_enabled():
+            self.lane_heading_yaw = math.pi * 0.5
+            self.transition(
+                MissionState.SCAN_LANE,
+                'ToF correction disabled; using IMU north heading',
+            )
+            return
         self.run_wall_alignment(
             measurement_is_plausible=self.top_wall_measurement_is_plausible,
             heading_attribute='lane_heading_yaw',
@@ -509,6 +517,13 @@ class MissionManager2(Node):
         )
 
     def run_align_main_road_with_wall(self):
+        if not self.wall_correction_is_enabled():
+            self.main_road_heading_yaw = math.pi
+            self.transition(
+                MissionState.SHIFT_MAIN_ROAD,
+                'ToF correction disabled; using IMU west heading',
+            )
+            return
         self.run_wall_alignment(
             measurement_is_plausible=self.left_wall_measurement_is_plausible,
             heading_attribute='main_road_heading_yaw',
@@ -863,7 +878,8 @@ class MissionManager2(Node):
 
     def wall_measurement_is_finite(self):
         return (
-            self.wall_is_recent()
+            self.wall_correction_is_enabled()
+            and self.wall_is_recent()
             and self.wall_distance is not None
             and self.wall_angle is not None
             and math.isfinite(self.wall_distance)
@@ -1019,6 +1035,7 @@ class MissionManager2(Node):
             },
             'main_road_shift': main_road_shift,
             'runtime_settings': {
+                'wall_correction_enabled': self.wall_correction_is_enabled(),
                 'target_classes': sorted(parse_class_list(
                     self.get_parameter('target_classes').value
                 )),
@@ -1074,6 +1091,9 @@ class MissionManager2(Node):
 
     def yaw_tolerance_rad(self):
         return math.radians(self.get_float('yaw_tolerance_deg'))
+
+    def wall_correction_is_enabled(self):
+        return bool(self.get_parameter('wall_correction_enabled').value)
 
     def get_float(self, name):
         return float(self.get_parameter(name).value)

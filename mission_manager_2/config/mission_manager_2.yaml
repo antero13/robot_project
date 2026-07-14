@@ -10,7 +10,8 @@ mission_manager_2:
     upper_wall_stop_distance_m: 1.0
     upper_wall_stop_pose_y_m: 3.0
 
-    # ToF readings are accepted as wall readings only when they agree with odometry.
+    # Route correction uses IMU + command odometry only by default.
+    wall_correction_enabled: false
     front_sensor_offset_m: 0.15
     wall_consistency_tolerance_m: 0.30
     wall_alignment_timeout_s: 2.0
@@ -30,8 +31,8 @@ mission_manager_2:
     scan_heading_max_angular_z: 0.18
     turn_max_angular_z: 0.40
     turn_min_angular_z: 0.10
-    yaw_tolerance_deg: 3.0
-    position_tolerance_m: 0.05
+    yaw_tolerance_deg: 1.0
+    position_tolerance_m: 0.01
     distance_motion_timeout_s: 10.0
 
     # Empty means every YOLO class is collectible. Set a comma-separated allow-list if needed.

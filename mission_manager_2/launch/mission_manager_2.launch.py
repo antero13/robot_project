@@ -87,7 +87,7 @@ def generate_launch_description():
             default_value='/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0',
         ),
         DeclareLaunchArgument('launch_camera', default_value='true'),
-        DeclareLaunchArgument('launch_wall_sensor', default_value='true'),
+        DeclareLaunchArgument('launch_wall_sensor', default_value='false'),
         DeclareLaunchArgument('wall_driver_backend', default_value='vl53l1x'),
         DeclareLaunchArgument('left_i2c_bus', default_value='7'),
         DeclareLaunchArgument('right_i2c_bus', default_value='1'),

@@ -70,8 +70,11 @@ Edit `config/mission_manager_2.yaml` before a full-speed run.
 
 | Parameter | Initial value | Purpose |
 | --- | ---: | --- |
+| `wall_correction_enabled` | `false` | Disable ToF route correction |
 | `front_sensor_offset_m` | `0.15` | Robot-center to ToF sensor plane |
 | `main_road_y_m` | `0.6657` | Robot-center main-road coordinate |
+| `yaw_tolerance_deg` | `1.0` | IMU turn-completion tolerance |
+| `position_tolerance_m` | `0.01` | Route arrival tolerance (1 cm) |
 | `target_trigger_area_ratio` | `0.008` | Ignore very small/far YOLO boxes |
 | `target_trigger_height_ratio` | `0.10` | Additional far-box rejection |
 | `target_history_frames` | `5` | Number of actual YOLO frames used for voting |
@@ -130,19 +133,14 @@ and pass its absolute path with `mission_config:=...` when launching.
 
 ## Sensor policy
 
-Odometry and IMU provide the route pose. A ToF reading is treated as a wall only
-when it agrees with the wall distance predicted from odometry within
-`wall_consistency_tolerance_m`. This prevents an object in front of one sensor
-from being mistaken for the arena wall.
+Route correction uses IMU heading and command-integrated odometry only.
+`wall_correction_enabled` and `launch_wall_sensor` are both `false` by default.
+Lane and main-road wall-alignment states therefore pass immediately, main-road
+distance and steering use odometry, and the upper search limit uses pose `y`.
 
-At a lane entrance, the manager waits up to two seconds for a plausible upper
-wall measurement and aligns both front ranges. Before shifting west on the main
-road, it performs the same angle correction against the left wall. During the
-shift, the left-wall distance is the primary stopping and deceleration input;
-odometry `x` is used only while that measurement is unavailable. If a wall is
-out of range or occluded during alignment, the manager keeps the IMU heading
-after the timeout. The same consistency check is applied to the 1 m upper-wall
-limit.
+The ToF implementation remains available for isolated sensor testing. Enabling
+route correction requires both `wall_correction_enabled: true` in the mission
+configuration and `launch_wall_sensor:=true` on the launch command.
 
 ## Known limitations
 
