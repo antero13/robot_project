@@ -92,6 +92,42 @@ Set `target_classes` to a comma-separated allow-list if the YOLO model also
 detects objects that must not be picked. An empty value treats every class as a
 pickup target.
 
+## Runtime target and speed tuning
+
+The target allow-list and motion speeds can be changed while the node is
+running. A rebuild and restart are not required:
+
+```bash
+ros2 param set /mission_manager_2 target_classes "apple,banana,orange,pineapple"
+ros2 param set /mission_manager_2 search_linear_x 0.08
+ros2 param set /mission_manager_2 navigation_linear_x 0.16
+ros2 param set /mission_manager_2 return_linear_x -0.16
+ros2 param set /mission_manager_2 target_return_linear_x -0.10
+ros2 param set /mission_manager_2 target_approach_max_linear_x 0.06
+ros2 param set /mission_manager_2 final_grab_forward_linear_x 0.04
+```
+
+Use an empty string to make every detected class collectible:
+
+```bash
+ros2 param set /mission_manager_2 target_classes "''"
+```
+
+Forward and angular speed parameters must be positive. `return_linear_x` and
+`target_return_linear_x` must remain negative. Minimum speeds cannot exceed
+their corresponding maximum. The current values are reported under
+`runtime_settings` in `/mission2/status` and can also be queried directly:
+
+```bash
+ros2 param get /mission_manager_2 target_classes
+ros2 param get /mission_manager_2 search_linear_x
+ros2 topic echo /mission2/status
+```
+
+Runtime changes last until the node stops. For persistent changes without a
+rebuild, copy `config/mission_manager_2.yaml` outside the workspace, edit it,
+and pass its absolute path with `mission_config:=...` when launching.
+
 ## Sensor policy
 
 Odometry and IMU provide the route pose. A ToF reading is treated as a wall only

@@ -6,6 +6,7 @@ from enum import Enum
 import rclpy
 from geometry_msgs.msg import Twist, Vector3Stamped
 from nav_msgs.msg import Odometry
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
@@ -14,6 +15,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 from mission_manager_2.mission_logic import (
+    MOTION_PARAMETERS,
     Pose2D,
     angular_error,
     best_target,
@@ -25,6 +27,7 @@ from mission_manager_2.mission_logic import (
     quaternion_to_yaw,
     select_side_targets,
     target_observations,
+    validate_motion_parameters,
     wall_matches_expected,
 )
 
@@ -64,6 +67,7 @@ class MissionManager2(Node):
         self._declare_parameters()
         self._load_parameters()
         self._validate_parameters()
+        self.add_on_set_parameters_callback(self.validate_runtime_parameter_updates)
 
         self.state = MissionState.IDLE
         self.state_started_at = self.get_clock().now()
@@ -263,7 +267,9 @@ class MissionManager2(Node):
             float(value) for value in self.get_parameter('lane_x_positions').value
         ]
         self.main_road_y = self.get_float('main_road_y_m')
-        self.target_classes = parse_class_list(self.get_parameter('target_classes').value)
+        self.target_classes = parse_class_list(
+            self.get_parameter('target_classes').value
+        )
         self.target_history_frames = int(
             self.get_parameter('target_history_frames').value
         )
@@ -296,14 +302,42 @@ class MissionManager2(Node):
             )
         if not 0.0 < self.get_float('pickup_bottom_y_ratio') <= 1.0:
             raise ValueError('pickup_bottom_y_ratio must be in (0, 1]')
-        if self.get_float('return_linear_x') >= 0.0:
-            raise ValueError('return_linear_x must be negative')
-        if self.get_float('target_return_linear_x') >= 0.0:
-            raise ValueError('target_return_linear_x must be negative')
-        if self.get_float('search_linear_x') <= 0.0:
-            raise ValueError('search_linear_x must be positive')
+        motion_error = validate_motion_parameters({
+            name: self.get_float(name) for name in MOTION_PARAMETERS
+        })
+        if motion_error is not None:
+            raise ValueError(motion_error)
         if self.get_float('final_grab_forward_distance_m') <= 0.0:
             raise ValueError('final_grab_forward_distance_m must be positive')
+
+    def validate_runtime_parameter_updates(self, parameters):
+        updates = {parameter.name: parameter.value for parameter in parameters}
+        if 'target_classes' in updates and not isinstance(
+            updates['target_classes'],
+            str,
+        ):
+            return SetParametersResult(
+                successful=False,
+                reason='target_classes must be a comma-separated string',
+            )
+
+        if MOTION_PARAMETERS.intersection(updates):
+            try:
+                values = {
+                    name: float(
+                        updates[name]
+                        if name in updates
+                        else self.get_parameter(name).value
+                    )
+                    for name in MOTION_PARAMETERS
+                }
+            except (TypeError, ValueError) as exc:
+                return SetParametersResult(successful=False, reason=str(exc))
+            error = validate_motion_parameters(values)
+            if error is not None:
+                return SetParametersResult(successful=False, reason=error)
+
+        return SetParametersResult(successful=True)
 
     def odom_callback(self, msg):
         orientation = msg.pose.pose.orientation
@@ -326,6 +360,12 @@ class MissionManager2(Node):
 
     def detections_callback(self, msg):
         now = self.get_clock().now()
+        configured_target_classes = parse_class_list(
+            self.get_parameter('target_classes').value
+        )
+        if configured_target_classes != self.target_classes:
+            self.target_classes = configured_target_classes
+            self.side_target_history.clear()
         observations = target_observations(
             msg.data,
             self.target_classes,
@@ -978,6 +1018,23 @@ class MissionManager2(Node):
                 'required': self.target_required_frames,
             },
             'main_road_shift': main_road_shift,
+            'runtime_settings': {
+                'target_classes': sorted(parse_class_list(
+                    self.get_parameter('target_classes').value
+                )),
+                'search_linear_x': self.get_float('search_linear_x'),
+                'navigation_linear_x': self.get_float('navigation_linear_x'),
+                'return_linear_x': self.get_float('return_linear_x'),
+                'target_return_linear_x': self.get_float(
+                    'target_return_linear_x'
+                ),
+                'target_approach_max_linear_x': self.get_float(
+                    'target_approach_max_linear_x'
+                ),
+                'final_grab_forward_linear_x': self.get_float(
+                    'final_grab_forward_linear_x'
+                ),
+            },
             'pose': None if self.pose is None else {
                 'x': self.pose.x,
                 'y': self.pose.y,

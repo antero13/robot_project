@@ -4,6 +4,27 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 
+POSITIVE_MOTION_PARAMETERS = frozenset({
+    'navigation_linear_x',
+    'navigation_min_linear_x',
+    'search_linear_x',
+    'final_grab_forward_linear_x',
+    'target_approach_max_linear_x',
+    'target_approach_min_linear_x',
+    'turn_max_angular_z',
+    'turn_min_angular_z',
+    'navigation_max_angular_z',
+    'scan_heading_max_angular_z',
+    'wall_alignment_max_angular_z',
+    'target_align_max_angular_z',
+})
+NEGATIVE_MOTION_PARAMETERS = frozenset({
+    'return_linear_x',
+    'target_return_linear_x',
+})
+MOTION_PARAMETERS = POSITIVE_MOTION_PARAMETERS | NEGATIVE_MOTION_PARAMETERS
+
+
 @dataclass(frozen=True)
 class Pose2D:
     x: float
@@ -55,6 +76,31 @@ def parse_class_list(value: Any) -> set[str]:
     else:
         chunks = [value]
     return {str(item).strip().lower() for item in chunks if str(item).strip()}
+
+
+def validate_motion_parameters(values: dict[str, float]) -> str | None:
+    missing = MOTION_PARAMETERS.difference(values)
+    if missing:
+        return f'missing motion parameters: {sorted(missing)}'
+
+    for name in POSITIVE_MOTION_PARAMETERS:
+        value = values[name]
+        if not math.isfinite(value) or value <= 0.0:
+            return f'{name} must be a finite positive value'
+    for name in NEGATIVE_MOTION_PARAMETERS:
+        value = values[name]
+        if not math.isfinite(value) or value >= 0.0:
+            return f'{name} must be a finite negative value'
+
+    ordered_pairs = (
+        ('navigation_min_linear_x', 'navigation_linear_x'),
+        ('target_approach_min_linear_x', 'target_approach_max_linear_x'),
+        ('turn_min_angular_z', 'turn_max_angular_z'),
+    )
+    for minimum_name, maximum_name in ordered_pairs:
+        if values[minimum_name] > values[maximum_name]:
+            return f'{minimum_name} cannot exceed {maximum_name}'
+    return None
 
 
 def parse_detection_payload(raw_payload: str | dict[str, Any]) -> dict[str, Any] | None:

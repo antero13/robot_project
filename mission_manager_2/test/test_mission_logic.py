@@ -1,6 +1,7 @@
 import math
 
 from mission_manager_2.mission_logic import (
+    MOTION_PARAMETERS,
     Pose2D,
     angular_error,
     confirmed_side_target,
@@ -10,6 +11,7 @@ from mission_manager_2.mission_logic import (
     select_side_targets,
     target_observations,
     target_is_large_enough,
+    validate_motion_parameters,
     wall_matches_expected,
 )
 
@@ -146,6 +148,34 @@ def test_main_road_distance_prefers_tof_and_falls_back_to_pose():
     )
     assert math.isclose(remaining_from_wall, 0.05, abs_tol=1e-9)
     assert math.isclose(remaining_from_pose, 0.25, abs_tol=1e-9)
+
+
+def valid_motion_parameters():
+    values = {name: 0.20 for name in MOTION_PARAMETERS}
+    values['navigation_min_linear_x'] = 0.06
+    values['target_approach_min_linear_x'] = 0.03
+    values['target_approach_max_linear_x'] = 0.08
+    values['turn_min_angular_z'] = 0.10
+    values['turn_max_angular_z'] = 0.40
+    values['return_linear_x'] = -0.20
+    values['target_return_linear_x'] = -0.14
+    return values
+
+
+def test_runtime_motion_parameter_validation():
+    values = valid_motion_parameters()
+    assert validate_motion_parameters(values) is None
+
+    values['search_linear_x'] = -0.1
+    assert 'search_linear_x' in validate_motion_parameters(values)
+
+    values = valid_motion_parameters()
+    values['return_linear_x'] = 0.1
+    assert 'return_linear_x' in validate_motion_parameters(values)
+
+    values = valid_motion_parameters()
+    values['navigation_min_linear_x'] = 0.30
+    assert 'navigation_min_linear_x' in validate_motion_parameters(values)
 
 
 def test_malformed_detection_payload_is_ignored():
