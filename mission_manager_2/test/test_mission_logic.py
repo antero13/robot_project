@@ -4,6 +4,7 @@ from mission_manager_2.mission_logic import (
     Pose2D,
     angular_error,
     confirmed_side_target,
+    main_road_remaining_distance,
     pose_distance,
     select_target,
     select_side_targets,
@@ -128,6 +129,23 @@ def test_wall_measurement_must_match_expected_distance():
     assert wall_matches_expected(1.05, 1.0, 0.1)
     assert not wall_matches_expected(0.30, 1.0, 0.1)
     assert not wall_matches_expected(float('nan'), 1.0, 0.1)
+
+
+def test_main_road_distance_prefers_tof_and_falls_back_to_pose():
+    remaining_from_wall = main_road_remaining_distance(
+        pose_x=2.50,
+        goal_x=2.25,
+        front_sensor_offset=0.15,
+        wall_distance=2.15,
+    )
+    remaining_from_pose = main_road_remaining_distance(
+        pose_x=2.50,
+        goal_x=2.25,
+        front_sensor_offset=0.15,
+        wall_distance=None,
+    )
+    assert math.isclose(remaining_from_wall, 0.05, abs_tol=1e-9)
+    assert math.isclose(remaining_from_pose, 0.25, abs_tol=1e-9)
 
 
 def test_malformed_detection_payload_is_ignored():

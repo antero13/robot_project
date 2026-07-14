@@ -19,6 +19,7 @@ from mission_manager_2.mission_logic import (
     best_target,
     clamp,
     confirmed_side_target,
+    main_road_remaining_distance,
     parse_class_list,
     pose_distance,
     quaternion_to_yaw,
@@ -30,8 +31,6 @@ from mission_manager_2.mission_logic import (
 
 class MissionState(str, Enum):
     IDLE = 'IDLE'
-    NAV_TURN = 'NAV_TURN'
-    NAV_DRIVE = 'NAV_DRIVE'
     TURN_TO_HEADING = 'TURN_TO_HEADING'
     PREPARE_LANE = 'PREPARE_LANE'
     ALIGN_LANE_WITH_WALL = 'ALIGN_LANE_WITH_WALL'
@@ -44,6 +43,8 @@ class MissionState(str, Enum):
     RETURN_TO_CHECKPOINT = 'RETURN_TO_CHECKPOINT'
     AFTER_TARGET_RETURN = 'AFTER_TARGET_RETURN'
     RETURN_MAIN_ROAD = 'RETURN_MAIN_ROAD'
+    ALIGN_MAIN_ROAD_WITH_WALL = 'ALIGN_MAIN_ROAD_WITH_WALL'
+    SHIFT_MAIN_ROAD = 'SHIFT_MAIN_ROAD'
     DONE = 'DONE'
     STOPPED = 'STOPPED'
     ERROR = 'ERROR'
@@ -84,8 +85,8 @@ class MissionManager2(Node):
         self.motion_started_pose = None
         self.motion_heading = None
 
-        self.nav_goal = None
-        self.nav_next_state = None
+        self.main_road_goal_x = None
+        self.main_road_heading_yaw = math.pi
         self.turn_goal_yaw = None
         self.turn_next_state = None
         self.lane_heading_yaw = math.pi * 0.5
@@ -226,8 +227,8 @@ class MissionManager2(Node):
             'gripper_enabled': True,
             'gripper_type': 'bus',
             'gripper_servo_id': 1,
-            'gripper_open_position': 500,
-            'gripper_closed_position': 750,
+            'gripper_open_position': 1000,
+            'gripper_closed_position': 300,
             'gripper_move_duration_s': 0.5,
             'gripper_open_dwell_s': 0.7,
             'gripper_close_dwell_s': 0.8,
@@ -278,6 +279,11 @@ class MissionManager2(Node):
             raise ValueError('lane_x_positions cannot be empty')
         if any(not 0.0 < x < self.arena_width for x in self.lane_x_positions):
             raise ValueError('every search lane must be inside the arena')
+        if any(
+            x <= self.get_float('front_sensor_offset_m')
+            for x in self.lane_x_positions
+        ):
+            raise ValueError('every search lane must be beyond the front sensor offset')
         if not 0.0 < self.main_road_y < self.arena_height:
             raise ValueError('main_road_y_m must be inside the arena')
         if self.pickup_capacity <= 0:
@@ -375,8 +381,8 @@ class MissionManager2(Node):
         self.target_checkpoint = None
         self.approach_started_pose = None
         self.motion_started_pose = None
-        self.nav_goal = None
-        self.nav_next_state = None
+        self.main_road_goal_x = None
+        self.main_road_heading_yaw = math.pi
         self.turn_goal_yaw = None
         self.turn_next_state = None
         self.lane_heading_yaw = math.pi * 0.5
@@ -405,8 +411,6 @@ class MissionManager2(Node):
             return
 
         handlers = {
-            MissionState.NAV_TURN: self.run_nav_turn,
-            MissionState.NAV_DRIVE: self.run_nav_drive,
             MissionState.TURN_TO_HEADING: self.run_turn_to_heading,
             MissionState.PREPARE_LANE: self.run_prepare_lane,
             MissionState.ALIGN_LANE_WITH_WALL: self.run_align_lane_with_wall,
@@ -419,6 +423,8 @@ class MissionManager2(Node):
             MissionState.RETURN_TO_CHECKPOINT: self.run_return_to_checkpoint,
             MissionState.AFTER_TARGET_RETURN: self.run_after_target_return,
             MissionState.RETURN_MAIN_ROAD: self.run_return_main_road,
+            MissionState.ALIGN_MAIN_ROAD_WITH_WALL: self.run_align_main_road_with_wall,
+            MissionState.SHIFT_MAIN_ROAD: self.run_shift_main_road,
         }
         handler = handlers.get(self.state)
         if handler is None:
@@ -426,62 +432,6 @@ class MissionManager2(Node):
             return
         handler()
         self.publish_status()
-
-    def begin_navigation(self, x, y, next_state, reason):
-        self.nav_goal = (float(x), float(y))
-        self.nav_next_state = next_state
-        self.transition(MissionState.NAV_TURN, reason)
-
-    def run_nav_turn(self):
-        if self.nav_goal is None or self.nav_next_state is None:
-            self.fail('navigation goal is missing')
-            return
-        distance = math.hypot(self.nav_goal[0] - self.pose.x, self.nav_goal[1] - self.pose.y)
-        if distance <= self.get_float('position_tolerance_m'):
-            self.transition(self.nav_next_state, 'navigation position reached')
-            return
-        desired_yaw = math.atan2(
-            self.nav_goal[1] - self.pose.y,
-            self.nav_goal[0] - self.pose.x,
-        )
-        error = angular_error(desired_yaw, self.pose.yaw)
-        if abs(error) <= self.yaw_tolerance_rad():
-            self.transition(MissionState.NAV_DRIVE, 'navigation heading reached')
-            return
-        if self.state_age_s() > self.get_float('navigation_timeout_s'):
-            self.fail('navigation turn timed out')
-            return
-        self.publish_cmd_vel(angular_z=self.turn_command(error))
-
-    def run_nav_drive(self):
-        if self.nav_goal is None or self.nav_next_state is None:
-            self.fail('navigation goal is missing')
-            return
-        dx = self.nav_goal[0] - self.pose.x
-        dy = self.nav_goal[1] - self.pose.y
-        distance = math.hypot(dx, dy)
-        if distance <= self.get_float('position_tolerance_m'):
-            self.stop_robot()
-            self.transition(self.nav_next_state, 'navigation position reached')
-            return
-        desired_yaw = math.atan2(dy, dx)
-        error = angular_error(desired_yaw, self.pose.yaw)
-        if abs(error) > math.radians(30.0):
-            self.transition(MissionState.NAV_TURN, 'large navigation heading error')
-            return
-        if self.state_age_s() > self.get_float('navigation_timeout_s'):
-            self.fail('navigation drive timed out')
-            return
-
-        maximum = self.get_float('navigation_linear_x')
-        minimum = self.get_float('navigation_min_linear_x')
-        linear = clamp(0.8 * distance, minimum, maximum)
-        angular = clamp(
-            self.get_float('heading_gain') * error,
-            -self.get_float('navigation_max_angular_z'),
-            self.get_float('navigation_max_angular_z'),
-        )
-        self.publish_cmd_vel(linear, angular)
 
     def begin_turn(self, yaw, next_state, reason):
         self.turn_goal_yaw = math.atan2(math.sin(yaw), math.cos(yaw))
@@ -510,7 +460,32 @@ class MissionManager2(Node):
         )
 
     def run_align_lane_with_wall(self):
-        if self.top_wall_measurement_is_plausible():
+        self.run_wall_alignment(
+            measurement_is_plausible=self.top_wall_measurement_is_plausible,
+            heading_attribute='lane_heading_yaw',
+            next_state=MissionState.SCAN_LANE,
+            aligned_reason='lane heading corrected from upper wall',
+            fallback_reason='upper-wall alignment unavailable or timed out; using IMU heading',
+        )
+
+    def run_align_main_road_with_wall(self):
+        self.run_wall_alignment(
+            measurement_is_plausible=self.left_wall_measurement_is_plausible,
+            heading_attribute='main_road_heading_yaw',
+            next_state=MissionState.SHIFT_MAIN_ROAD,
+            aligned_reason='main-road heading corrected from left wall',
+            fallback_reason='left-wall alignment unavailable or timed out; using IMU heading',
+        )
+
+    def run_wall_alignment(
+        self,
+        measurement_is_plausible,
+        heading_attribute,
+        next_state,
+        aligned_reason,
+        fallback_reason,
+    ):
+        if measurement_is_plausible():
             angle = self.wall_angle
             if abs(angle) <= math.radians(self.get_float('wall_angle_tolerance_deg')):
                 self.wall_aligned_ticks += 1
@@ -518,13 +493,14 @@ class MissionManager2(Node):
                 if self.wall_aligned_ticks >= int(
                     self.get_parameter('wall_alignment_stable_ticks').value
                 ):
-                    self.lane_heading_yaw = self.pose.yaw
-                    self.transition(
-                        MissionState.SCAN_LANE,
-                        'lane heading corrected from front wall',
-                    )
+                    setattr(self, heading_attribute, self.pose.yaw)
+                    self.transition(next_state, aligned_reason)
                 return
             self.wall_aligned_ticks = 0
+            if self.state_age_s() >= self.get_float('wall_alignment_timeout_s'):
+                setattr(self, heading_attribute, self.pose.yaw)
+                self.transition(next_state, fallback_reason)
+                return
             angular = clamp(
                 self.get_float('wall_alignment_gain') * angle,
                 -self.get_float('wall_alignment_max_angular_z'),
@@ -535,11 +511,8 @@ class MissionManager2(Node):
 
         if self.state_age_s() >= self.get_float('wall_alignment_timeout_s'):
             self.wall_aligned_ticks = 0
-            self.lane_heading_yaw = self.pose.yaw
-            self.transition(
-                MissionState.SCAN_LANE,
-                'wall unavailable or occluded; using IMU heading',
-            )
+            setattr(self, heading_attribute, self.pose.yaw)
+            self.transition(next_state, fallback_reason)
             return
         self.stop_robot()
 
@@ -760,11 +733,11 @@ class MissionManager2(Node):
                 return
             if self.lane_index + 1 < len(self.lane_x_positions):
                 self.lane_index += 1
-                self.begin_navigation(
-                    self.lane_x_positions[self.lane_index],
-                    self.main_road_y,
-                    MissionState.PREPARE_LANE,
-                    f'shifting to search lane {self.lane_index + 1}',
+                self.main_road_goal_x = self.lane_x_positions[self.lane_index]
+                self.begin_turn(
+                    math.pi,
+                    MissionState.ALIGN_MAIN_ROAD_WITH_WALL,
+                    f'orienting west before shifting to lane {self.lane_index + 1}',
                 )
                 return
             self.transition(MissionState.DONE, 'all search lanes completed')
@@ -778,6 +751,48 @@ class MissionManager2(Node):
         )
         self.publish_cmd_vel(self.get_float('return_linear_x'), angular)
 
+    def run_shift_main_road(self):
+        if self.main_road_goal_x is None:
+            self.fail('main-road shift goal is missing')
+            return
+        if self.state_age_s() > self.get_float('navigation_timeout_s'):
+            self.fail('main-road shift timed out')
+            return
+
+        position_tolerance = self.get_float('position_tolerance_m')
+        wall_is_plausible = self.left_wall_measurement_is_plausible()
+        remaining = main_road_remaining_distance(
+            pose_x=self.pose.x,
+            goal_x=self.main_road_goal_x,
+            front_sensor_offset=self.get_float('front_sensor_offset_m'),
+            wall_distance=self.wall_distance if wall_is_plausible else None,
+        )
+
+        if remaining <= position_tolerance:
+            self.stop_robot()
+            self.main_road_goal_x = None
+            self.transition(
+                MissionState.PREPARE_LANE,
+                f'main-road distance corrected for lane {self.lane_index + 1}',
+            )
+            return
+
+        heading_error = angular_error(self.main_road_heading_yaw, self.pose.yaw)
+        angular = self.get_float('heading_gain') * heading_error
+        if wall_is_plausible:
+            angular += self.get_float('wall_alignment_gain') * self.wall_angle
+        angular = clamp(
+            angular,
+            -self.get_float('navigation_max_angular_z'),
+            self.get_float('navigation_max_angular_z'),
+        )
+        linear = clamp(
+            0.8 * remaining,
+            self.get_float('navigation_min_linear_x'),
+            self.get_float('navigation_linear_x'),
+        )
+        self.publish_cmd_vel(linear, angular)
+
     def upper_wall_limit_reached(self):
         if self.pose.y >= self.get_float('upper_wall_stop_pose_y_m'):
             return True
@@ -787,13 +802,32 @@ class MissionManager2(Node):
         )
 
     def top_wall_measurement_is_plausible(self):
-        if not self.wall_is_recent() or self.wall_distance is None:
+        if not self.wall_measurement_is_finite():
             return False
         expected = self.arena_height - self.pose.y - self.get_float('front_sensor_offset_m')
         return wall_matches_expected(
             self.wall_distance,
             expected,
             self.get_float('wall_consistency_tolerance_m'),
+        )
+
+    def left_wall_measurement_is_plausible(self):
+        if not self.wall_measurement_is_finite():
+            return False
+        expected = self.pose.x - self.get_float('front_sensor_offset_m')
+        return wall_matches_expected(
+            self.wall_distance,
+            expected,
+            self.get_float('wall_consistency_tolerance_m'),
+        )
+
+    def wall_measurement_is_finite(self):
+        return (
+            self.wall_is_recent()
+            and self.wall_distance is not None
+            and self.wall_angle is not None
+            and math.isfinite(self.wall_distance)
+            and math.isfinite(self.wall_angle)
         )
 
     def recent_target(self):
@@ -829,7 +863,10 @@ class MissionManager2(Node):
         self.state_started_at = self.get_clock().now()
         self.state_reason = reason
         self.action_command_sent = False
-        if state == MissionState.ALIGN_LANE_WITH_WALL:
+        if state in {
+            MissionState.ALIGN_LANE_WITH_WALL,
+            MissionState.ALIGN_MAIN_ROAD_WITH_WALL,
+        }:
             self.wall_aligned_ticks = 0
         if state == MissionState.SCAN_LANE:
             self.side_target_history.clear()
@@ -911,6 +948,21 @@ class MissionManager2(Node):
             return
         left_votes = sum(frame[0] is not None for frame in self.side_target_history)
         right_votes = sum(frame[1] is not None for frame in self.side_target_history)
+        main_road_shift = None
+        if self.main_road_goal_x is not None:
+            main_road_shift = {
+                'goal_x': self.main_road_goal_x,
+                'target_wall_distance_m': (
+                    self.main_road_goal_x
+                    - self.get_float('front_sensor_offset_m')
+                ),
+                'distance_source': (
+                    'tof'
+                    if self.pose is not None
+                    and self.left_wall_measurement_is_plausible()
+                    else 'odometry'
+                ),
+            }
         payload = {
             'state': self.state.value,
             'reason': self.state_reason,
@@ -925,6 +977,7 @@ class MissionManager2(Node):
                 'frames': len(self.side_target_history),
                 'required': self.target_required_frames,
             },
+            'main_road_shift': main_road_shift,
             'pose': None if self.pose is None else {
                 'x': self.pose.x,
                 'y': self.pose.y,

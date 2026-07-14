@@ -213,6 +213,18 @@ def wall_matches_expected(
     )
 
 
+def main_road_remaining_distance(
+    pose_x: float,
+    goal_x: float,
+    front_sensor_offset: float,
+    wall_distance: float | None,
+) -> float:
+    if wall_distance is not None:
+        target_wall_distance = goal_x - front_sensor_offset
+        return wall_distance - target_wall_distance
+    return pose_x - goal_x
+
+
 def _convert_detection(
     detection: Any,
     image_width: float,

@@ -58,8 +58,8 @@ mission_manager_2:
     gripper_enabled: true
     gripper_type: bus
     gripper_servo_id: 1
-    gripper_open_position: 500
-    gripper_closed_position: 750
+    gripper_open_position: 1000
+    gripper_closed_position: 300
     gripper_move_duration_s: 0.5
     gripper_open_dwell_s: 0.7
     gripper_close_dwell_s: 0.8

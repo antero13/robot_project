@@ -11,7 +11,8 @@ north at the first search-lane entrance.
 
 1. Check the north heading with IMU and a plausible upper-wall ToF reading.
 2. Search north along `x=[3.25, 2.25, 1.25, 0.25] m`.
-3. At each lane end, reverse to the main road and shift west to the next lane.
+3. At each lane end, reverse to the main road, turn west, align perpendicular
+   to the left wall, and use the measured wall distance to reach the next lane.
 4. Split each frame into a 3x3 grid. When a sufficiently large target box has
    its center in the left-middle or right-middle cell in at least three of the
    latest five frames on the same side, rotate to center it and perform pickup.
@@ -77,6 +78,8 @@ Edit `config/mission_manager_2.yaml` before a full-speed run.
 | `target_required_frames` | `3` | Required votes in the same left/right cell |
 | `pickup_bottom_y_ratio` | `0.70` | Start the final 10 cm pickup motion |
 | `final_grab_forward_distance_m` | `0.10` | Distance travelled with gripper open |
+| `gripper_open_position` | `1000` | Servo position used for an open gripper |
+| `gripper_closed_position` | `300` | Servo position used for a closed gripper |
 
 `pickup_bottom_y_ratio` uses the lower edge of the box (`y2/image_height`), not
 the box center. This matches the existing detection converter and is more
@@ -97,9 +100,13 @@ when it agrees with the wall distance predicted from odometry within
 from being mistaken for the arena wall.
 
 At a lane entrance, the manager waits up to two seconds for a plausible upper
-wall measurement and aligns both front ranges. If the wall is out of range or
-occluded, it keeps the IMU heading and starts the lane. The same consistency
-check is applied to the 1 m upper-wall limit.
+wall measurement and aligns both front ranges. Before shifting west on the main
+road, it performs the same angle correction against the left wall. During the
+shift, the left-wall distance is the primary stopping and deceleration input;
+odometry `x` is used only while that measurement is unavailable. If a wall is
+out of range or occluded during alignment, the manager keeps the IMU heading
+after the timeout. The same consistency check is applied to the 1 m upper-wall
+limit.
 
 ## Known limitations
 
