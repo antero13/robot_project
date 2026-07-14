@@ -175,12 +175,20 @@ TRACK_TARGET -> LOCAL_REACQUIRE (two-way sweep) -> COVERAGE_SEARCH
 target detected ----------------------+--> TRACK_TARGET
 ```
 
-Local reacquisition stops forward motion and searches for three seconds. It
-turns toward the last visible target side for 1.5 seconds, then reverses the
-turn for another 1.5 seconds. Coverage search starts only if both sweeps fail.
+Local reacquisition stops forward motion and searches for 1.5 seconds. It
+turns toward the last visible target side for 0.75 seconds, then reverses the
+turn for another 0.75 seconds. Coverage search starts only if both sweeps fail.
 
-Coverage starts on the lower main road, scans four vertical lanes northward,
-reverses down each cleared lane, and shifts to the next lane on the lower road.
+Coverage uses a boustrophedon pattern: it scans one vertical lane northward,
+shifts at the top, then scans the next lane southward. It no longer retraces
+every lane in reverse. Storage deposit also preserves the current coverage leg,
+so the second collection run continues from the previous search progress.
+
+When a non-target object blocks the current leg, the robot turns about 32
+degrees, drives 0.45 m along the bypass heading, and then rejoins the route.
+After two failed bypasses on the same leg, it skips that blocked leg instead of
+oscillating forever between avoidance and waypoint alignment.
+
 If `/odom` is missing or stale, the mode becomes `WAITING_FOR_POSE` and the
 robot publishes a stop command. The default lane settings are:
 
@@ -188,9 +196,11 @@ robot publishes a stop command. The default lane settings are:
 x lanes: 1.25, 0.25, -0.75, -1.75 m
 main road y: -1.3343 m
 scan end y: 1.0 m
-scan speed: 0.14 m/s
-main-road speed: 0.18 m/s
-cleared-lane reverse speed: 0.20 m/s
+upward scan speed: 0.22 m/s
+downward scan speed: 0.24 m/s
+lane-shift speed: 0.28 m/s
+coverage angular limit: 0.65 rad/s
+waypoint tolerance: 0.18 m
 ```
 
 Inspect the current mode, waypoint, pose, and route leg with:
@@ -209,7 +219,10 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   pose_observation_enabled:=false \
   target_timeout_s:=1.0 \
   target_bearing_prediction_enabled:=true \
-  coverage_reacquire_duration_s:=3.0 \
+  coverage_reacquire_duration_s:=1.5 \
+  coverage_avoid_turn_angle_deg:=32.0 \
+  coverage_avoid_pass_distance:=0.45 \
+  coverage_max_avoid_attempts_per_leg:=2 \
   camera_horizontal_fov_deg:=80.0
 ```
 

@@ -57,12 +57,37 @@ def generate_coverage_legs(
     if lane_x_positions[-1] > min_x + 1e-9:
         lane_x_positions.append(min_x)
 
-    legs = []
+    # Boustrophedon coverage avoids retracing every lane in reverse. The robot
+    # scans north on one lane, shifts sideways, then scans south on the next.
+    legs = [
+        CoverageLeg(
+            lane_x_positions[0],
+            main_road_y,
+            transit_speed,
+            "ENTER_FIRST_LANE",
+        )
+    ]
+    scan_y = scan_end_y
     for index, lane_x in enumerate(lane_x_positions):
-        phase = "ENTER_FIRST_LANE" if index == 0 else "SHIFT_TO_NEXT_LANE"
-        legs.append(CoverageLeg(lane_x, main_road_y, transit_speed, phase))
-        legs.append(CoverageLeg(lane_x, scan_end_y, scan_speed, "SCAN_LANE"))
-        legs.append(CoverageLeg(lane_x, main_road_y, -return_speed, "RETURN_MAIN_ROAD"))
+        upward = scan_y == scan_end_y
+        legs.append(
+            CoverageLeg(
+                lane_x,
+                scan_y,
+                scan_speed if upward else return_speed,
+                "SCAN_LANE_UP" if upward else "SCAN_LANE_DOWN",
+            )
+        )
+        if index + 1 < len(lane_x_positions):
+            legs.append(
+                CoverageLeg(
+                    lane_x_positions[index + 1],
+                    scan_y,
+                    transit_speed,
+                    "SHIFT_TO_NEXT_LANE",
+                )
+            )
+        scan_y = main_road_y if upward else scan_end_y
     return legs
 
 
@@ -76,6 +101,12 @@ class CoverageController:
         max_angular_speed=0.40,
         avoid_danger_threshold=0.20,
         avoid_angular_speed=0.35,
+        avoid_turn_angle=0.55,
+        avoid_pass_distance=0.45,
+        avoid_forward_speed=0.16,
+        max_avoid_attempts_per_leg=2,
+        arena_half_extent=2.0,
+        boundary_clearance=0.22,
     ):
         self.legs = list(legs)
         if not self.legs:
@@ -86,6 +117,12 @@ class CoverageController:
         self.max_angular_speed = float(max_angular_speed)
         self.avoid_danger_threshold = float(avoid_danger_threshold)
         self.avoid_angular_speed = float(avoid_angular_speed)
+        self.avoid_turn_angle = float(avoid_turn_angle)
+        self.avoid_pass_distance = float(avoid_pass_distance)
+        self.avoid_forward_speed = float(avoid_forward_speed)
+        self.max_avoid_attempts_per_leg = int(max_avoid_attempts_per_leg)
+        self.arena_half_extent = float(arena_half_extent)
+        self.boundary_clearance = float(boundary_clearance)
         if self.waypoint_tolerance <= 0.0:
             raise ValueError("waypoint_tolerance must be positive")
         if self.heading_tolerance <= 0.0:
@@ -94,15 +131,35 @@ class CoverageController:
             raise ValueError("heading controller values must be positive")
         if self.avoid_danger_threshold < 0.0 or self.avoid_angular_speed <= 0.0:
             raise ValueError("avoidance controller values are invalid")
+        if (
+            self.avoid_turn_angle <= 0.0
+            or self.avoid_pass_distance <= 0.0
+            or self.avoid_forward_speed <= 0.0
+            or self.max_avoid_attempts_per_leg <= 0
+            or self.arena_half_extent <= self.boundary_clearance
+            or self.boundary_clearance < 0.0
+        ):
+            raise ValueError("avoidance bypass values must be positive")
 
         self.leg_index = 0
         self.cycle_count = 0
         self.last_avoid_direction = 1.0
+        self.avoid_phase = None
+        self.avoid_target_yaw = 0.0
+        self.avoid_pass_start = None
+        self.avoid_attempts = {}
 
     def reset(self):
         self.leg_index = 0
         self.cycle_count = 0
         self.last_avoid_direction = 1.0
+        self.avoid_attempts.clear()
+        self.cancel_avoidance()
+
+    def cancel_avoidance(self):
+        self.avoid_phase = None
+        self.avoid_target_yaw = 0.0
+        self.avoid_pass_start = None
 
     @property
     def current_leg(self):
@@ -123,9 +180,27 @@ class CoverageController:
         self._advance_reached_legs(robot_x, robot_y)
         leg = self.current_leg
 
-        if leg.speed > 0.0 and float(avoid_center) >= self.avoid_danger_threshold:
-            direction = self._avoid_direction(float(avoid_left), float(avoid_right))
-            return self._make_command(0.0, direction * self.avoid_angular_speed, "AVOID_OBJECT")
+        if self.avoid_phase is not None:
+            return self._avoidance_command(robot_x, robot_y, robot_yaw)
+
+        if float(avoid_center) >= self.avoid_danger_threshold:
+            direction = self._avoid_direction(
+                float(avoid_left),
+                float(avoid_right),
+                robot_x,
+                robot_y,
+                robot_yaw,
+            )
+            attempts = self.avoid_attempts.get(self.leg_index, 0) + 1
+            self.avoid_attempts[self.leg_index] = attempts
+            if attempts > self.max_avoid_attempts_per_leg:
+                self._advance_leg()
+                return self._make_command(0.0, 0.0, "SKIP_BLOCKED_LEG")
+            self.avoid_phase = "TURN"
+            self.avoid_target_yaw = normalize_angle(
+                robot_yaw + direction * self.avoid_turn_angle
+            )
+            return self._avoidance_command(robot_x, robot_y, robot_yaw)
 
         dx = leg.target_x - robot_x
         dy = leg.target_y - robot_y
@@ -153,18 +228,83 @@ class CoverageController:
             distance = math.hypot(leg.target_x - robot_x, leg.target_y - robot_y)
             if distance > self.waypoint_tolerance:
                 return
-            self.leg_index += 1
-            if self.leg_index >= len(self.legs):
-                self.leg_index = 0
-                self.cycle_count += 1
+            self._advance_leg()
             checked += 1
 
-    def _avoid_direction(self, avoid_left, avoid_right):
+    def _advance_leg(self):
+        previous_leg = self.leg_index
+        self.leg_index += 1
+        if self.leg_index >= len(self.legs):
+            self.leg_index = 0
+            self.cycle_count += 1
+            self.avoid_attempts.clear()
+        else:
+            self.avoid_attempts.pop(previous_leg, None)
+        self.cancel_avoidance()
+
+    def _avoidance_command(self, robot_x, robot_y, robot_yaw):
+        if self.avoid_phase == "TURN":
+            heading_error = normalize_angle(self.avoid_target_yaw - robot_yaw)
+            if abs(heading_error) > self.heading_tolerance:
+                return self._make_command(
+                    0.0,
+                    clamp(
+                        self.heading_gain * heading_error,
+                        -self.avoid_angular_speed,
+                        self.avoid_angular_speed,
+                    ),
+                    "AVOID_TURN",
+                )
+            self.avoid_phase = "PASS"
+            self.avoid_pass_start = (robot_x, robot_y)
+
+        start_x, start_y = self.avoid_pass_start
+        distance = math.hypot(robot_x - start_x, robot_y - start_y)
+        if distance >= self.avoid_pass_distance:
+            self.cancel_avoidance()
+            return self._make_command(0.0, 0.0, "AVOID_COMPLETE")
+        heading_error = normalize_angle(self.avoid_target_yaw - robot_yaw)
+        return self._make_command(
+            self.avoid_forward_speed,
+            clamp(
+                self.heading_gain * heading_error,
+                -self.max_angular_speed,
+                self.max_angular_speed,
+            ),
+            "AVOID_PASS",
+        )
+
+    def _avoid_direction(
+        self,
+        avoid_left,
+        avoid_right,
+        robot_x,
+        robot_y,
+        robot_yaw,
+    ):
         if avoid_left < avoid_right:
             self.last_avoid_direction = 1.0
         elif avoid_right < avoid_left:
             self.last_avoid_direction = -1.0
+        preferred = self.last_avoid_direction
+        alternative = -preferred
+        if self._bypass_boundary_score(
+            alternative, robot_x, robot_y, robot_yaw
+        ) > self._bypass_boundary_score(
+            preferred, robot_x, robot_y, robot_yaw
+        ) + 0.05:
+            self.last_avoid_direction = alternative
         return self.last_avoid_direction
+
+    def _bypass_boundary_score(self, direction, robot_x, robot_y, robot_yaw):
+        bypass_yaw = robot_yaw + float(direction) * self.avoid_turn_angle
+        projected_x = robot_x + self.avoid_pass_distance * math.cos(bypass_yaw)
+        projected_y = robot_y + self.avoid_pass_distance * math.sin(bypass_yaw)
+        safe_limit = self.arena_half_extent - self.boundary_clearance
+        return min(
+            safe_limit - abs(projected_x),
+            safe_limit - abs(projected_y),
+        )
 
     def _make_command(self, linear_x, angular_z, phase):
         leg = self.current_leg

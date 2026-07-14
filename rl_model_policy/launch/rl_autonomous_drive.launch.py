@@ -56,6 +56,18 @@ def generate_launch_description():
     coverage_transit_speed = LaunchConfiguration("coverage_transit_speed")
     coverage_return_speed = LaunchConfiguration("coverage_return_speed")
     coverage_waypoint_tolerance = LaunchConfiguration("coverage_waypoint_tolerance")
+    coverage_avoid_turn_angle_deg = LaunchConfiguration(
+        "coverage_avoid_turn_angle_deg"
+    )
+    coverage_avoid_pass_distance = LaunchConfiguration(
+        "coverage_avoid_pass_distance"
+    )
+    coverage_avoid_forward_speed = LaunchConfiguration(
+        "coverage_avoid_forward_speed"
+    )
+    coverage_max_avoid_attempts_per_leg = LaunchConfiguration(
+        "coverage_max_avoid_attempts_per_leg"
+    )
     coverage_reacquire_duration_s = LaunchConfiguration("coverage_reacquire_duration_s")
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
         "coverage_reacquire_reverse_after_s"
@@ -179,6 +191,12 @@ def generate_launch_description():
             "coverage_transit_speed": coverage_transit_speed,
             "coverage_return_speed": coverage_return_speed,
             "coverage_waypoint_tolerance": coverage_waypoint_tolerance,
+            "coverage_avoid_turn_angle_deg": coverage_avoid_turn_angle_deg,
+            "coverage_avoid_pass_distance": coverage_avoid_pass_distance,
+            "coverage_avoid_forward_speed": coverage_avoid_forward_speed,
+            "coverage_max_avoid_attempts_per_leg": (
+                coverage_max_avoid_attempts_per_leg
+            ),
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
             "coverage_reacquire_reverse_after_s": (
                 coverage_reacquire_reverse_after_s
@@ -329,7 +347,7 @@ def generate_launch_description():
         DeclareLaunchArgument("avoid_classes", default_value=""),
         DeclareLaunchArgument("confidence", default_value="0.25"),
         DeclareLaunchArgument("publish_annotated", default_value="false"),
-        DeclareLaunchArgument("speed_scale", default_value="0.25"),
+        DeclareLaunchArgument("speed_scale", default_value="0.50"),
         DeclareLaunchArgument(
             "target_timeout_s",
             default_value="1.0",
@@ -390,16 +408,23 @@ def generate_launch_description():
         DeclareLaunchArgument("coverage_main_road_y", default_value="-1.3343"),
         DeclareLaunchArgument("coverage_scan_end_y", default_value="1.0"),
         DeclareLaunchArgument("coverage_lane_spacing", default_value="1.0"),
-        DeclareLaunchArgument("coverage_scan_speed", default_value="0.14"),
-        DeclareLaunchArgument("coverage_transit_speed", default_value="0.18"),
-        DeclareLaunchArgument("coverage_return_speed", default_value="0.20"),
-        DeclareLaunchArgument("coverage_waypoint_tolerance", default_value="0.10"),
-        DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="3.0"),
+        DeclareLaunchArgument("coverage_scan_speed", default_value="0.22"),
+        DeclareLaunchArgument("coverage_transit_speed", default_value="0.28"),
+        DeclareLaunchArgument("coverage_return_speed", default_value="0.24"),
+        DeclareLaunchArgument("coverage_waypoint_tolerance", default_value="0.18"),
+        DeclareLaunchArgument("coverage_avoid_turn_angle_deg", default_value="32.0"),
+        DeclareLaunchArgument("coverage_avoid_pass_distance", default_value="0.45"),
+        DeclareLaunchArgument("coverage_avoid_forward_speed", default_value="0.18"),
+        DeclareLaunchArgument(
+            "coverage_max_avoid_attempts_per_leg",
+            default_value="2",
+        ),
+        DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="1.5"),
         DeclareLaunchArgument(
             "coverage_reacquire_reverse_after_s",
-            default_value="1.5",
+            default_value="0.75",
         ),
-        DeclareLaunchArgument("coverage_reacquire_angular_z", default_value="0.18"),
+        DeclareLaunchArgument("coverage_reacquire_angular_z", default_value="0.35"),
         DeclareLaunchArgument(
             "initial_x",
             default_value="1.8",
@@ -426,11 +451,11 @@ def generate_launch_description():
         DeclareLaunchArgument("storage_center_x", default_value="-1.75"),
         DeclareLaunchArgument("storage_center_y", default_value="-1.75"),
         DeclareLaunchArgument("storage_entry_yaw_deg", default_value="-90.0"),
-        DeclareLaunchArgument("storage_return_speed", default_value="0.18"),
-        DeclareLaunchArgument("storage_entry_speed", default_value="0.08"),
+        DeclareLaunchArgument("storage_return_speed", default_value="0.25"),
+        DeclareLaunchArgument("storage_entry_speed", default_value="0.12"),
         DeclareLaunchArgument(
             "storage_exit_reverse_speed",
-            default_value="0.10",
+            default_value="0.16",
         ),
         DeclareLaunchArgument("storage_entry_tolerance", default_value="0.04"),
         DeclareLaunchArgument("gripper_enabled", default_value="true"),
