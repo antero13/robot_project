@@ -253,7 +253,9 @@ ros2 topic pub --once /rl_model_policy_control std_msgs/msg/String "{data: close
 
 Pass `launch_status_gui:=true` to open the PyQt status window. The autonomous
 launch also starts `rl_object_world_mapper`, which estimates each detected
-object's arena position and snaps it to one of the 42 legal placement points.
+object's continuous arena position. It interpolates the measured bbox-center
+calibration in `config/distance_normalized_points.csv`; it does not snap object
+markers to the 42 legal placement points.
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \

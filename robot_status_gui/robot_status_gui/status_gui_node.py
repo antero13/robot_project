@@ -9,6 +9,7 @@ from std_msgs.msg import String
 
 from robot_status_gui.status_model import (
     centered_pose_to_map,
+    mapper_diagnostics_label,
     mission_progress_label,
     mission_time_label,
     mode_label,
@@ -49,7 +50,7 @@ class RobotStatusGuiNode(Node):
         self.declare_parameter("control_topic", "/rl_model_policy_control")
         self.declare_parameter("pose_offset_x", 2.0)
         self.declare_parameter("pose_offset_y", 2.0)
-        self.declare_parameter("connection_timeout_s", 1.0)
+        self.declare_parameter("connection_timeout_s", 2.0)
 
         self.pose_offset_x = float(self.get_parameter("pose_offset_x").value)
         self.pose_offset_y = float(self.get_parameter("pose_offset_y").value)
@@ -459,14 +460,18 @@ class RobotStatusWindow(QMainWindow):
 
         side.addWidget(self.section_label("인지 상태"))
         self.object_count_label = self.value_label("지도 객체", "0")
+        self.mapper_diagnostics_label = self.value_label("객체 변환", "대기")
         self.pose_connection = self.connection_row("위치 추적")
         self.policy_connection = self.connection_row("RL 상태")
         self.objects_connection = self.connection_row("객체 위치")
         side.addWidget(self.object_count_label)
+        side.addWidget(self.mapper_diagnostics_label)
         side.addLayout(self.pose_connection[0])
         side.addLayout(self.policy_connection[0])
         side.addLayout(self.objects_connection[0])
-        note = QLabel("객체 마커는 카메라 중심점과 로봇 자세를 이용한 후보점 추정값입니다.")
+        note = QLabel(
+            "객체 마커는 bbox 중심의 CSV 보간 결과를 로봇 자세로 변환한 연속 좌표입니다."
+        )
         note.setObjectName("note")
         note.setWordWrap(True)
         side.addWidget(note)
@@ -559,6 +564,9 @@ class RobotStatusWindow(QMainWindow):
         self.object_count_label.setText(
             f"지도 객체   {len(objects)} · 목표 {target_count} · 회피 {avoid_count}"
         )
+        self.mapper_diagnostics_label.setText(
+            f"객체 변환   {mapper_diagnostics_label(snapshot['object_diagnostics'])}"
+        )
 
         self.set_connection(self.pose_connection, snapshot["pose_connected"])
         self.set_connection(self.policy_connection, snapshot["policy_connected"])
@@ -567,7 +575,20 @@ class RobotStatusWindow(QMainWindow):
             bool(snapshot[key])
             for key in ("pose_connected", "policy_connected", "objects_connected")
         )
-        self.connection_summary.setText(f"ROS 데이터 {connected_count}/3 연결")
+        connection_names = {
+            "pose_connected": "위치 추적",
+            "policy_connected": "RL 상태",
+            "objects_connected": "객체 위치",
+        }
+        missing = [
+            name
+            for key, name in connection_names.items()
+            if not snapshot[key]
+        ]
+        suffix = f" · {', '.join(missing)} 대기" if missing else ""
+        self.connection_summary.setText(
+            f"ROS 데이터 {connected_count}/3 연결{suffix}"
+        )
 
         self.pause_button.setProperty("paused", paused)
         self.pause_button.style().unpolish(self.pause_button)

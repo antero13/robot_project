@@ -1,12 +1,14 @@
 import json
 import math
+from pathlib import Path
 
+from ament_index_python.packages import get_package_share_directory
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from rl_model_policy.object_localization import GridObjectLocalizer
+from rl_model_policy.object_localization import CalibrationObjectLocalizer
 from rl_model_policy.observation import quaternion_to_yaw
 
 
@@ -18,23 +20,20 @@ class ObjectWorldMapperNode(Node):
         self.declare_parameter("odometry_topic", "/odom")
         self.declare_parameter("output_topic", "/rl_estimated_objects")
         self.declare_parameter("policy_state_topic", "/rl_model_policy_state")
+        self.declare_parameter("calibration_path", "")
         self.declare_parameter("target_classes", "")
         self.declare_parameter("avoid_classes", "")
         self.declare_parameter("pose_timeout_s", 0.5)
         self.declare_parameter("retention_s", 180.0)
         self.declare_parameter("min_confirmations", 2)
         self.declare_parameter("confirmation_window_s", 1.0)
+        self.declare_parameter("association_radius_m", 0.30)
+        self.declare_parameter("position_smoothing_alpha", 0.35)
         self.declare_parameter("pickup_remove_radius_m", 0.75)
         self.declare_parameter("publish_rate_hz", 5.0)
-        self.declare_parameter("horizontal_fov_deg", 80.0)
-        self.declare_parameter("vertical_fov_deg", 50.0)
-        self.declare_parameter("camera_height_m", 0.18)
-        self.declare_parameter("camera_pitch_deg", 15.0)
-        self.declare_parameter("object_center_height_m", 0.04)
-        self.declare_parameter("max_range_m", 4.5)
-        self.declare_parameter("max_x_error", 0.35)
-        self.declare_parameter("max_y_error", 0.22)
         self.declare_parameter("arena_half_extent_m", 2.0)
+        self.declare_parameter("horizontal_extrapolation_margin", 0.015)
+        self.declare_parameter("vertical_extrapolation_margin", 0.012)
 
         self.target_classes = self.parse_class_list(
             self.get_parameter("target_classes").value
@@ -48,29 +47,30 @@ class ObjectWorldMapperNode(Node):
             self.get_parameter("min_confirmations").value
         )
         self.confirmation_window_s = self.get_float("confirmation_window_s")
+        self.association_radius = self.get_float("association_radius_m")
+        self.smoothing_alpha = self.get_float("position_smoothing_alpha")
         self.pickup_remove_radius = self.get_float("pickup_remove_radius_m")
         publish_rate_hz = self.get_float("publish_rate_hz")
-        if self.pose_timeout_s <= 0.0 or self.retention_s <= 0.0:
-            raise ValueError("pose_timeout_s and retention_s must be positive")
-        if publish_rate_hz <= 0.0:
-            raise ValueError("publish_rate_hz must be positive")
-        if (
-            self.min_confirmations <= 0
-            or self.confirmation_window_s <= 0.0
-            or self.pickup_remove_radius <= 0.0
-        ):
-            raise ValueError("object confirmation parameters must be positive")
+        self._validate_parameters(publish_rate_hz)
 
-        self.localizer = GridObjectLocalizer(
-            horizontal_fov_deg=self.get_float("horizontal_fov_deg"),
-            vertical_fov_deg=self.get_float("vertical_fov_deg"),
-            camera_height_m=self.get_float("camera_height_m"),
-            camera_pitch_deg=self.get_float("camera_pitch_deg"),
-            object_center_height_m=self.get_float("object_center_height_m"),
-            max_range_m=self.get_float("max_range_m"),
-            max_x_error=self.get_float("max_x_error"),
-            max_y_error=self.get_float("max_y_error"),
+        calibration_value = str(
+            self.get_parameter("calibration_path").value
+        ).strip()
+        if calibration_value:
+            self.calibration_path = Path(calibration_value).expanduser()
+        else:
+            self.calibration_path = Path(
+                get_package_share_directory("rl_model_policy")
+            ) / "config" / "distance_normalized_points.csv"
+        self.localizer = CalibrationObjectLocalizer(
+            calibration_path=self.calibration_path,
             arena_half_extent_m=self.get_float("arena_half_extent_m"),
+            horizontal_extrapolation_margin=self.get_float(
+                "horizontal_extrapolation_margin"
+            ),
+            vertical_extrapolation_margin=self.get_float(
+                "vertical_extrapolation_margin"
+            ),
         )
 
         self.robot_x = 0.0
@@ -78,6 +78,7 @@ class ObjectWorldMapperNode(Node):
         self.robot_yaw = 0.0
         self.latest_pose_time = None
         self.tracked_objects = {}
+        self.next_track_id = 1
         self.last_detection_count = 0
         self.last_mapped_count = 0
         self.stored_object_count = 0
@@ -108,9 +109,27 @@ class ObjectWorldMapperNode(Node):
         self.timer = self.create_timer(1.0 / publish_rate_hz, self.publish_objects)
 
         self.get_logger().info(
-            "Mapping YOLO bbox centers onto the 42 arena candidate points; "
-            f"publishing {self.get_parameter('output_topic').value}"
+            "Mapping YOLO bbox centers with measured calibration data; "
+            f"calibration={self.calibration_path}, "
+            f"output={self.get_parameter('output_topic').value}"
         )
+
+    def _validate_parameters(self, publish_rate_hz):
+        positive_values = {
+            "pose_timeout_s": self.pose_timeout_s,
+            "retention_s": self.retention_s,
+            "confirmation_window_s": self.confirmation_window_s,
+            "association_radius_m": self.association_radius,
+            "pickup_remove_radius_m": self.pickup_remove_radius,
+            "publish_rate_hz": publish_rate_hz,
+        }
+        invalid = [name for name, value in positive_values.items() if value <= 0.0]
+        if invalid:
+            raise ValueError(f"parameters must be positive: {', '.join(invalid)}")
+        if self.min_confirmations <= 0:
+            raise ValueError("min_confirmations must be positive")
+        if not 0.0 < self.smoothing_alpha <= 1.0:
+            raise ValueError("position_smoothing_alpha must be in (0, 1]")
 
     def odometry_callback(self, msg):
         position = msg.pose.pose.position
@@ -140,13 +159,16 @@ class ObjectWorldMapperNode(Node):
         if not self.pose_is_fresh():
             return
 
-        image_width = float(payload.get("image_width", 0.0))
-        image_height = float(payload.get("image_height", 0.0))
+        try:
+            image_width = float(payload.get("image_width", 0.0))
+            image_height = float(payload.get("image_height", 0.0))
+        except (TypeError, ValueError):
+            return
         if image_width <= 0.0 or image_height <= 0.0:
             return
 
         now_ns = self.get_clock().now().nanoseconds
-        frame_estimates = {}
+        frame_estimates = []
         for detection in detections:
             estimate = self.localize_detection(
                 detection,
@@ -156,24 +178,66 @@ class ObjectWorldMapperNode(Node):
             if estimate is None:
                 continue
             estimate["seen_at_ns"] = now_ns
-            key = estimate["id"]
-            previous = frame_estimates.get(key)
-            if previous is None or estimate["confidence"] > previous["confidence"]:
-                frame_estimates[key] = estimate
+            frame_estimates.append(estimate)
 
         self.last_mapped_count = len(frame_estimates)
-        for key, estimate in frame_estimates.items():
-            previous = self.tracked_objects.get(key)
-            same_class = (
-                previous is not None
-                and previous.get("class_name") == estimate.get("class_name")
-                and now_ns - int(previous.get("seen_at_ns", 0))
-                <= int(self.confirmation_window_s * 1_000_000_000)
+        self.update_tracks(frame_estimates, now_ns)
+
+    def update_tracks(self, frame_estimates, now_ns):
+        matched_tracks = set()
+        for estimate in sorted(
+            frame_estimates,
+            key=lambda item: float(item.get("confidence", 0.0)),
+            reverse=True,
+        ):
+            track_id = self.find_matching_track(estimate, matched_tracks)
+            if track_id is None:
+                track_id = f"object_{self.next_track_id:04d}"
+                self.next_track_id += 1
+                estimate["id"] = track_id
+                estimate["hit_count"] = 1
+                self.tracked_objects[track_id] = estimate
+            else:
+                previous = self.tracked_objects[track_id]
+                estimate = self.merge_track(previous, estimate, now_ns)
+                estimate["id"] = track_id
+                self.tracked_objects[track_id] = estimate
+            matched_tracks.add(track_id)
+
+    def find_matching_track(self, estimate, excluded_tracks):
+        candidates = []
+        for track_id, tracked in self.tracked_objects.items():
+            if track_id in excluded_tracks:
+                continue
+            if tracked.get("class_name") != estimate.get("class_name"):
+                continue
+            distance = math.hypot(
+                float(tracked["arena_x"]) - float(estimate["arena_x"]),
+                float(tracked["arena_y"]) - float(estimate["arena_y"]),
             )
-            estimate["hit_count"] = (
-                int(previous.get("hit_count", 0)) + 1 if same_class else 1
-            )
-            self.tracked_objects[key] = estimate
+            if distance <= self.association_radius:
+                candidates.append((distance, track_id))
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: item[0])[1]
+
+    def merge_track(self, previous, current, now_ns):
+        alpha = self.smoothing_alpha
+        current["arena_x"] = self.smoothed(
+            previous["arena_x"], current["arena_x"], alpha
+        )
+        current["arena_y"] = self.smoothed(
+            previous["arena_y"], current["arena_y"], alpha
+        )
+        current["map_x"] = current["arena_x"] + 2.0
+        current["map_y"] = current["arena_y"] + 2.0
+        recent = now_ns - int(previous.get("seen_at_ns", 0)) <= int(
+            self.confirmation_window_s * 1_000_000_000
+        )
+        current["hit_count"] = (
+            int(previous.get("hit_count", 0)) + 1 if recent else 1
+        )
+        return current
 
     def policy_state_callback(self, msg):
         try:
@@ -246,18 +310,7 @@ class ObjectWorldMapperNode(Node):
         class_id = detection.get("class_id", "")
         class_name = str(detection.get("class_name", class_id))
         class_keys = {class_name, str(class_id)}
-        candidate = localized.candidate
-        if candidate is None:
-            object_id = f"projected_{localized.x:.2f}_{localized.y:.2f}"
-            column = None
-            row = None
-        else:
-            object_id = f"grid_{candidate.column}_{candidate.row}"
-            column = candidate.column
-            row = candidate.row
-
         return {
-            "id": object_id,
             "class_id": class_id,
             "class_name": class_name,
             "role": self.class_role(class_keys),
@@ -266,10 +319,10 @@ class ObjectWorldMapperNode(Node):
             "arena_y": localized.y,
             "map_x": localized.x + 2.0,
             "map_y": localized.y + 2.0,
-            "column": column,
-            "row": row,
             "method": localized.method,
-            "localization_error": localized.error,
+            "interpolation_span_m": localized.interpolation_span_m,
+            "camera_lateral_m": localized.lateral_m,
+            "camera_forward_m": localized.forward_m,
             "image_x": image_x,
             "image_y": image_y,
         }
@@ -281,7 +334,7 @@ class ObjectWorldMapperNode(Node):
         self.tracked_objects = {
             key: value
             for key, value in self.tracked_objects.items()
-            if now_ns - value["seen_at_ns"] <= max_age_ns
+            if now_ns - int(value["seen_at_ns"]) <= max_age_ns
         }
 
         objects = []
@@ -293,13 +346,28 @@ class ObjectWorldMapperNode(Node):
         for tracked in sorted(confirmed_objects, key=lambda item: item["id"]):
             output = dict(tracked)
             seen_at_ns = output.pop("seen_at_ns")
-            output["age_s"] = max(0.0, (now_ns - seen_at_ns) / 1_000_000_000.0)
+            output["age_s"] = max(
+                0.0,
+                (now_ns - seen_at_ns) / 1_000_000_000.0,
+            )
             objects.append(output)
+
+        pose_fresh = self.pose_is_fresh()
+        if not pose_fresh:
+            mapper_status = "waiting_for_odometry"
+        elif self.last_detection_count and not self.last_mapped_count:
+            mapper_status = "detections_outside_calibration"
+        else:
+            mapper_status = "ready"
 
         message = String()
         message.data = json.dumps(
             {
-                "pose_fresh": self.pose_is_fresh(),
+                "mapper_status": mapper_status,
+                "calibration_loaded": True,
+                "calibration_file": self.calibration_path.name,
+                "localization_method": "calibration_interpolation",
+                "pose_fresh": pose_fresh,
                 "detection_count": self.last_detection_count,
                 "mapped_count": self.last_mapped_count,
                 "objects": objects,
@@ -325,6 +393,10 @@ class ObjectWorldMapperNode(Node):
 
     def get_float(self, name):
         return float(self.get_parameter(name).value)
+
+    @staticmethod
+    def smoothed(previous, current, alpha):
+        return float(previous) + (float(current) - float(previous)) * float(alpha)
 
     @staticmethod
     def parse_class_list(value):

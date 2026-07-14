@@ -1,71 +1,81 @@
+import csv
 import math
+from pathlib import Path
 import unittest
 
-from rl_model_policy.object_localization import (
-    GridObjectLocalizer,
-    generate_candidate_points,
+from rl_model_policy.object_localization import CalibrationObjectLocalizer
+
+
+CALIBRATION_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "config"
+    / "distance_normalized_points.csv"
 )
 
 
-class GridObjectLocalizerTest(unittest.TestCase):
+class CalibrationObjectLocalizerTest(unittest.TestCase):
     def setUp(self):
-        self.localizer = GridObjectLocalizer()
+        self.localizer = CalibrationObjectLocalizer(CALIBRATION_PATH)
 
-    def test_generates_all_42_competition_points(self):
-        points = generate_candidate_points()
+    def test_recovers_all_measured_camera_positions(self):
+        with CALIBRATION_PATH.open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream))
 
-        self.assertEqual(len(points), 42)
-        self.assertEqual((points[0].x, points[0].y), (-1.5, -1.0))
-        self.assertEqual((points[-1].x, points[-1].y), (1.5, 1.5))
+        self.assertEqual(len(rows), 51)
+        for row in rows:
+            with self.subTest(row=row):
+                estimate = self.localizer.interpolate_camera_position(
+                    float(row["norm_x"]),
+                    float(row["norm_y"]),
+                )
+                self.assertIsNotNone(estimate)
+                lateral_m, forward_m, _ = estimate
+                self.assertAlmostEqual(lateral_m, float(row["real_x_m"]), places=6)
+                self.assertAlmostEqual(forward_m, float(row["distance_m"]), places=6)
 
-    def test_recovers_visible_candidate_from_predicted_center(self):
-        observed = self.localizer.predict_observation(
-            object_x=0.0,
-            object_y=-1.0,
-            robot_x=0.0,
-            robot_y=-1.8,
-            robot_yaw=math.pi / 2.0,
+    def test_interpolates_between_measured_distances(self):
+        estimate = self.localizer.interpolate_camera_position(
+            image_x=0.0,
+            image_y=(0.30038 + 0.269279) * 0.5,
         )
 
+        lateral_m, forward_m, span_m = estimate
+        self.assertAlmostEqual(lateral_m, 0.0, places=6)
+        self.assertAlmostEqual(forward_m, 0.65, places=6)
+        self.assertAlmostEqual(span_m, 0.1, places=6)
+
+    def test_world_transform_uses_camera_right_axis(self):
         estimate = self.localizer.localize(
-            observed[0],
-            observed[1],
-            robot_x=0.0,
-            robot_y=-1.8,
-            robot_yaw=math.pi / 2.0,
-        )
-
-        self.assertEqual(estimate.method, "candidate_grid")
-        self.assertEqual((estimate.x, estimate.y), (0.0, -1.0))
-
-    def test_image_right_is_negative_ros_bearing(self):
-        observed = self.localizer.predict_observation(
-            object_x=0.5,
-            object_y=-1.0,
-            robot_x=0.0,
-            robot_y=-1.8,
-            robot_yaw=math.pi / 2.0,
-        )
-
-        self.assertGreater(observed[0], 0.0)
-
-    def test_candidate_behind_camera_is_rejected(self):
-        observed = self.localizer.predict_observation(
-            object_x=0.0,
-            object_y=-1.0,
+            image_x=0.32389,
+            image_y=0.353612,
             robot_x=0.0,
             robot_y=0.0,
             robot_yaw=math.pi / 2.0,
         )
 
-        self.assertIsNone(observed)
+        self.assertAlmostEqual(estimate.forward_m, 0.5, places=6)
+        self.assertAlmostEqual(estimate.lateral_m, 0.2, places=6)
+        self.assertAlmostEqual(estimate.x, 0.2, places=6)
+        self.assertAlmostEqual(estimate.y, 0.5, places=6)
 
-    def test_invalid_camera_height_is_rejected(self):
-        with self.assertRaises(ValueError):
-            GridObjectLocalizer(
-                camera_height_m=0.04,
-                object_center_height_m=0.04,
-            )
+    def test_bbox_center_outside_calibrated_range_is_rejected(self):
+        estimate = self.localizer.interpolate_camera_position(
+            image_x=0.0,
+            image_y=0.75,
+        )
+
+        self.assertIsNone(estimate)
+
+    def test_world_position_outside_arena_is_rejected(self):
+        estimate = self.localizer.localize(
+            image_x=0.0,
+            image_y=0.143219,
+            robot_x=1.0,
+            robot_y=1.0,
+            robot_yaw=0.0,
+        )
+
+        self.assertIsNone(estimate)
 
 
 if __name__ == "__main__":

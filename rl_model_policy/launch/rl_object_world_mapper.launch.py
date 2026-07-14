@@ -1,8 +1,9 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
@@ -10,17 +11,18 @@ def generate_launch_description():
         "pose_timeout_s": "0.5",
         "retention_s": "180.0",
         "confirmation_window_s": "1.0",
-        "horizontal_fov_deg": "80.0",
-        "vertical_fov_deg": "50.0",
-        "camera_height_m": "0.18",
-        "camera_pitch_deg": "15.0",
-        "object_center_height_m": "0.04",
-        "max_range_m": "4.5",
-        "max_x_error": "0.35",
-        "max_y_error": "0.22",
+        "association_radius_m": "0.30",
+        "position_smoothing_alpha": "0.35",
         "arena_half_extent_m": "2.0",
         "pickup_remove_radius_m": "0.75",
+        "horizontal_extrapolation_margin": "0.015",
+        "vertical_extrapolation_margin": "0.012",
     }
+    calibration_path = PathJoinSubstitution([
+        FindPackageShare("rl_model_policy"),
+        "config",
+        "distance_normalized_points.csv",
+    ])
     declarations = [
         DeclareLaunchArgument("detections_topic", default_value="/yolo/detections"),
         DeclareLaunchArgument("odometry_topic", default_value="/odom"),
@@ -29,6 +31,7 @@ def generate_launch_description():
             "policy_state_topic",
             default_value="/rl_model_policy_state",
         ),
+        DeclareLaunchArgument("calibration_path", default_value=calibration_path),
         DeclareLaunchArgument("target_classes", default_value=""),
         DeclareLaunchArgument("avoid_classes", default_value=""),
         DeclareLaunchArgument("min_confirmations", default_value="2"),
@@ -43,6 +46,7 @@ def generate_launch_description():
         "odometry_topic": LaunchConfiguration("odometry_topic"),
         "output_topic": LaunchConfiguration("output_topic"),
         "policy_state_topic": LaunchConfiguration("policy_state_topic"),
+        "calibration_path": LaunchConfiguration("calibration_path"),
         "target_classes": LaunchConfiguration("target_classes"),
         "avoid_classes": LaunchConfiguration("avoid_classes"),
         "min_confirmations": ParameterValue(

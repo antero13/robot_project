@@ -34,10 +34,13 @@ def generate_launch_description():
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
     launch_object_mapper = LaunchConfiguration("launch_object_mapper")
     launch_status_gui = LaunchConfiguration("launch_status_gui")
-    camera_vertical_fov_deg = LaunchConfiguration("camera_vertical_fov_deg")
-    camera_height_m = LaunchConfiguration("camera_height_m")
-    camera_pitch_deg = LaunchConfiguration("camera_pitch_deg")
-    object_center_height_m = LaunchConfiguration("object_center_height_m")
+    object_calibration_path = LaunchConfiguration("object_calibration_path")
+    object_association_radius_m = LaunchConfiguration(
+        "object_association_radius_m"
+    )
+    object_position_smoothing_alpha = LaunchConfiguration(
+        "object_position_smoothing_alpha"
+    )
     object_retention_s = LaunchConfiguration("object_retention_s")
     coverage_enabled = LaunchConfiguration("coverage_enabled")
     coverage_min_x = LaunchConfiguration("coverage_min_x")
@@ -207,13 +210,11 @@ def generate_launch_description():
             "output_topic": "/rl_estimated_objects",
             "target_classes": target_classes,
             "avoid_classes": avoid_classes,
+            "calibration_path": object_calibration_path,
             "pose_timeout_s": pose_timeout_s,
             "retention_s": object_retention_s,
-            "horizontal_fov_deg": camera_horizontal_fov_deg,
-            "vertical_fov_deg": camera_vertical_fov_deg,
-            "camera_height_m": camera_height_m,
-            "camera_pitch_deg": camera_pitch_deg,
-            "object_center_height_m": object_center_height_m,
+            "association_radius_m": object_association_radius_m,
+            "position_smoothing_alpha": object_position_smoothing_alpha,
             "arena_half_extent_m": arena_half_extent_m,
         }.items(),
         condition=IfCondition(launch_object_mapper),
@@ -309,10 +310,20 @@ def generate_launch_description():
             default_value="false",
             description="Open the PyQt robot status GUI on the local display.",
         ),
-        DeclareLaunchArgument("camera_vertical_fov_deg", default_value="50.0"),
-        DeclareLaunchArgument("camera_height_m", default_value="0.18"),
-        DeclareLaunchArgument("camera_pitch_deg", default_value="15.0"),
-        DeclareLaunchArgument("object_center_height_m", default_value="0.04"),
+        DeclareLaunchArgument(
+            "object_calibration_path",
+            default_value=PathJoinSubstitution([
+                FindPackageShare("rl_model_policy"),
+                "config",
+                "distance_normalized_points.csv",
+            ]),
+            description="Measured bbox-center to camera-position calibration CSV.",
+        ),
+        DeclareLaunchArgument("object_association_radius_m", default_value="0.30"),
+        DeclareLaunchArgument(
+            "object_position_smoothing_alpha",
+            default_value="0.35",
+        ),
         DeclareLaunchArgument("object_retention_s", default_value="180.0"),
         DeclareLaunchArgument(
             "coverage_enabled",

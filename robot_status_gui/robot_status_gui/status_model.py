@@ -46,6 +46,12 @@ GRAB_LABELS = {
     "GRABBED": "수납 완료",
 }
 
+MAPPER_STATUS_LABELS = {
+    "ready": "보정 준비",
+    "waiting_for_odometry": "위치 정보 대기",
+    "detections_outside_calibration": "보정 범위 밖",
+}
+
 
 def parse_json_message(raw, fallback=None):
     try:
@@ -116,6 +122,17 @@ def return_reason_label(state):
         return "-"
     reason = mission.get("return_reason")
     return RETURN_REASON_LABELS.get(str(reason), "-") if reason else "-"
+
+
+def mapper_diagnostics_label(state):
+    if not isinstance(state, dict) or not state:
+        return "객체 mapper 데이터 대기"
+    status = str(state.get("mapper_status", "unknown"))
+    status_label = MAPPER_STATUS_LABELS.get(status, status)
+    detected = int(state.get("detection_count", 0))
+    mapped = int(state.get("mapped_count", 0))
+    calibration = "CSV" if state.get("calibration_loaded") else "보정 없음"
+    return f"{status_label} · {calibration} · 감지 {detected} / 변환 {mapped}"
 
 
 def quaternion_to_yaw(x, y, z, w):

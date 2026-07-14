@@ -5,7 +5,7 @@ PyQt5 operator GUI for real-robot tests. It shows:
 - robot position and heading in the 4 m x 4 m arena
 - RL/search/grab state and the currently stored object classes
 - full-mission phase, remaining match time, onboard capacity, and delivered count
-- YOLO object positions estimated from `/odom` and camera geometry
+- YOLO object positions estimated from `/odom` and measured bbox calibration
 - the active odometry waypoint while returning to Storage Zone
 - a base-motion pause/resume button
 
@@ -56,31 +56,46 @@ waypoint selected by the storage return controller.
 ## Object position calibration
 
 `/rl_estimated_objects` is not depth-camera ground truth. The mapper compares
-each YOLO bounding-box center with the expected image position of the 42 legal
-object points and chooses the best matching point. A point is shown after two
-confirmations, retained for the match, and removed when a nearby target is
-reported as stored. The defaults are:
+each YOLO bounding-box center with the measured samples in
+`rl_model_policy/config/distance_normalized_points.csv`. It interpolates the
+camera-relative lateral and forward distance, rotates that vector with `/odom`,
+and publishes a continuous arena coordinate. It never snaps a marker to one of
+the 42 placement points. A point is shown after two confirmations, retained for
+the match, and removed when a nearby target is reported as stored.
 
 ```text
-horizontal FOV: 80 deg
-vertical FOV: 50 deg
-camera optical-center height: 0.18 m
-camera downward pitch: 15 deg
-object center height: 0.04 m
+calibrated forward range: 0.3 to 1.8 m
+track association radius: 0.30 m
+position smoothing alpha: 0.35
 ```
 
-Measure the real optical-center height and camera pitch, then override them:
+Use another calibration file or tune continuous tracking from the integrated
+launch:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
-  camera_height_m:=0.21 \
-  camera_pitch_deg:=18.0 \
-  camera_vertical_fov_deg:=52.0 \
+  object_calibration_path:=/home/airobot/calibration/new_points.csv \
+  object_association_radius_m:=0.30 \
+  object_position_smoothing_alpha:=0.35 \
   launch_status_gui:=true
 ```
 
-The object height rule is 8 cm, so its center defaults to 4 cm. Position
-accuracy depends directly on `/odom` accuracy and these camera parameters.
+Position accuracy depends on the calibration setup matching the actual camera
+mount and on `/odom` accuracy. Detections outside the measured image region are
+rejected instead of extrapolated to a misleading map point.
+
+The GUI connection header names whichever input is missing. If it shows
+`ROS data 2/3` and `object position waiting`, inspect the mapper directly:
+
+```bash
+ros2 node list | grep rl_object_world_mapper
+ros2 topic hz /rl_estimated_objects
+ros2 topic echo --once /rl_estimated_objects
+```
+
+The diagnostics contain `mapper_status`, `pose_fresh`, `detection_count`, and
+`mapped_count`. `detections_outside_calibration` means YOLO is publishing but
+the bbox center is outside the measured CSV range.
 
 ## Pause semantics
 

@@ -3,6 +3,7 @@ import unittest
 
 from robot_status_gui.status_model import (
     centered_pose_to_map,
+    mapper_diagnostics_label,
     mission_progress_label,
     mission_time_label,
     mode_label,
@@ -59,6 +60,18 @@ class StatusModelTest(unittest.TestCase):
 
     def test_invalid_json_uses_empty_dictionary(self):
         self.assertEqual(parse_json_message("not-json"), {})
+
+    def test_mapper_diagnostics_explain_calibration_and_counts(self):
+        state = {
+            "mapper_status": "ready",
+            "calibration_loaded": True,
+            "detection_count": 3,
+            "mapped_count": 2,
+        }
+        self.assertEqual(
+            mapper_diagnostics_label(state),
+            "보정 준비 · CSV · 감지 3 / 변환 2",
+        )
 
     def test_quaternion_yaw(self):
         yaw = quaternion_to_yaw(0.0, 0.0, math.sin(math.pi / 4), math.cos(math.pi / 4))

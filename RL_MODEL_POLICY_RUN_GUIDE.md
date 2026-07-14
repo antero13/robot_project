@@ -172,10 +172,10 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   auto_start:=false
 ```
 
-The object positions shown on the map are estimates snapped to the 42 legal
-placement points. Tune `camera_height_m`, `camera_pitch_deg`, and
-`camera_vertical_fov_deg` to the real camera installation before relying on
-their distance.
+The object positions shown on the map are continuous estimates from the
+measured bbox-center calibration CSV and `/odom`. They are not snapped to the
+42 legal placement points. The bundled calibration covers approximately 0.3
+to 1.8 m; detections outside its measured image region are rejected.
 
 The integrated launch loads the model installed at
 `mission_manager/models/rl_avoid_search_best.pt`, whose first layer is

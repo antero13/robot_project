@@ -1,220 +1,209 @@
+import csv
 from dataclasses import dataclass
 import math
+from pathlib import Path
 
 
 @dataclass(frozen=True)
-class CandidatePoint:
-    column: int
-    row: int
-    x: float
-    y: float
+class CalibrationPoint:
+    norm_x: float
+    norm_y: float
+    lateral_m: float
+    forward_m: float
+
+
+@dataclass(frozen=True)
+class LayerSample:
+    forward_m: float
+    expected_norm_y: float
+    lateral_m: float
 
 
 @dataclass(frozen=True)
 class ObjectEstimate:
     x: float
     y: float
+    lateral_m: float
+    forward_m: float
     method: str
-    error: float
-    candidate: CandidatePoint | None
+    interpolation_span_m: float
 
 
-def generate_candidate_points(
-    columns=7,
-    rows=6,
-    first_x=-1.5,
-    first_y=-1.0,
-    spacing=0.5,
-):
-    return [
-        CandidatePoint(
-            column=column,
-            row=row,
-            x=float(first_x) + column * float(spacing),
-            y=float(first_y) + row * float(spacing),
-        )
-        for row in range(int(rows))
-        for column in range(int(columns))
-    ]
+class CalibrationObjectLocalizer:
+    """Interpolate camera-relative object position from measured bbox centers."""
 
+    REQUIRED_COLUMNS = {"distance_m", "real_x_m", "norm_x", "norm_y"}
 
-class GridObjectLocalizer:
     def __init__(
         self,
-        candidates=None,
-        horizontal_fov_deg=80.0,
-        vertical_fov_deg=50.0,
-        camera_height_m=0.18,
-        camera_pitch_deg=15.0,
-        object_center_height_m=0.04,
-        max_range_m=4.5,
-        max_x_error=0.35,
-        max_y_error=0.22,
-        fallback_snap_distance_m=0.36,
+        calibration_path,
         arena_half_extent_m=2.0,
+        horizontal_extrapolation_margin=0.015,
+        vertical_extrapolation_margin=0.012,
     ):
-        self.candidates = list(candidates or generate_candidate_points())
-        self.horizontal_fov = math.radians(float(horizontal_fov_deg))
-        self.vertical_fov = math.radians(float(vertical_fov_deg))
-        self.camera_height = float(camera_height_m)
-        self.camera_pitch = math.radians(float(camera_pitch_deg))
-        self.object_center_height = float(object_center_height_m)
-        self.max_range = float(max_range_m)
-        self.max_x_error = float(max_x_error)
-        self.max_y_error = float(max_y_error)
-        self.fallback_snap_distance = float(fallback_snap_distance_m)
+        self.calibration_path = Path(calibration_path)
         self.arena_half_extent = float(arena_half_extent_m)
+        self.horizontal_margin = float(horizontal_extrapolation_margin)
+        self.vertical_margin = float(vertical_extrapolation_margin)
+        self.layers = self._load_layers(self.calibration_path)
         self._validate()
 
     def _validate(self):
-        if not self.candidates:
-            raise ValueError("at least one object candidate point is required")
-        if self.horizontal_fov <= 0.0 or self.vertical_fov <= 0.0:
-            raise ValueError("camera fields of view must be positive")
-        if self.camera_height <= self.object_center_height:
-            raise ValueError("camera must be above the detected object center")
-        if self.max_range <= 0.0:
-            raise ValueError("max_range_m must be positive")
-        if self.max_x_error <= 0.0 or self.max_y_error <= 0.0:
-            raise ValueError("image matching tolerances must be positive")
+        if len(self.layers) < 2:
+            raise ValueError("calibration requires at least two distance layers")
+        if self.arena_half_extent <= 0.0:
+            raise ValueError("arena_half_extent_m must be positive")
+        if self.horizontal_margin < 0.0 or self.vertical_margin < 0.0:
+            raise ValueError("calibration extrapolation margins cannot be negative")
+        for forward_m, points in self.layers:
+            if forward_m <= 0.0 or len(points) < 2:
+                raise ValueError(
+                    "each calibration distance must contain at least two points"
+                )
+
+    @classmethod
+    def _load_layers(cls, path):
+        grouped = {}
+        with path.open(encoding="utf-8-sig", newline="") as stream:
+            reader = csv.DictReader(stream)
+            columns = set(reader.fieldnames or [])
+            missing = cls.REQUIRED_COLUMNS - columns
+            if missing:
+                raise ValueError(
+                    "calibration CSV is missing columns: "
+                    + ", ".join(sorted(missing))
+                )
+            for row_number, row in enumerate(reader, start=2):
+                try:
+                    point = CalibrationPoint(
+                        norm_x=float(row["norm_x"]),
+                        norm_y=float(row["norm_y"]),
+                        lateral_m=float(row["real_x_m"]),
+                        forward_m=float(row["distance_m"]),
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"invalid calibration value on CSV row {row_number}"
+                    ) from exc
+                grouped.setdefault(point.forward_m, []).append(point)
+
+        return [
+            (forward_m, sorted(points, key=lambda point: point.norm_x))
+            for forward_m, points in sorted(grouped.items())
+        ]
 
     def localize(self, image_x, image_y, robot_x, robot_y, robot_yaw):
-        image_x = float(image_x)
-        image_y = float(image_y)
-        robot_x = float(robot_x)
-        robot_y = float(robot_y)
-        robot_yaw = float(robot_yaw)
-
-        matches = []
-        for candidate in self.candidates:
-            predicted = self.predict_observation(
-                candidate.x,
-                candidate.y,
-                robot_x,
-                robot_y,
-                robot_yaw,
-            )
-            if predicted is None:
-                continue
-            predicted_x, predicted_y = predicted
-            x_error = abs(predicted_x - image_x)
-            y_error = abs(predicted_y - image_y)
-            if x_error > self.max_x_error or y_error > self.max_y_error:
-                continue
-            score = math.hypot(
-                x_error / self.max_x_error,
-                y_error / self.max_y_error,
-            )
-            matches.append((score, candidate))
-
-        if matches:
-            score, candidate = min(matches, key=lambda item: item[0])
-            return ObjectEstimate(
-                x=candidate.x,
-                y=candidate.y,
-                method="candidate_grid",
-                error=score,
-                candidate=candidate,
-            )
-
-        return self._continuous_estimate(
-            image_x,
-            image_y,
-            robot_x,
-            robot_y,
-            robot_yaw,
-        )
-
-    def predict_observation(
-        self,
-        object_x,
-        object_y,
-        robot_x,
-        robot_y,
-        robot_yaw,
-    ):
-        dx = float(object_x) - float(robot_x)
-        dy = float(object_y) - float(robot_y)
-        distance = math.hypot(dx, dy)
-        if distance <= 1e-6 or distance > self.max_range:
+        camera_estimate = self.interpolate_camera_position(image_x, image_y)
+        if camera_estimate is None:
             return None
+        lateral_m, forward_m, interpolation_span_m = camera_estimate
 
-        relative_bearing = normalize_angle(math.atan2(dy, dx) - float(robot_yaw))
-        half_horizontal_fov = self.horizontal_fov * 0.5
-        if abs(relative_bearing) > half_horizontal_fov * 1.15:
-            return None
-
-        image_x = -math.tan(relative_bearing) / math.tan(half_horizontal_fov)
-        down_angle = math.atan2(
-            self.camera_height - self.object_center_height,
-            distance,
+        yaw = float(robot_yaw)
+        world_x = (
+            float(robot_x)
+            + forward_m * math.cos(yaw)
+            + lateral_m * math.sin(yaw)
         )
-        image_y = 0.5 + 0.5 * (
-            math.tan(down_angle - self.camera_pitch)
-            / math.tan(self.vertical_fov * 0.5)
+        world_y = (
+            float(robot_y)
+            + forward_m * math.sin(yaw)
+            - lateral_m * math.cos(yaw)
         )
-        if image_y < -0.1 or image_y > 1.1:
-            return None
-        return image_x, image_y
-
-    def _continuous_estimate(
-        self,
-        image_x,
-        image_y,
-        robot_x,
-        robot_y,
-        robot_yaw,
-    ):
-        down_angle = self.camera_pitch + math.atan(
-            (image_y * 2.0 - 1.0) * math.tan(self.vertical_fov * 0.5)
-        )
-        if down_angle <= math.radians(1.0):
-            return None
-
-        distance = (
-            self.camera_height - self.object_center_height
-        ) / math.tan(down_angle)
-        if distance <= 0.0 or distance > self.max_range:
-            return None
-
-        bearing = robot_yaw - math.atan(
-            image_x * math.tan(self.horizontal_fov * 0.5)
-        )
-        estimate_x = robot_x + distance * math.cos(bearing)
-        estimate_y = robot_y + distance * math.sin(bearing)
         if (
-            abs(estimate_x) > self.arena_half_extent
-            or abs(estimate_y) > self.arena_half_extent
+            abs(world_x) > self.arena_half_extent
+            or abs(world_y) > self.arena_half_extent
         ):
             return None
 
-        nearest = min(
-            self.candidates,
-            key=lambda point: math.hypot(
-                point.x - estimate_x,
-                point.y - estimate_y,
-            ),
-        )
-        snap_distance = math.hypot(
-            nearest.x - estimate_x,
-            nearest.y - estimate_y,
-        )
-        if snap_distance <= self.fallback_snap_distance:
-            return ObjectEstimate(
-                x=nearest.x,
-                y=nearest.y,
-                method="projected_and_snapped",
-                error=snap_distance,
-                candidate=nearest,
-            )
         return ObjectEstimate(
-            x=estimate_x,
-            y=estimate_y,
-            method="ground_projection",
-            error=0.0,
-            candidate=None,
+            x=world_x,
+            y=world_y,
+            lateral_m=lateral_m,
+            forward_m=forward_m,
+            method="calibration_interpolation",
+            interpolation_span_m=interpolation_span_m,
         )
 
+    def interpolate_camera_position(self, image_x, image_y):
+        image_x = float(image_x)
+        image_y = float(image_y)
+        samples = []
+        for forward_m, points in self.layers:
+            interpolated = self._interpolate_layer(points, image_x)
+            if interpolated is None:
+                continue
+            expected_norm_y, lateral_m = interpolated
+            samples.append(
+                LayerSample(
+                    forward_m=forward_m,
+                    expected_norm_y=expected_norm_y,
+                    lateral_m=lateral_m,
+                )
+            )
 
-def normalize_angle(angle):
-    return math.atan2(math.sin(float(angle)), math.cos(float(angle)))
+        if not samples:
+            return None
+        exact = min(samples, key=lambda sample: abs(sample.expected_norm_y - image_y))
+        if abs(exact.expected_norm_y - image_y) <= 1e-9:
+            return exact.lateral_m, exact.forward_m, 0.0
+
+        brackets = []
+        for first, second in zip(samples, samples[1:]):
+            low_y = min(first.expected_norm_y, second.expected_norm_y)
+            high_y = max(first.expected_norm_y, second.expected_norm_y)
+            if low_y <= image_y <= high_y:
+                span = abs(first.forward_m - second.forward_m)
+                brackets.append((span, first, second))
+
+        if brackets:
+            _, first, second = min(brackets, key=lambda item: item[0])
+            return self._interpolate_between_layers(first, second, image_y)
+
+        nearest = min(samples, key=lambda sample: abs(sample.expected_norm_y - image_y))
+        if abs(nearest.expected_norm_y - image_y) <= self.vertical_margin:
+            return nearest.lateral_m, nearest.forward_m, 0.0
+        return None
+
+    def _interpolate_layer(self, points, image_x):
+        minimum = points[0].norm_x
+        maximum = points[-1].norm_x
+        if image_x < minimum - self.horizontal_margin:
+            return None
+        if image_x > maximum + self.horizontal_margin:
+            return None
+
+        if image_x <= minimum:
+            first, second = points[0], points[1]
+        elif image_x >= maximum:
+            first, second = points[-2], points[-1]
+        else:
+            first = points[0]
+            second = points[1]
+            for left, right in zip(points, points[1:]):
+                if left.norm_x <= image_x <= right.norm_x:
+                    first, second = left, right
+                    break
+
+        denominator = second.norm_x - first.norm_x
+        if abs(denominator) <= 1e-12:
+            return None
+        ratio = (image_x - first.norm_x) / denominator
+        expected_y = _lerp(first.norm_y, second.norm_y, ratio)
+        lateral_m = _lerp(first.lateral_m, second.lateral_m, ratio)
+        return expected_y, lateral_m
+
+    @staticmethod
+    def _interpolate_between_layers(first, second, image_y):
+        denominator = second.expected_norm_y - first.expected_norm_y
+        if abs(denominator) <= 1e-12:
+            ratio = 0.5
+        else:
+            ratio = (image_y - first.expected_norm_y) / denominator
+        ratio = min(1.0, max(0.0, ratio))
+        lateral_m = _lerp(first.lateral_m, second.lateral_m, ratio)
+        forward_m = _lerp(first.forward_m, second.forward_m, ratio)
+        return lateral_m, forward_m, abs(second.forward_m - first.forward_m)
+
+
+def _lerp(first, second, ratio):
+    return float(first) + (float(second) - float(first)) * float(ratio)
