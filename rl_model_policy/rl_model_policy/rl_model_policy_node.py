@@ -119,7 +119,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("target_confirmation_window", 5)
         self.declare_parameter("target_confirmation_min_detections", 3)
         self.declare_parameter("target_bearing_prediction_enabled", True)
-        self.declare_parameter("avoid_timeout_s", 0.35)
+        self.declare_parameter("avoid_timeout_s", 0.25)
         self.declare_parameter("episode_length_s", 18.0)
         self.declare_parameter("pose_timeout_s", 0.5)
         self.declare_parameter("pose_observation_enabled", False)
@@ -148,10 +148,10 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("coverage_reacquire_reverse_after_s", 0.75)
         self.declare_parameter("coverage_reacquire_angular_z", 0.35)
 
-        self.declare_parameter("avoid_area_ratio", 0.35)
+        self.declare_parameter("avoid_area_ratio", 0.42)
         self.declare_parameter("avoid_center_band", 0.75)
         self.declare_parameter("avoid_center_corridor", 0.15)
-        self.declare_parameter("avoid_vfh_center_weight", 1.0)
+        self.declare_parameter("avoid_vfh_center_weight", 0.5)
         self.declare_parameter("avoid_only_if_closer_than_target", False)
         self.declare_parameter("avoid_closer_ratio", 0.85)
 
@@ -160,8 +160,8 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("max_angular_speed", 0.80)
         self.declare_parameter("speed_scale", 0.50)
         self.declare_parameter("max_linear_action_delta", 0.25)
-        self.declare_parameter("max_angular_action_delta", 0.10)
-        self.declare_parameter("action_filter_alpha", 0.50)
+        self.declare_parameter("max_angular_action_delta", 0.08)
+        self.declare_parameter("action_filter_alpha", 0.55)
         self.declare_parameter("publish_stop_when_inactive", True)
         self.declare_parameter("state_preprocessor_epsilon", 1e-8)
 

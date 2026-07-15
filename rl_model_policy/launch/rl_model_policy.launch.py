@@ -222,7 +222,7 @@ def generate_launch_description():
                     target_bearing_prediction_enabled,
                     value_type=bool,
                 ),
-                'avoid_timeout_s': 0.35,
+                'avoid_timeout_s': 0.25,
                 'episode_length_s': 18.0,
                 'pose_timeout_s': ParameterValue(pose_timeout_s, value_type=float),
                 'pose_observation_enabled': ParameterValue(
@@ -298,10 +298,10 @@ def generate_launch_description():
                     value_type=float,
                 ),
 
-                'avoid_area_ratio': 0.35,
+                'avoid_area_ratio': 0.42,
                 'avoid_center_band': 0.75,
                 'avoid_center_corridor': 0.15,
-                'avoid_vfh_center_weight': 1.0,
+                'avoid_vfh_center_weight': 0.5,
                 'avoid_only_if_closer_than_target': False,
                 'avoid_closer_ratio': 0.85,
 
@@ -311,8 +311,8 @@ def generate_launch_description():
                 'max_angular_speed': 0.80,
                 'speed_scale': speed_scale,
                 'max_linear_action_delta': 0.25,
-                'max_angular_action_delta': 0.10,
-                'action_filter_alpha': 0.50,
+                'max_angular_action_delta': 0.08,
+                'action_filter_alpha': 0.55,
                 'publish_stop_when_inactive': True,
                 'full_mission_enabled': ParameterValue(
                     full_mission_enabled,
