@@ -35,8 +35,8 @@ mission_manager_2:
     position_tolerance_m: 0.01
     distance_motion_timeout_s: 10.0
 
-    # Empty means every YOLO class is collectible. Set a comma-separated allow-list if needed.
-    target_classes: ""
+    # Only YOLO class IDs 0 and 4 are collectible by default.
+    target_classes: "0,4"
     target_min_confidence: 0.30
     target_trigger_area_ratio: 0.008
     target_trigger_height_ratio: 0.10

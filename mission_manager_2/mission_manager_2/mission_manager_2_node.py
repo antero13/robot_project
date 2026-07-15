@@ -210,7 +210,7 @@ class MissionManager2(Node):
             'lane_timeout_s': 75.0,
             'return_timeout_s': 40.0,
             'distance_motion_timeout_s': 10.0,
-            'target_classes': '',
+            'target_classes': '0,4',
             'target_min_confidence': 0.30,
             'target_trigger_area_ratio': 0.008,
             'target_trigger_height_ratio': 0.10,

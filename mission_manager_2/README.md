@@ -82,6 +82,7 @@ Edit `config/mission_manager_2.yaml` before a full-speed run.
 | `main_road_y_m` | `0.6657` | Robot-center main-road coordinate |
 | `yaw_tolerance_deg` | `1.0` | IMU turn-completion tolerance |
 | `position_tolerance_m` | `0.01` | Route arrival tolerance (1 cm) |
+| `target_classes` | `0,4` | Collectible YOLO class IDs |
 | `target_trigger_area_ratio` | `0.008` | Ignore very small/far YOLO boxes |
 | `target_trigger_height_ratio` | `0.10` | Additional far-box rejection |
 | `target_history_frames` | `5` | Number of actual YOLO frames used for voting |
@@ -98,9 +99,9 @@ stable when an object grows in the lower part of the image.
 Search and target-handling speeds remain conservative. Main-road shifts and
 returns use `0.20 m/s`.
 
-Set `target_classes` to a comma-separated allow-list if the YOLO model also
-detects objects that must not be picked. An empty value treats every class as a
-pickup target.
+The default `target_classes=0,4` collects only YOLO class IDs 0 and 4. Set a
+different comma-separated allow-list when the model labels change. An empty
+value treats every class as a pickup target.
 
 ## Runtime target and speed tuning
 
