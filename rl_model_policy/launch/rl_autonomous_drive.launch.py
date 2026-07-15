@@ -26,6 +26,10 @@ def generate_launch_description():
     publish_annotated = LaunchConfiguration("publish_annotated")
     speed_scale = LaunchConfiguration("speed_scale")
     target_timeout_s = LaunchConfiguration("target_timeout_s")
+    target_confirmation_window = LaunchConfiguration("target_confirmation_window")
+    target_confirmation_min_detections = LaunchConfiguration(
+        "target_confirmation_min_detections"
+    )
     target_bearing_prediction_enabled = LaunchConfiguration(
         "target_bearing_prediction_enabled"
     )
@@ -173,6 +177,10 @@ def generate_launch_description():
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
             "target_timeout_s": target_timeout_s,
+            "target_confirmation_window": target_confirmation_window,
+            "target_confirmation_min_detections": (
+                target_confirmation_min_detections
+            ),
             "target_bearing_prediction_enabled": target_bearing_prediction_enabled,
             "dry_run": dry_run,
             "odometry_topic": odometry_topic,
@@ -352,6 +360,16 @@ def generate_launch_description():
             "target_timeout_s",
             default_value="1.0",
             description="Keep tracking the last target through short YOLO detection gaps.",
+        ),
+        DeclareLaunchArgument(
+            "target_confirmation_window",
+            default_value="5",
+            description="Number of recent YOLO frames used to confirm a target.",
+        ),
+        DeclareLaunchArgument(
+            "target_confirmation_min_detections",
+            default_value="3",
+            description="Required target detections within the confirmation window.",
         ),
         DeclareLaunchArgument(
             "target_bearing_prediction_enabled",

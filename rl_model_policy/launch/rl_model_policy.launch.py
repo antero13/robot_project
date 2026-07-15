@@ -11,6 +11,11 @@ def generate_launch_description():
     speed_scale = LaunchConfiguration('speed_scale')
     dry_run = LaunchConfiguration('dry_run')
     target_timeout_s = LaunchConfiguration('target_timeout_s')
+    target_visibility_topic = LaunchConfiguration('target_visibility_topic')
+    target_confirmation_window = LaunchConfiguration('target_confirmation_window')
+    target_confirmation_min_detections = LaunchConfiguration(
+        'target_confirmation_min_detections'
+    )
     target_bearing_prediction_enabled = LaunchConfiguration(
         'target_bearing_prediction_enabled'
     )
@@ -136,6 +141,18 @@ def generate_launch_description():
             'coverage_turn_in_place_threshold',
             default_value='0.65',
         ),
+        DeclareLaunchArgument(
+            'target_visibility_topic',
+            default_value='/target_visible',
+        ),
+        DeclareLaunchArgument(
+            'target_confirmation_window',
+            default_value='5',
+        ),
+        DeclareLaunchArgument(
+            'target_confirmation_min_detections',
+            default_value='3',
+        ),
         DeclareLaunchArgument('coverage_max_angular_speed', default_value='1.00'),
         DeclareLaunchArgument('coverage_avoid_angular_speed', default_value='0.45'),
         DeclareLaunchArgument('coverage_avoid_linear_scale', default_value='0.70'),
@@ -182,6 +199,7 @@ def generate_launch_description():
                 'model_path': model_path,
                 'cmd_vel_topic': '/cmd_vel',
                 'target_object_topic': '/target_object',
+                'target_visibility_topic': target_visibility_topic,
                 'avoid_object_topic': '/avoid_object',
                 'avoid_objects_topic': '/avoid_objects',
                 'control_topic': '/rl_model_policy_control',
@@ -192,6 +210,14 @@ def generate_launch_description():
                 'dry_run': dry_run,
                 'timer_rate_hz': 20.0,
                 'target_timeout_s': ParameterValue(target_timeout_s, value_type=float),
+                'target_confirmation_window': ParameterValue(
+                    target_confirmation_window,
+                    value_type=int,
+                ),
+                'target_confirmation_min_detections': ParameterValue(
+                    target_confirmation_min_detections,
+                    value_type=int,
+                ),
                 'target_bearing_prediction_enabled': ParameterValue(
                     target_bearing_prediction_enabled,
                     value_type=bool,

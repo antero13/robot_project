@@ -4,7 +4,7 @@ from typing import Any
 import rclpy
 from geometry_msgs.msg import PointStamped
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 
 from .detection_geometry import bbox_to_normalized_point
 
@@ -16,6 +16,7 @@ class DetectionsToTargetNode(Node):
         self.declare_parameter("detections_topic", "/yolo/detections")
         self.declare_parameter("target_topic", "/target_object")
         self.declare_parameter("target_label_topic", "/target_label")
+        self.declare_parameter("target_visibility_topic", "/target_visible")
         self.declare_parameter("avoid_topic", "/avoid_object")
         self.declare_parameter("avoid_label_topic", "/avoid_label")
         self.declare_parameter("avoid_objects_topic", "/avoid_objects")
@@ -30,6 +31,7 @@ class DetectionsToTargetNode(Node):
         self.detections_topic = self.get_parameter("detections_topic").value
         self.target_topic = self.get_parameter("target_topic").value
         self.target_label_topic = self.get_parameter("target_label_topic").value
+        self.target_visibility_topic = self.get_parameter("target_visibility_topic").value
         self.avoid_topic = self.get_parameter("avoid_topic").value
         self.avoid_label_topic = self.get_parameter("avoid_label_topic").value
         self.avoid_objects_topic = self.get_parameter("avoid_objects_topic").value
@@ -41,6 +43,11 @@ class DetectionsToTargetNode(Node):
 
         self.target_pub = self.create_publisher(PointStamped, self.target_topic, 10)
         self.target_label_pub = self.create_publisher(String, self.target_label_topic, 10)
+        self.target_visibility_pub = self.create_publisher(
+            Bool,
+            self.target_visibility_topic,
+            10,
+        )
         self.avoid_pub = self.create_publisher(PointStamped, self.avoid_topic, 10)
         self.avoid_label_pub = self.create_publisher(String, self.avoid_label_topic, 10)
         self.avoid_objects_pub = self.create_publisher(String, self.avoid_objects_topic, 10)
@@ -91,6 +98,9 @@ class DetectionsToTargetNode(Node):
 
         avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
         target_candidate = self.select_target_candidate(target_candidates)
+        visibility_msg = Bool()
+        visibility_msg.data = target_candidate is not None
+        self.target_visibility_pub.publish(visibility_msg)
         self.publish_candidate(target_candidate, self.target_pub, self.target_label_pub)
         self.publish_best(avoid_candidates, self.avoid_pub, self.avoid_label_pub)
         self.publish_avoid_objects(avoid_candidates, header)

@@ -1,5 +1,6 @@
 import json
 import math
+from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,7 +10,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
 from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 
 from rl_model_policy.coverage_controller import (
     CoverageController,
@@ -36,6 +37,7 @@ from rl_model_policy.observation import (
 )
 from rl_model_policy.pickup_trigger import pickup_is_ready
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
+from rl_model_policy.target_confirmation import target_is_confirmed
 
 try:
     import torch
@@ -101,6 +103,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("target_object_topic", "/target_object")
         self.declare_parameter("target_label_topic", "/target_label")
+        self.declare_parameter("target_visibility_topic", "/target_visible")
         self.declare_parameter("avoid_object_topic", "/avoid_object")
         self.declare_parameter("avoid_objects_topic", "/avoid_objects")
         self.declare_parameter("control_topic", "/rl_model_policy_control")
@@ -113,6 +116,8 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("dry_run", False)
         self.declare_parameter("timer_rate_hz", 20.0)
         self.declare_parameter("target_timeout_s", 1.0)
+        self.declare_parameter("target_confirmation_window", 5)
+        self.declare_parameter("target_confirmation_min_detections", 3)
         self.declare_parameter("target_bearing_prediction_enabled", True)
         self.declare_parameter("avoid_timeout_s", 0.5)
         self.declare_parameter("episode_length_s", 18.0)
@@ -202,6 +207,20 @@ class RLModelPolicyNode(Node):
         self.latest_target_time = None
         self.latest_target_label = None
         self.latest_target_label_time = None
+        self.target_confirmation_window = int(
+            self.get_parameter("target_confirmation_window").value
+        )
+        self.target_confirmation_min_detections = int(
+            self.get_parameter("target_confirmation_min_detections").value
+        )
+        target_is_confirmed(
+            [],
+            self.target_confirmation_window,
+            self.target_confirmation_min_detections,
+        )
+        self.target_visibility_history = deque(
+            maxlen=self.target_confirmation_window
+        )
         self.latest_avoid = None
         self.latest_avoid_time = None
         self.latest_avoid_objects = []
@@ -272,6 +291,12 @@ class RLModelPolicyNode(Node):
             String,
             self.get_parameter("target_label_topic").value,
             self.target_label_callback,
+            10,
+        )
+        self.target_visibility_sub = self.create_subscription(
+            Bool,
+            self.get_parameter("target_visibility_topic").value,
+            self.target_visibility_callback,
             10,
         )
         self.avoid_sub = self.create_subscription(
@@ -430,6 +455,9 @@ class RLModelPolicyNode(Node):
         self.latest_target_label = msg.data.strip() or None
         self.latest_target_label_time = self.get_clock().now()
 
+    def target_visibility_callback(self, msg):
+        self.target_visibility_history.append(bool(msg.data))
+
     def odometry_callback(self, msg):
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
@@ -488,6 +516,7 @@ class RLModelPolicyNode(Node):
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
+            self.target_visibility_history.clear()
             self.motion_paused = False
             self.set_control_mode(self.MODE_COVERAGE_SEARCH)
             self.change_grab_state(self.GRAB_TRACKING)
@@ -524,6 +553,7 @@ class RLModelPolicyNode(Node):
             self.coverage_command = None
             self.had_visible_target = False
             self.target_lost_started_at = None
+            self.target_visibility_history.clear()
             self.motion_paused = False
             self.pickup_label = None
             self.mission_waypoint = None
@@ -569,8 +599,16 @@ class RLModelPolicyNode(Node):
         )
         if collecting:
             self.update_target_history(target)
+        target_control_ready = (
+            target is not None
+            and (
+                self.control_mode == self.MODE_TRACK_TARGET
+                or self.target_confirmation_is_met()
+            )
+        )
+        confirmed_target = target if target_control_ready else None
         grab_cmd = (
-            self.update_grab_sequence(target)
+            self.update_grab_sequence(confirmed_target)
             if self.active and collecting and not self.motion_paused
             else None
         )
@@ -592,7 +630,11 @@ class RLModelPolicyNode(Node):
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
-        elif self.active and target is not None and self.policy is not None:
+        elif (
+            self.active
+            and confirmed_target is not None
+            and self.policy is not None
+        ):
             self.set_control_mode(self.MODE_TRACK_TARGET)
             self.raw_action = self.infer_action(obs)
             self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
@@ -939,6 +981,13 @@ class RLModelPolicyNode(Node):
         self.had_visible_target = False
         self.target_lost_started_at = None
         return False
+
+    def target_confirmation_is_met(self):
+        return target_is_confirmed(
+            self.target_visibility_history,
+            self.target_confirmation_window,
+            self.target_confirmation_min_detections,
+        )
 
     def target_lost_age_s(self):
         if self.target_lost_started_at is None:
@@ -1307,6 +1356,13 @@ class RLModelPolicyNode(Node):
                 "grab_state": self.grab_state,
                 "gripper_enabled": bool(self.get_parameter("gripper_enabled").value),
                 "target_label": self.current_target_label(),
+                "target_confirmation": {
+                    "detections": sum(self.target_visibility_history),
+                    "frames": len(self.target_visibility_history),
+                    "window": self.target_confirmation_window,
+                    "required": self.target_confirmation_min_detections,
+                    "confirmed": self.target_confirmation_is_met(),
+                },
                 "pickup_label": self.pickup_label,
                 "stored_objects": list(self.mission.onboard_objects),
                 "delivered_objects": list(self.mission.delivered_objects),
