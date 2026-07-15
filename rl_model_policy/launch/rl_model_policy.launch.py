@@ -12,9 +12,13 @@ def generate_launch_description():
     dry_run = LaunchConfiguration('dry_run')
     target_timeout_s = LaunchConfiguration('target_timeout_s')
     target_visibility_topic = LaunchConfiguration('target_visibility_topic')
+    target_center_y_topic = LaunchConfiguration('target_center_y_topic')
     target_confirmation_window = LaunchConfiguration('target_confirmation_window')
     target_confirmation_min_detections = LaunchConfiguration(
         'target_confirmation_min_detections'
+    )
+    target_activation_center_y_min = LaunchConfiguration(
+        'target_activation_center_y_min'
     )
     target_bearing_prediction_enabled = LaunchConfiguration(
         'target_bearing_prediction_enabled'
@@ -47,6 +51,7 @@ def generate_launch_description():
     coverage_avoid_linear_scale = LaunchConfiguration(
         'coverage_avoid_linear_scale'
     )
+    coverage_rejoin_speed = LaunchConfiguration('coverage_rejoin_speed')
     coverage_reacquire_duration_s = LaunchConfiguration('coverage_reacquire_duration_s')
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
         'coverage_reacquire_reverse_after_s'
@@ -75,6 +80,7 @@ def generate_launch_description():
     storage_main_road_y = LaunchConfiguration('storage_main_road_y')
     storage_staging_x = LaunchConfiguration('storage_staging_x')
     storage_staging_y = LaunchConfiguration('storage_staging_y')
+    storage_exit_y = LaunchConfiguration('storage_exit_y')
     storage_center_x = LaunchConfiguration('storage_center_x')
     storage_center_y = LaunchConfiguration('storage_center_y')
     storage_entry_yaw_deg = LaunchConfiguration('storage_entry_yaw_deg')
@@ -95,7 +101,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'speed_scale',
-            default_value='0.50',
+            default_value='0.75',
             description='Scale applied to learned linear/angular velocity commands.',
         ),
         DeclareLaunchArgument(
@@ -146,6 +152,14 @@ def generate_launch_description():
             default_value='/target_visible',
         ),
         DeclareLaunchArgument(
+            'target_center_y_topic',
+            default_value='/target_center_y',
+        ),
+        DeclareLaunchArgument(
+            'target_activation_center_y_min',
+            default_value='0.30',
+        ),
+        DeclareLaunchArgument(
             'target_confirmation_window',
             default_value='5',
         ),
@@ -156,6 +170,7 @@ def generate_launch_description():
         DeclareLaunchArgument('coverage_max_angular_speed', default_value='1.00'),
         DeclareLaunchArgument('coverage_avoid_angular_speed', default_value='0.45'),
         DeclareLaunchArgument('coverage_avoid_linear_scale', default_value='0.70'),
+        DeclareLaunchArgument('coverage_rejoin_speed', default_value='0.20'),
         DeclareLaunchArgument('coverage_reacquire_duration_s', default_value='1.5'),
         DeclareLaunchArgument(
             'coverage_reacquire_reverse_after_s',
@@ -170,6 +185,7 @@ def generate_launch_description():
         DeclareLaunchArgument('storage_main_road_y', default_value='-1.3343'),
         DeclareLaunchArgument('storage_staging_x', default_value='-1.75'),
         DeclareLaunchArgument('storage_staging_y', default_value='-1.25'),
+        DeclareLaunchArgument('storage_exit_y', default_value='-1.0'),
         DeclareLaunchArgument('storage_center_x', default_value='-1.75'),
         DeclareLaunchArgument('storage_center_y', default_value='-1.75'),
         DeclareLaunchArgument('storage_entry_yaw_deg', default_value='-90.0'),
@@ -187,7 +203,7 @@ def generate_launch_description():
         DeclareLaunchArgument('grab_area_ratio', default_value='0.70'),
         DeclareLaunchArgument('grab_detection_timeout_s', default_value='0.25'),
         DeclareLaunchArgument('final_forward_linear_x', default_value='0.20'),
-        DeclareLaunchArgument('final_forward_duration_s', default_value='1.0'),
+        DeclareLaunchArgument('final_forward_duration_s', default_value='1.2'),
         DeclareLaunchArgument('grab_duration_s', default_value='1.0'),
         DeclareLaunchArgument('stop_after_grab', default_value='false'),
         Node(
@@ -200,6 +216,7 @@ def generate_launch_description():
                 'cmd_vel_topic': '/cmd_vel',
                 'target_object_topic': '/target_object',
                 'target_visibility_topic': target_visibility_topic,
+                'target_center_y_topic': target_center_y_topic,
                 'avoid_object_topic': '/avoid_object',
                 'avoid_objects_topic': '/avoid_objects',
                 'control_topic': '/rl_model_policy_control',
@@ -217,6 +234,10 @@ def generate_launch_description():
                 'target_confirmation_min_detections': ParameterValue(
                     target_confirmation_min_detections,
                     value_type=int,
+                ),
+                'target_activation_center_y_min': ParameterValue(
+                    target_activation_center_y_min,
+                    value_type=float,
                 ),
                 'target_bearing_prediction_enabled': ParameterValue(
                     target_bearing_prediction_enabled,
@@ -285,6 +306,10 @@ def generate_launch_description():
                     coverage_avoid_linear_scale,
                     value_type=float,
                 ),
+                'coverage_rejoin_speed': ParameterValue(
+                    coverage_rejoin_speed,
+                    value_type=float,
+                ),
                 'coverage_reacquire_duration_s': ParameterValue(
                     coverage_reacquire_duration_s,
                     value_type=float,
@@ -341,6 +366,10 @@ def generate_launch_description():
                 ),
                 'storage_staging_y': ParameterValue(
                     storage_staging_y,
+                    value_type=float,
+                ),
+                'storage_exit_y': ParameterValue(
+                    storage_exit_y,
                     value_type=float,
                 ),
                 'storage_center_x': ParameterValue(

@@ -226,9 +226,22 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   coverage_reacquire_duration_s:=1.5 \
   coverage_min_x:=-0.75 coverage_max_x:=1.25 \
   coverage_avoid_linear_scale:=0.70 \
+  coverage_rejoin_speed:=0.20 \
   coverage_turn_in_place_threshold:=0.65 \
+  target_activation_center_y_min:=0.30 \
   camera_horizontal_fov_deg:=80.0
 ```
+
+A newly detected target can interrupt coverage only after its normalized bbox
+center y reaches `target_activation_center_y_min`. The default `0.30` is about
+0.6 m in the measured camera calibration. Once RL tracking has started, this
+gate is not reapplied, so detection jitter cannot bounce the controller back
+into coverage.
+
+After a successful pickup, a scan leg first enters `ALIGN_REJOIN_LANE`, rotates
+in place toward `(lane_x, current_robot_y)`, and then drives straight in
+`REJOIN_LANE`. It resumes the interrupted up/down scan only after reaching that
+same-y lane point.
 
 ## Automatic pickup
 
@@ -249,7 +262,7 @@ open position: 1000
 closed position: 300
 grab center tolerance: 0.18
 grab area ratio: 0.70
-final forward: 0.20 m/s for 1.0 s
+final forward: 0.20 m/s for 1.2 s
 stop after grab: false
 ```
 
@@ -263,7 +276,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   gripper_closed_position:=300 \
   grab_area_ratio:=0.70 \
   final_forward_linear_x:=0.20 \
-  final_forward_duration_s:=1.0
+  final_forward_duration_s:=1.2
 ```
 
 Monitor the pickup state:
@@ -337,14 +350,16 @@ odometry waypoints to the lower-left Storage Zone. With 30 seconds remaining it
 also returns whenever at least one object is onboard. An empty robot continues
 searching until it picks an object or the 180 second match expires.
 
-Inside storage the gripper opens, the robot reverses back to the staging point,
-and the gripper closes before collection resumes. The default centered-frame
+Inside storage the gripper opens, the robot reverses to a dedicated exit point,
+and the gripper closes before collection resumes. The exit is 0.75 m from the
+storage center, 1.5 times the former 0.50 m path. The default centered-frame
 waypoints are:
 
 ```text
 main road y: -1.3343 m
 storage staging: (-1.75, -1.25) m
 storage center:  (-1.75, -1.75) m
+storage exit y:  -1.00 m
 entry heading:   -90 deg
 ```
 
@@ -355,5 +370,6 @@ inside the 40 cm Storage Zone:
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_staging_x:=-1.75 storage_staging_y:=-1.25 \
   storage_center_x:=-1.75 storage_center_y:=-1.75 \
+  storage_exit_y:=-1.0 \
   storage_entry_yaw_deg:=-90.0
 ```

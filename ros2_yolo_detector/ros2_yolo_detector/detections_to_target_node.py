@@ -4,7 +4,7 @@ from typing import Any
 import rclpy
 from geometry_msgs.msg import PointStamped
 from rclpy.node import Node
-from std_msgs.msg import Bool, String
+from std_msgs.msg import Bool, Float32, String
 
 from .detection_geometry import bbox_to_normalized_point
 
@@ -17,6 +17,7 @@ class DetectionsToTargetNode(Node):
         self.declare_parameter("target_topic", "/target_object")
         self.declare_parameter("target_label_topic", "/target_label")
         self.declare_parameter("target_visibility_topic", "/target_visible")
+        self.declare_parameter("target_center_y_topic", "/target_center_y")
         self.declare_parameter("avoid_topic", "/avoid_object")
         self.declare_parameter("avoid_label_topic", "/avoid_label")
         self.declare_parameter("avoid_objects_topic", "/avoid_objects")
@@ -32,6 +33,7 @@ class DetectionsToTargetNode(Node):
         self.target_topic = self.get_parameter("target_topic").value
         self.target_label_topic = self.get_parameter("target_label_topic").value
         self.target_visibility_topic = self.get_parameter("target_visibility_topic").value
+        self.target_center_y_topic = self.get_parameter("target_center_y_topic").value
         self.avoid_topic = self.get_parameter("avoid_topic").value
         self.avoid_label_topic = self.get_parameter("avoid_label_topic").value
         self.avoid_objects_topic = self.get_parameter("avoid_objects_topic").value
@@ -46,6 +48,11 @@ class DetectionsToTargetNode(Node):
         self.target_visibility_pub = self.create_publisher(
             Bool,
             self.target_visibility_topic,
+            10,
+        )
+        self.target_center_y_pub = self.create_publisher(
+            Float32,
+            self.target_center_y_topic,
             10,
         )
         self.avoid_pub = self.create_publisher(PointStamped, self.avoid_topic, 10)
@@ -102,6 +109,7 @@ class DetectionsToTargetNode(Node):
         visibility_msg.data = target_candidate is not None
         self.target_visibility_pub.publish(visibility_msg)
         self.publish_candidate(target_candidate, self.target_pub, self.target_label_pub)
+        self.publish_target_center_y(target_candidate)
         self.publish_best(avoid_candidates, self.avoid_pub, self.avoid_label_pub)
         self.publish_avoid_objects(avoid_candidates, header)
 
@@ -197,6 +205,13 @@ class DetectionsToTargetNode(Node):
         label_msg = String()
         label_msg.data = class_name
         label_pub.publish(label_msg)
+
+    def publish_target_center_y(self, candidate) -> None:
+        if candidate is None:
+            return
+        center_y_msg = Float32()
+        center_y_msg.data = float(candidate[4])
+        self.target_center_y_pub.publish(center_y_msg)
 
     def publish_avoid_objects(self, candidates, header) -> None:
         payload = {

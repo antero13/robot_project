@@ -93,12 +93,13 @@ camera observation rather than being adjusted from odometry.
 
 When no target has ever been seen, the node immediately enters
 `COVERAGE_SEARCH`. After losing a target it first enters `LOCAL_REACQUIRE` for
-0.8 seconds, then resumes coverage. A new target immediately switches control
-back to `TRACK_TARGET`. Coverage uses `/odom` independently of the network's
+0.8 seconds, then resumes coverage. A new target switches control back to
+`TRACK_TARGET` only when its normalized bbox center y is at least `0.30`
+(approximately 0.6 m in the measured calibration). Coverage uses `/odom` independently of the network's
 10-value observation contract; stale odometry produces `WAITING_FOR_POSE` and
 a zero velocity command.
 
-The default coverage route scans `x = 1.25, 0.25, -0.75, -1.75 m` from the
+The default coverage route scans `x = 1.25, 0.25, -0.75 m` from the
 lower main road at `y = -1.3343 m` up to `y = 1.0 m`. Tune it from the launch
 command when the real arena alignment differs:
 
@@ -137,8 +138,9 @@ ros2 run rqt_image_view rqt_image_view /yolo/annotated_image
 ```
 
 The yellow label separates `rl_y` (bbox bottom, used by RL) from `c_y` (bbox
-center, used only by CSV map calibration). Neither value is a physical meter
-coordinate, and calibrated world positions are never fed into the policy.
+center, used by CSV map calibration and the coverage-to-RL admission gate).
+Neither value is a physical meter coordinate, and calibrated world positions
+are never fed into the policy.
 
 ## Low-Speed Robot Test
 

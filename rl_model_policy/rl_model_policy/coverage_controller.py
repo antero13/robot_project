@@ -109,6 +109,7 @@ class CoverageController:
         avoid_danger_threshold=0.20,
         avoid_angular_speed=0.35,
         avoid_linear_scale=0.65,
+        rejoin_speed=0.20,
     ):
         self.legs = list(legs)
         if not self.legs:
@@ -121,6 +122,7 @@ class CoverageController:
         self.avoid_danger_threshold = float(avoid_danger_threshold)
         self.avoid_angular_speed = float(avoid_angular_speed)
         self.avoid_linear_scale = float(avoid_linear_scale)
+        self.rejoin_speed = float(rejoin_speed)
         if self.waypoint_tolerance <= 0.0:
             raise ValueError("waypoint_tolerance must be positive")
         if self.heading_tolerance <= 0.0:
@@ -135,19 +137,37 @@ class CoverageController:
             raise ValueError("avoidance controller values are invalid")
         if not 0.0 < self.avoid_linear_scale <= 1.0:
             raise ValueError("avoid_linear_scale must be in (0, 1]")
+        if self.rejoin_speed <= 0.0:
+            raise ValueError("rejoin_speed must be positive")
 
         self.leg_index = 0
         self.cycle_count = 0
         self.last_avoid_direction = 1.0
+        self.rejoin_target_y = None
 
     def reset(self):
         self.leg_index = 0
         self.cycle_count = 0
         self.last_avoid_direction = 1.0
+        self.rejoin_target_y = None
 
     def cancel_avoidance(self):
         # Continuous steering has no persistent avoidance state to reset.
         return None
+
+    @property
+    def rejoin_active(self):
+        return self.rejoin_target_y is not None
+
+    def begin_rejoin(self, robot_y):
+        if not self.current_leg.phase.startswith("SCAN_LANE"):
+            self.rejoin_target_y = None
+            return False
+        self.rejoin_target_y = float(robot_y)
+        return True
+
+    def cancel_rejoin(self):
+        self.rejoin_target_y = None
 
     @property
     def current_leg(self):
@@ -165,6 +185,8 @@ class CoverageController:
         robot_x = float(robot_x)
         robot_y = float(robot_y)
         robot_yaw = float(robot_yaw)
+        if self.rejoin_active:
+            return self._rejoin_command(robot_x, robot_y, robot_yaw)
         self._advance_reached_legs(robot_x, robot_y)
         leg = self.current_leg
 
@@ -222,6 +244,39 @@ class CoverageController:
             phase = "CURVE_AVOID_LEFT" if direction > 0.0 else "CURVE_AVOID_RIGHT"
         return self._make_command(linear_x, angular_z, phase)
 
+    def _rejoin_command(self, robot_x, robot_y, robot_yaw):
+        target_x = self.current_leg.target_x
+        target_y = self.rejoin_target_y
+        dx = target_x - robot_x
+        dy = target_y - robot_y
+        distance = math.hypot(dx, dy)
+        if distance <= self.waypoint_tolerance:
+            self.rejoin_target_y = None
+            return self.command(robot_x, robot_y, robot_yaw)
+
+        desired_yaw = math.atan2(dy, dx)
+        heading_error = normalize_angle(desired_yaw - robot_yaw)
+        angular_z = clamp(
+            self.heading_gain * heading_error,
+            -self.max_angular_speed,
+            self.max_angular_speed,
+        )
+        if abs(heading_error) > self.heading_tolerance:
+            return self._make_rejoin_command(
+                0.0,
+                angular_z,
+                "ALIGN_REJOIN_LANE",
+                target_x,
+                target_y,
+            )
+        return self._make_rejoin_command(
+            self.rejoin_speed,
+            angular_z,
+            "REJOIN_LANE",
+            target_x,
+            target_y,
+        )
+
     def _advance_reached_legs(self, robot_x, robot_y):
         checked = 0
         while checked < len(self.legs):
@@ -254,6 +309,24 @@ class CoverageController:
             leg_index=self.leg_index,
             waypoint_x=leg.target_x,
             waypoint_y=leg.target_y,
+            cycle_count=self.cycle_count,
+        )
+
+    def _make_rejoin_command(
+        self,
+        linear_x,
+        angular_z,
+        phase,
+        waypoint_x,
+        waypoint_y,
+    ):
+        return CoverageCommand(
+            linear_x=float(linear_x),
+            angular_z=float(angular_z),
+            phase=str(phase),
+            leg_index=self.leg_index,
+            waypoint_x=float(waypoint_x),
+            waypoint_y=float(waypoint_y),
             cycle_count=self.cycle_count,
         )
 

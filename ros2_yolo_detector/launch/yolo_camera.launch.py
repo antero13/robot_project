@@ -26,6 +26,10 @@ def generate_launch_description():
                 "target_visibility_topic",
                 default_value="/target_visible",
             ),
+            DeclareLaunchArgument(
+                "target_center_y_topic",
+                default_value="/target_center_y",
+            ),
             DeclareLaunchArgument("avoid_topic", default_value="/avoid_object"),
             DeclareLaunchArgument("avoid_label_topic", default_value="/avoid_label"),
             DeclareLaunchArgument("avoid_objects_topic", default_value="/avoid_objects"),
@@ -134,6 +138,9 @@ def generate_launch_description():
                         "target_label_topic": LaunchConfiguration("target_label_topic"),
                         "target_visibility_topic": LaunchConfiguration(
                             "target_visibility_topic"
+                        ),
+                        "target_center_y_topic": LaunchConfiguration(
+                            "target_center_y_topic"
                         ),
                         "avoid_topic": LaunchConfiguration("avoid_topic"),
                         "avoid_label_topic": LaunchConfiguration("avoid_label_topic"),

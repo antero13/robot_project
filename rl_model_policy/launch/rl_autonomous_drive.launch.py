@@ -24,6 +24,7 @@ def generate_launch_description():
     avoid_classes = LaunchConfiguration("avoid_classes")
     confidence = LaunchConfiguration("confidence")
     publish_annotated = LaunchConfiguration("publish_annotated")
+    correction_enabled = LaunchConfiguration("correction_enabled")
     yolo_imgsz = LaunchConfiguration("yolo_imgsz")
     correction_backend = LaunchConfiguration("correction_backend")
     correction_device = LaunchConfiguration("correction_device")
@@ -35,6 +36,9 @@ def generate_launch_description():
     target_confirmation_window = LaunchConfiguration("target_confirmation_window")
     target_confirmation_min_detections = LaunchConfiguration(
         "target_confirmation_min_detections"
+    )
+    target_activation_center_y_min = LaunchConfiguration(
+        "target_activation_center_y_min"
     )
     target_bearing_prediction_enabled = LaunchConfiguration(
         "target_bearing_prediction_enabled"
@@ -78,6 +82,7 @@ def generate_launch_description():
     coverage_avoid_linear_scale = LaunchConfiguration(
         "coverage_avoid_linear_scale"
     )
+    coverage_rejoin_speed = LaunchConfiguration("coverage_rejoin_speed")
     coverage_reacquire_duration_s = LaunchConfiguration("coverage_reacquire_duration_s")
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
         "coverage_reacquire_reverse_after_s"
@@ -114,6 +119,7 @@ def generate_launch_description():
     storage_main_road_y = LaunchConfiguration("storage_main_road_y")
     storage_staging_x = LaunchConfiguration("storage_staging_x")
     storage_staging_y = LaunchConfiguration("storage_staging_y")
+    storage_exit_y = LaunchConfiguration("storage_exit_y")
     storage_center_x = LaunchConfiguration("storage_center_x")
     storage_center_y = LaunchConfiguration("storage_center_y")
     storage_entry_yaw_deg = LaunchConfiguration("storage_entry_yaw_deg")
@@ -143,6 +149,7 @@ def generate_launch_description():
             "avoid_classes": avoid_classes,
             "confidence": confidence,
             "publish_annotated": publish_annotated,
+            "correction_enabled": correction_enabled,
             "imgsz": yolo_imgsz,
             "correction_backend": correction_backend,
             "correction_device": correction_device,
@@ -191,6 +198,7 @@ def generate_launch_description():
             "target_confirmation_min_detections": (
                 target_confirmation_min_detections
             ),
+            "target_activation_center_y_min": target_activation_center_y_min,
             "target_bearing_prediction_enabled": target_bearing_prediction_enabled,
             "dry_run": dry_run,
             "odometry_topic": odometry_topic,
@@ -215,6 +223,7 @@ def generate_launch_description():
             "coverage_max_angular_speed": coverage_max_angular_speed,
             "coverage_avoid_angular_speed": coverage_avoid_angular_speed,
             "coverage_avoid_linear_scale": coverage_avoid_linear_scale,
+            "coverage_rejoin_speed": coverage_rejoin_speed,
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
             "coverage_reacquire_reverse_after_s": (
                 coverage_reacquire_reverse_after_s
@@ -241,6 +250,7 @@ def generate_launch_description():
             "storage_main_road_y": storage_main_road_y,
             "storage_staging_x": storage_staging_x,
             "storage_staging_y": storage_staging_y,
+            "storage_exit_y": storage_exit_y,
             "storage_center_x": storage_center_x,
             "storage_center_y": storage_center_y,
             "storage_entry_yaw_deg": storage_entry_yaw_deg,
@@ -365,11 +375,12 @@ def generate_launch_description():
         DeclareLaunchArgument("avoid_classes", default_value=""),
         DeclareLaunchArgument("confidence", default_value="0.25"),
         DeclareLaunchArgument("publish_annotated", default_value="false"),
+        DeclareLaunchArgument("correction_enabled", default_value="true"),
         DeclareLaunchArgument("yolo_imgsz", default_value="800"),
         DeclareLaunchArgument("correction_backend", default_value="auto"),
         DeclareLaunchArgument("correction_device", default_value="cuda:0"),
         DeclareLaunchArgument("yolo_performance_log_interval_s", default_value="5.0"),
-        DeclareLaunchArgument("speed_scale", default_value="0.50"),
+        DeclareLaunchArgument("speed_scale", default_value="0.75"),
         DeclareLaunchArgument(
             "target_timeout_s",
             default_value="1.0",
@@ -384,6 +395,14 @@ def generate_launch_description():
             "target_confirmation_min_detections",
             default_value="3",
             description="Required target detections within the confirmation window.",
+        ),
+        DeclareLaunchArgument(
+            "target_activation_center_y_min",
+            default_value="0.30",
+            description=(
+                "Minimum normalized bbox-center y required before a new target "
+                "can interrupt coverage and enter RL tracking."
+            ),
         ),
         DeclareLaunchArgument(
             "target_bearing_prediction_enabled",
@@ -451,6 +470,7 @@ def generate_launch_description():
         DeclareLaunchArgument("coverage_max_angular_speed", default_value="1.00"),
         DeclareLaunchArgument("coverage_avoid_angular_speed", default_value="0.45"),
         DeclareLaunchArgument("coverage_avoid_linear_scale", default_value="0.70"),
+        DeclareLaunchArgument("coverage_rejoin_speed", default_value="0.20"),
         DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="1.5"),
         DeclareLaunchArgument(
             "coverage_reacquire_reverse_after_s",
@@ -480,6 +500,7 @@ def generate_launch_description():
         DeclareLaunchArgument("storage_main_road_y", default_value="-1.3343"),
         DeclareLaunchArgument("storage_staging_x", default_value="-1.75"),
         DeclareLaunchArgument("storage_staging_y", default_value="-1.25"),
+        DeclareLaunchArgument("storage_exit_y", default_value="-1.0"),
         DeclareLaunchArgument("storage_center_x", default_value="-1.75"),
         DeclareLaunchArgument("storage_center_y", default_value="-1.75"),
         DeclareLaunchArgument("storage_entry_yaw_deg", default_value="-90.0"),
@@ -500,7 +521,7 @@ def generate_launch_description():
         DeclareLaunchArgument("grab_area_ratio", default_value="0.70"),
         DeclareLaunchArgument("grab_detection_timeout_s", default_value="0.25"),
         DeclareLaunchArgument("final_forward_linear_x", default_value="0.20"),
-        DeclareLaunchArgument("final_forward_duration_s", default_value="1.0"),
+        DeclareLaunchArgument("final_forward_duration_s", default_value="1.2"),
         DeclareLaunchArgument("grab_duration_s", default_value="1.0"),
         DeclareLaunchArgument("stop_after_grab", default_value="false"),
         DeclareLaunchArgument(

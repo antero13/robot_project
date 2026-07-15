@@ -143,6 +143,40 @@ class CoverageControllerTest(unittest.TestCase):
 
         self.assertEqual(controller.leg_index, 4)
 
+    def test_rejoin_rotates_then_drives_to_current_lane_at_captured_y(self):
+        controller = CoverageController(make_legs(), rejoin_speed=0.16)
+        controller.leg_index = 1
+
+        self.assertTrue(controller.begin_rejoin(robot_y=-0.25))
+        aligning = controller.command(0.75, -0.25, math.pi / 2.0)
+        driving = controller.command(0.75, -0.25, 0.0)
+
+        self.assertEqual(aligning.phase, "ALIGN_REJOIN_LANE")
+        self.assertEqual(aligning.linear_x, 0.0)
+        self.assertEqual(driving.phase, "REJOIN_LANE")
+        self.assertAlmostEqual(driving.linear_x, 0.16)
+        self.assertAlmostEqual(driving.waypoint_x, 1.25)
+        self.assertAlmostEqual(driving.waypoint_y, -0.25)
+
+    def test_rejoin_completion_resumes_existing_scan_leg(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 1
+        controller.begin_rejoin(robot_y=-0.25)
+
+        command = controller.command(1.25, -0.25, math.pi / 2.0)
+
+        self.assertFalse(controller.rejoin_active)
+        self.assertEqual(command.leg_index, 1)
+        self.assertEqual(command.phase, "SCAN_LANE_UP")
+        self.assertGreater(command.linear_x, 0.0)
+
+    def test_rejoin_is_not_started_during_main_road_shift(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 3
+
+        self.assertFalse(controller.begin_rejoin(robot_y=-1.10))
+        self.assertFalse(controller.rejoin_active)
+
     def test_last_leg_wraps_to_a_new_cycle(self):
         controller = CoverageController(make_legs())
         controller.leg_index = len(controller.legs) - 1
