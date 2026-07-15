@@ -24,6 +24,12 @@ def generate_launch_description():
     avoid_classes = LaunchConfiguration("avoid_classes")
     confidence = LaunchConfiguration("confidence")
     publish_annotated = LaunchConfiguration("publish_annotated")
+    yolo_imgsz = LaunchConfiguration("yolo_imgsz")
+    correction_backend = LaunchConfiguration("correction_backend")
+    correction_device = LaunchConfiguration("correction_device")
+    yolo_performance_log_interval_s = LaunchConfiguration(
+        "yolo_performance_log_interval_s"
+    )
     speed_scale = LaunchConfiguration("speed_scale")
     target_timeout_s = LaunchConfiguration("target_timeout_s")
     target_confirmation_window = LaunchConfiguration("target_confirmation_window")
@@ -137,6 +143,10 @@ def generate_launch_description():
             "avoid_classes": avoid_classes,
             "confidence": confidence,
             "publish_annotated": publish_annotated,
+            "imgsz": yolo_imgsz,
+            "correction_backend": correction_backend,
+            "correction_device": correction_device,
+            "performance_log_interval_s": yolo_performance_log_interval_s,
         }.items(),
     )
 
@@ -355,6 +365,10 @@ def generate_launch_description():
         DeclareLaunchArgument("avoid_classes", default_value=""),
         DeclareLaunchArgument("confidence", default_value="0.25"),
         DeclareLaunchArgument("publish_annotated", default_value="false"),
+        DeclareLaunchArgument("yolo_imgsz", default_value="800"),
+        DeclareLaunchArgument("correction_backend", default_value="auto"),
+        DeclareLaunchArgument("correction_device", default_value="cuda:0"),
+        DeclareLaunchArgument("yolo_performance_log_interval_s", default_value="5.0"),
         DeclareLaunchArgument("speed_scale", default_value="0.50"),
         DeclareLaunchArgument(
             "target_timeout_s",

@@ -1,6 +1,7 @@
 # ros2_yolo_detector
 
-ROS 2 Python node for running a YOLO `best.pt` model on Jetson Nano camera images.
+ROS 2 Python node for running a YOLO `.pt` or TensorRT `.engine` model on
+Jetson camera images.
 
 Input modes:
 
@@ -82,7 +83,9 @@ ros2 launch ros2_yolo_detector v4l2_yolo_camera.launch.py \
   correction_gamma:=0.65 \
   correction_clahe_clip_limit:=1.2 \
   correction_clahe_tile_grid:=8 \
-  correction_chroma_gain:=1.3
+  correction_chroma_gain:=1.3 \
+  correction_backend:=auto \
+  correction_device:=cuda:0
 ```
 
 The YOLO node subscribes to `/image_raw` by default in this launch file. It also starts
@@ -103,9 +106,35 @@ correction_clahe_tile_grid: 8
 correction_chroma_gain: 1.3
 ```
 
-Gamma lookup data and the CLAHE object are created once when the node starts and
-reused for every frame. Disable all correction without changing the remaining
-settings by passing `correction_enabled:=false` to a launch file.
+`correction_backend:=auto` uses PyTorch and Kornia to apply gamma, LAB CLAHE,
+chroma gain, resize, and letterbox on CUDA. The corrected CUDA tensor is passed
+directly to `YOLO.predict()`, so it is not downloaded to CPU and uploaded again
+for TensorRT. Bounding boxes are transformed back to the original camera frame
+before publication. If CUDA or Kornia is unavailable, `auto` logs a warning and
+falls back to the existing OpenCV CPU correction. Use
+`correction_backend:=cuda` to fail startup instead of falling back, or
+`correction_backend:=cpu` to force the original path.
+
+Disable all correction without changing the remaining settings by passing
+`correction_enabled:=false` to a launch file.
+
+For the integrated RL launch, pass the TensorRT engine and preprocessing options
+at startup:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  yolo_model_path:=/absolute/path/to/best.engine \
+  yolo_imgsz:=800 \
+  correction_backend:=auto \
+  correction_device:=cuda:0
+```
+
+The startup log reports the selected correction backend. Install dependencies
+from `requirements.txt` before rebuilding so the CUDA path has Kornia available.
+Every five seconds the node also reports output Hz, total pipeline latency, and
+Ultralytics preprocess, inference, and postprocess latency. Set the node
+parameter `performance_log_interval_s` to `0` to disable these logs. The
+integrated RL launch exposes it as `yolo_performance_log_interval_s`.
 
 In `object_pickup_mission.launch.py`, these correction settings and `imgsz=800`
 apply only to camera1. The optional camera2 YOLO node explicitly disables image

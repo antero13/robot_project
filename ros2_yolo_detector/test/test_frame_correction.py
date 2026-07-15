@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ros2_yolo_detector.frame_correction import FrameCorrector
+from ros2_yolo_detector.frame_correction import FrameCorrector, LetterboxTransform
 
 
 class FrameCorrectorTest(unittest.TestCase):
@@ -48,6 +48,28 @@ class FrameCorrectorTest(unittest.TestCase):
             with self.subTest(settings=settings):
                 with self.assertRaises(ValueError):
                     FrameCorrector(**settings)
+
+    def test_letterbox_bbox_is_restored_to_original_coordinates(self):
+        transform = LetterboxTransform.for_square(
+            original_width=800,
+            original_height=600,
+            image_size=640,
+        )
+
+        restored = transform.to_original_bbox([80.0, 160.0, 400.0, 400.0])
+
+        self.assertEqual(transform.resized_width, 640)
+        self.assertEqual(transform.resized_height, 480)
+        self.assertEqual(transform.pad_left, 0)
+        self.assertEqual(transform.pad_top, 80)
+        np.testing.assert_allclose(restored, [100.0, 100.0, 500.0, 400.0])
+
+    def test_letterbox_bbox_is_clamped_to_original_frame(self):
+        transform = LetterboxTransform.for_square(800, 600, 640)
+
+        restored = transform.to_original_bbox([-10.0, 0.0, 700.0, 700.0])
+
+        np.testing.assert_allclose(restored, [0.0, 0.0, 800.0, 600.0])
 
 
 if __name__ == "__main__":

@@ -15,7 +15,12 @@ setup(
         (os.path.join("share", package_name, "launch"), glob("launch/*.launch.py")),
         (os.path.join("share", package_name, "models"), glob("models/*")),
     ],
-    install_requires=["setuptools", "opencv-python", "ultralytics"],
+    install_requires=[
+        "setuptools",
+        "opencv-python",
+        "ultralytics",
+        "kornia>=0.7,<0.8",
+    ],
     zip_safe=True,
     maintainer="AI ROBOT",
     maintainer_email="user@example.com",

@@ -12,7 +12,12 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Header, String
 
 from .detection_geometry import bbox_to_normalized_point
-from .frame_correction import FrameCorrector
+from .frame_correction import (
+    CudaCorrectedFrame,
+    CudaFrameCorrector,
+    FrameCorrector,
+    LetterboxTransform,
+)
 
 
 class YoloCameraNode(Node):
@@ -34,6 +39,9 @@ class YoloCameraNode(Node):
         self.declare_parameter("correction_clahe_clip_limit", 1.2)
         self.declare_parameter("correction_clahe_tile_grid", 8)
         self.declare_parameter("correction_chroma_gain", 1.3)
+        self.declare_parameter("correction_backend", "auto")
+        self.declare_parameter("correction_device", "cuda:0")
+        self.declare_parameter("performance_log_interval_s", 5.0)
         self.declare_parameter("publish_annotated", True)
         self.declare_parameter("publish_raw", False)
         self.declare_parameter("queue_size", 1)
@@ -72,6 +80,15 @@ class YoloCameraNode(Node):
         self.correction_chroma_gain = self.get_parameter(
             "correction_chroma_gain"
         ).get_parameter_value().double_value
+        self.correction_backend = self.get_parameter(
+            "correction_backend"
+        ).get_parameter_value().string_value.strip().lower()
+        self.correction_device = self.get_parameter(
+            "correction_device"
+        ).get_parameter_value().string_value.strip()
+        self.performance_log_interval_s = self.get_parameter(
+            "performance_log_interval_s"
+        ).get_parameter_value().double_value
         self.publish_annotated = self.get_parameter("publish_annotated").get_parameter_value().bool_value
         self.publish_raw = self.get_parameter("publish_raw").get_parameter_value().bool_value
         queue_size = self.get_parameter("queue_size").get_parameter_value().integer_value
@@ -91,19 +108,21 @@ class YoloCameraNode(Node):
 
         if self.imgsz <= 0:
             raise ValueError("imgsz must be greater than 0")
+        if self.performance_log_interval_s < 0:
+            raise ValueError("performance_log_interval_s must be 0 or greater")
 
         self.bridge = CvBridge()
-        self.frame_corrector = FrameCorrector(
-            enabled=self.correction_enabled,
-            gamma=self.correction_gamma,
-            clahe_clip_limit=self.correction_clahe_clip_limit,
-            clahe_tile_grid=self.correction_clahe_tile_grid,
-            chroma_gain=self.correction_chroma_gain,
-        )
+        self.frame_corrector = self._create_frame_corrector()
         self.model = self._load_model(self.model_path)
         self.camera = None
         self.camera_timer = None
         self.image_sub = None
+        self.performance_window_started = time.perf_counter()
+        self.performance_frames = 0
+        self.performance_pipeline_s = 0.0
+        self.performance_preprocess_ms = 0.0
+        self.performance_inference_ms = 0.0
+        self.performance_postprocess_ms = 0.0
 
         self.detections_pub = self.create_publisher(String, self.detections_topic, queue_size)
         self.annotated_pub = None
@@ -130,10 +149,14 @@ class YoloCameraNode(Node):
         else:
             raise ValueError("input_mode must be either 'topic' or 'camera'")
 
+        active_backend = (
+            "cuda" if isinstance(self.frame_corrector, CudaFrameCorrector) else "cpu"
+        )
         self.get_logger().info(f"YOLO model loaded: {self.model_path}")
         self.get_logger().info(
             "Inference preprocessing: "
             f"imgsz={self.imgsz}, enabled={self.correction_enabled}, "
+            f"backend={active_backend}, device={self.correction_device}, "
             f"gamma={self.correction_gamma}, "
             f"clahe_clip_limit={self.correction_clahe_clip_limit}, "
             f"clahe_tile_grid={self.correction_clahe_tile_grid}, "
@@ -145,6 +168,37 @@ class YoloCameraNode(Node):
             self.get_logger().info(f"Publishing annotated images: {self.annotated_topic}")
         if self.raw_pub is not None:
             self.get_logger().info(f"Publishing raw camera images: {self.raw_topic}")
+
+    def _create_frame_corrector(self) -> Any:
+        cpu_corrector = FrameCorrector(
+            enabled=self.correction_enabled,
+            gamma=self.correction_gamma,
+            clahe_clip_limit=self.correction_clahe_clip_limit,
+            clahe_tile_grid=self.correction_clahe_tile_grid,
+            chroma_gain=self.correction_chroma_gain,
+        )
+        if self.correction_backend not in ("auto", "cuda", "cpu"):
+            raise ValueError("correction_backend must be auto, cuda, or cpu")
+        if not self.correction_enabled or self.correction_backend == "cpu":
+            return cpu_corrector
+
+        try:
+            return CudaFrameCorrector(
+                image_size=self.imgsz,
+                device=self.correction_device,
+                enabled=True,
+                gamma=self.correction_gamma,
+                clahe_clip_limit=self.correction_clahe_clip_limit,
+                clahe_tile_grid=self.correction_clahe_tile_grid,
+                chroma_gain=self.correction_chroma_gain,
+            )
+        except (RuntimeError, ValueError) as exc:
+            if self.correction_backend == "cuda":
+                raise
+            self.get_logger().warning(
+                f"CUDA correction unavailable; using CPU correction: {exc}"
+            )
+            return cpu_corrector
 
     def _load_model(self, model_path: str) -> Any:
         try:
@@ -242,9 +296,16 @@ class YoloCameraNode(Node):
         self._run_inference(frame, header)
 
     def _run_inference(self, frame: Any, header: Header) -> None:
+        pipeline_started = time.perf_counter()
         image_height, image_width = frame.shape[:2]
+        transform = None
         try:
-            inference_frame = self.frame_corrector.apply(frame)
+            corrected = self.frame_corrector.apply(frame)
+            if isinstance(corrected, CudaCorrectedFrame):
+                inference_frame = corrected.tensor
+                transform = corrected.transform
+            else:
+                inference_frame = corrected
             inference_kwargs = {
                 "source": inference_frame,
                 "conf": self.confidence,
@@ -261,11 +322,19 @@ class YoloCameraNode(Node):
             return
 
         result = results[0] if results else None
-        detections = self._result_to_detections(result) if result is not None else []
+        detections = (
+            self._result_to_detections(result, transform)
+            if result is not None
+            else []
+        )
         self._publish_detections(header, detections, image_width, image_height)
 
         if self.annotated_pub is not None and result is not None:
-            annotated = result.plot()
+            annotated = (
+                self._annotate_detections(frame.copy(), detections)
+                if transform is not None
+                else result.plot()
+            )
             self._draw_normalized_coordinates(
                 annotated,
                 detections,
@@ -277,6 +346,72 @@ class YoloCameraNode(Node):
                 self.annotated_pub.publish(annotated_msg)
             except Exception as exc:
                 self.get_logger().warning(f"Failed to publish annotated image: {exc}")
+
+        self._record_performance(result, pipeline_started)
+
+    def _record_performance(self, result: Any, pipeline_started: float) -> None:
+        if self.performance_log_interval_s <= 0.0:
+            return
+
+        now = time.perf_counter()
+        self.performance_frames += 1
+        self.performance_pipeline_s += now - pipeline_started
+        speed = result.speed if hasattr(result, "speed") else {}
+        self.performance_preprocess_ms += float(speed.get("preprocess", 0.0))
+        self.performance_inference_ms += float(speed.get("inference", 0.0))
+        self.performance_postprocess_ms += float(speed.get("postprocess", 0.0))
+
+        window_s = now - self.performance_window_started
+        if window_s < self.performance_log_interval_s:
+            return
+
+        count = max(self.performance_frames, 1)
+        backend = (
+            "cuda" if isinstance(self.frame_corrector, CudaFrameCorrector) else "cpu"
+        )
+        self.get_logger().info(
+            "YOLO performance: "
+            f"backend={backend}, output_hz={self.performance_frames / window_s:.2f}, "
+            f"pipeline_ms={1000.0 * self.performance_pipeline_s / count:.1f}, "
+            f"ultralytics_preprocess_ms={self.performance_preprocess_ms / count:.1f}, "
+            f"inference_ms={self.performance_inference_ms / count:.1f}, "
+            f"postprocess_ms={self.performance_postprocess_ms / count:.1f}"
+        )
+        self.performance_window_started = now
+        self.performance_frames = 0
+        self.performance_pipeline_s = 0.0
+        self.performance_preprocess_ms = 0.0
+        self.performance_inference_ms = 0.0
+        self.performance_postprocess_ms = 0.0
+
+    @staticmethod
+    def _annotate_detections(
+        frame: Any,
+        detections: list[dict[str, Any]],
+    ) -> Any:
+        height, width = frame.shape[:2]
+        for detection in detections:
+            bbox = detection["bbox_xyxy"]
+            x1 = max(0, min(width - 1, int(round(bbox["x1"]))))
+            y1 = max(0, min(height - 1, int(round(bbox["y1"]))))
+            x2 = max(0, min(width - 1, int(round(bbox["x2"]))))
+            y2 = max(0, min(height - 1, int(round(bbox["y2"]))))
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 220, 0), 2)
+            label = (
+                f"{detection['class_name']} "
+                f"{float(detection['confidence']):.2f}"
+            )
+            cv2.putText(
+                frame,
+                label,
+                (x1, max(18, y1 - 6)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (0, 220, 0),
+                2,
+                lineType=cv2.LINE_AA,
+            )
+        return frame
 
     @staticmethod
     def _draw_normalized_coordinates(
@@ -359,7 +494,11 @@ class YoloCameraNode(Node):
                 lineType=cv2.LINE_AA,
             )
 
-    def _result_to_detections(self, result: Any) -> list[dict[str, Any]]:
+    def _result_to_detections(
+        self,
+        result: Any,
+        transform: LetterboxTransform | None = None,
+    ) -> list[dict[str, Any]]:
         detections = []
         names = result.names if hasattr(result, "names") else {}
         boxes = result.boxes
@@ -367,13 +506,29 @@ class YoloCameraNode(Node):
         if boxes is None:
             return detections
 
-        for box in boxes:
-            xyxy = box.xyxy[0].detach().cpu().tolist()
-            class_id = int(box.cls[0].detach().cpu().item())
-            confidence = float(box.conf[0].detach().cpu().item())
+        xyxy_rows = boxes.xyxy.detach().cpu().tolist()
+        class_ids = boxes.cls.detach().cpu().tolist()
+        confidences = boxes.conf.detach().cpu().tolist()
+        for xyxy, raw_class_id, raw_confidence in zip(
+            xyxy_rows,
+            class_ids,
+            confidences,
+        ):
+            if transform is not None:
+                xyxy = transform.to_original_bbox(xyxy)
+            if xyxy[2] <= xyxy[0] or xyxy[3] <= xyxy[1]:
+                continue
+            class_id = int(raw_class_id)
+            confidence = float(raw_confidence)
+            if isinstance(names, dict):
+                class_name = names.get(class_id, str(class_id))
+            elif 0 <= class_id < len(names):
+                class_name = names[class_id]
+            else:
+                class_name = str(class_id)
             detection = {
                 "class_id": class_id,
-                "class_name": names.get(class_id, str(class_id)),
+                "class_name": class_name,
                 "confidence": confidence,
                 "bbox_xyxy": {
                     "x1": float(xyxy[0]),

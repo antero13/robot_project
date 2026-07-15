@@ -43,6 +43,9 @@ def generate_launch_description():
             DeclareLaunchArgument("correction_clahe_clip_limit", default_value="1.2"),
             DeclareLaunchArgument("correction_clahe_tile_grid", default_value="8"),
             DeclareLaunchArgument("correction_chroma_gain", default_value="1.3"),
+            DeclareLaunchArgument("correction_backend", default_value="auto"),
+            DeclareLaunchArgument("correction_device", default_value="cuda:0"),
+            DeclareLaunchArgument("performance_log_interval_s", default_value="5.0"),
             DeclareLaunchArgument("camera_index", default_value="0"),
             DeclareLaunchArgument("camera_width", default_value="0"),
             DeclareLaunchArgument("camera_height", default_value="0"),
@@ -84,6 +87,16 @@ def generate_launch_description():
                         ),
                         "correction_chroma_gain": ParameterValue(
                             LaunchConfiguration("correction_chroma_gain"), value_type=float
+                        ),
+                        "correction_backend": LaunchConfiguration(
+                            "correction_backend"
+                        ),
+                        "correction_device": LaunchConfiguration(
+                            "correction_device"
+                        ),
+                        "performance_log_interval_s": ParameterValue(
+                            LaunchConfiguration("performance_log_interval_s"),
+                            value_type=float,
                         ),
                         "camera_index": ParameterValue(LaunchConfiguration("camera_index"), value_type=int),
                         "camera_width": ParameterValue(LaunchConfiguration("camera_width"), value_type=int),

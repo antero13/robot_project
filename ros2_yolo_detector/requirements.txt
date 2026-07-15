@@ -1,2 +1,3 @@
 ultralytics
+kornia>=0.7,<0.8
 numpy<2
