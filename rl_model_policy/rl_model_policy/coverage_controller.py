@@ -174,6 +174,14 @@ class CoverageController:
     def current_leg(self):
         return self.legs[self.leg_index]
 
+    def current_leg_reached(self, robot_x, robot_y):
+        """Check the current waypoint without advancing the coverage route."""
+        leg = self.current_leg
+        return (
+            math.hypot(leg.target_x - robot_x, leg.target_y - robot_y)
+            <= self.waypoint_tolerance
+        )
+
     def current_shift_wall_side(self):
         """Return the wall faced while moving toward the current lane center."""
         if self.current_leg.phase != "SHIFT_TO_NEXT_LANE":
@@ -303,9 +311,7 @@ class CoverageController:
     def _advance_reached_legs(self, robot_x, robot_y):
         checked = 0
         while checked < len(self.legs):
-            leg = self.current_leg
-            distance = math.hypot(leg.target_x - robot_x, leg.target_y - robot_y)
-            if distance > self.waypoint_tolerance:
+            if not self.current_leg_reached(robot_x, robot_y):
                 return
             self._advance_leg()
             checked += 1

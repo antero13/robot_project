@@ -81,6 +81,24 @@ class CoverageControllerTest(unittest.TestCase):
 
         self.assertEqual(controller.current_shift_wall_side(), "right")
 
+    def test_lane_shift_uses_waypoint_motion_before_tof_fine_alignment(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 3
+
+        command = controller.command(0.75, -1.33, math.pi)
+
+        self.assertEqual(command.phase, "SHIFT_TO_NEXT_LANE")
+        self.assertEqual(controller.leg_index, 3)
+        self.assertGreater(command.linear_x, 0.0)
+
+    def test_current_leg_reached_checks_waypoint_without_advancing(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 3
+
+        self.assertFalse(controller.current_leg_reached(0.40, -1.33))
+        self.assertTrue(controller.current_leg_reached(0.30, -1.33))
+        self.assertEqual(controller.leg_index, 3)
+
     def test_rotates_before_driving_when_heading_error_is_large(self):
         controller = CoverageController(make_legs())
 

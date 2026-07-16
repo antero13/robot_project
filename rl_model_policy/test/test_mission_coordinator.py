@@ -6,6 +6,7 @@ from rl_model_policy.mission_coordinator import (
     MissionPhase,
     ReturnReason,
     reverse_storage_x_exit_command,
+    storage_return_start_phase,
     waypoint_command,
 )
 
@@ -33,12 +34,25 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(self.mission.phase, MissionPhase.COLLECTING)
 
+    def test_storage_return_starts_with_direct_y_descent(self):
+        self.assertEqual(
+            storage_return_start_phase(True),
+            MissionPhase.CORRECT_STORAGE_Y,
+        )
+        self.assertEqual(
+            storage_return_start_phase(False),
+            MissionPhase.MOVE_TO_STORAGE_Y,
+        )
+
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)
         self.assertEqual(reason, ReturnReason.TIME_LIMIT)
         self.assertTrue(self.mission.is_storage_phase())
 
     def test_storage_tof_correction_phases_remain_storage_phases(self):
+        self.mission.set_phase(MissionPhase.REJOIN_STORAGE_LANE, 19.0)
+        self.assertTrue(self.mission.is_storage_phase())
+
         self.mission.set_phase(MissionPhase.CORRECT_STORAGE_X, 20.0)
         self.assertTrue(self.mission.is_storage_phase())
 

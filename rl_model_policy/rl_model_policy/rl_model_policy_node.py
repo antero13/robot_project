@@ -20,6 +20,7 @@ from rl_model_policy.mission_coordinator import (
     MissionCoordinator,
     MissionPhase,
     ReturnReason,
+    storage_return_start_phase,
     reverse_storage_x_exit_command,
     waypoint_command,
 )
@@ -37,7 +38,10 @@ from rl_model_policy.observation import (
 )
 from rl_model_policy.pickup_trigger import pickup_is_ready
 from rl_model_policy.leave_start import make_leave_start_command
-from rl_model_policy.lane_tof_correction import make_lane_tof_command
+from rl_model_policy.lane_tof_correction import (
+    make_lane_tof_command,
+    should_run_lane_tof_fine_alignment,
+)
 from rl_model_policy.storage_tof_correction import make_storage_tof_command
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
@@ -322,6 +326,7 @@ class RLModelPolicyNode(Node):
         self.model_path = None
         self.load_model()
         self.coverage_controller = self.create_coverage_controller()
+        self.lane_tof_alignment_active = False
 
         self.cmd_vel_pub = self.create_publisher(
             Twist, self.get_parameter("cmd_vel_topic").value, 10
@@ -862,10 +867,19 @@ class RLModelPolicyNode(Node):
             return_min_x,
             return_max_x,
         )
-        self.mission_waypoint = (
-            self.return_lane_x,
-            self.get_float("storage_main_road_y"),
-        )
+        rejoin_started = self.coverage_controller.begin_rejoin(self.robot_y)
+        if rejoin_started:
+            self.return_lane_x = float(self.coverage_controller.current_leg.target_x)
+            self.mission.set_phase(
+                MissionPhase.REJOIN_STORAGE_LANE,
+                self.now_s(),
+            )
+            self.mission_waypoint = (self.return_lane_x, self.robot_y)
+            return_route = "rejoin lane, then descend with bottom-wall ToF"
+        else:
+            self.coverage_controller.cancel_rejoin()
+            return_phase = self.start_storage_y_descent(self.now_s())
+            return_route = f"direct {return_phase}"
         self.latest_target = None
         self.latest_target_time = None
         self.latest_target_center_y = None
@@ -878,8 +892,19 @@ class RLModelPolicyNode(Node):
             "Returning to storage: "
             f"reason={self.mission.return_reason}, "
             f"onboard={self.mission.onboard_count}, "
-            f"delivered={self.mission.delivered_count}"
+            f"delivered={self.mission.delivered_count}, route={return_route}"
         )
+
+    def start_storage_y_descent(self, now_s):
+        phase = storage_return_start_phase(
+            self.get_parameter("storage_tof_correction_enabled").value
+        )
+        self.mission.set_phase(phase, now_s)
+        self.mission_waypoint = (
+            self.return_lane_x,
+            self.get_float("storage_staging_y"),
+        )
+        return phase
 
     def storage_mission_command(self, bins, now_s):
         if not self.storage_pose_is_valid():
@@ -895,7 +920,7 @@ class RLModelPolicyNode(Node):
                 )
             else:
                 self.mission_waypoint = (
-                    self.get_float("storage_staging_x"),
+                    self.return_lane_x,
                     self.get_float("storage_staging_y"),
                 )
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
@@ -903,6 +928,26 @@ class RLModelPolicyNode(Node):
 
         phase = self.mission.phase
         entry_yaw = math.radians(self.get_float("storage_entry_yaw_deg"))
+
+        if phase == MissionPhase.REJOIN_STORAGE_LANE:
+            self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
+            target_y = self.coverage_controller.rejoin_target_y
+            if target_y is None:
+                self.start_storage_y_descent(now_s)
+                return (0.0, 0.0)
+            self.mission_waypoint = (self.return_lane_x, target_y)
+            command = self.coverage_controller.command(
+                robot_x=self.robot_x,
+                robot_y=self.robot_y,
+                robot_yaw=self.robot_yaw,
+                avoid_left=bins[0],
+                avoid_center=bins[1],
+                avoid_right=bins[2],
+            )
+            if not self.coverage_controller.rejoin_active:
+                self.start_storage_y_descent(now_s)
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
 
         if phase == MissionPhase.RETURN_MAIN_ROAD:
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
@@ -953,7 +998,7 @@ class RLModelPolicyNode(Node):
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
             command = self.storage_waypoint_command(
                 bins,
-                self.get_float("storage_staging_x"),
+                self.return_lane_x,
                 self.get_float("storage_staging_y"),
                 self.get_float("storage_entry_speed"),
                 final_yaw=entry_yaw,
@@ -962,7 +1007,7 @@ class RLModelPolicyNode(Node):
             if command.reached:
                 self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
                 self.mission_waypoint = (
-                    self.get_float("storage_staging_x"),
+                    self.return_lane_x,
                     self.get_float("storage_staging_y"),
                 )
                 return (0.0, 0.0)
@@ -977,7 +1022,7 @@ class RLModelPolicyNode(Node):
         if phase == MissionPhase.ALIGN_STORAGE_ENTRY:
             self.set_control_mode(self.MODE_ENTER_STORAGE)
             self.mission_waypoint = (
-                self.get_float("storage_staging_x"),
+                self.return_lane_x,
                 self.get_float("storage_staging_y"),
             )
             command = waypoint_command(
@@ -1137,7 +1182,7 @@ class RLModelPolicyNode(Node):
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
         )
         self.mission_waypoint = (
-            self.get_float("storage_center_x" if axis == "x" else "storage_staging_x"),
+            (self.get_float("storage_center_x") if axis == "x" else self.return_lane_x),
             self.get_float("storage_center_y" if axis == "x" else "storage_staging_y"),
         )
         self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
@@ -1230,6 +1275,7 @@ class RLModelPolicyNode(Node):
 
     def resume_collection_after_storage(self):
         self.coverage_controller = self.create_coverage_controller(reverse_order=True)
+        self.lane_tof_alignment_active = False
         self.coverage_command = None
         self.latest_target = None
         self.latest_target_time = None
@@ -1402,11 +1448,29 @@ class RLModelPolicyNode(Node):
             self.set_control_mode(self.MODE_COVERAGE_SEARCH)
             return (0.0, 0.0)
 
-        if (
-            bool(self.get_parameter("lane_tof_correction_enabled").value)
-            and self.coverage_controller.current_leg.phase == "SHIFT_TO_NEXT_LANE"
-        ):
+        leg_phase = self.coverage_controller.current_leg.phase
+        lane_tof_enabled = bool(self.get_parameter("lane_tof_correction_enabled").value)
+        waypoint_reached = (
+            leg_phase == "SHIFT_TO_NEXT_LANE"
+            and self.coverage_controller.current_leg_reached(
+                self.robot_x,
+                self.robot_y,
+            )
+        )
+        run_lane_tof = should_run_lane_tof_fine_alignment(
+            enabled=lane_tof_enabled,
+            leg_phase=leg_phase,
+            waypoint_reached=waypoint_reached,
+            alignment_active=self.lane_tof_alignment_active,
+        )
+        if run_lane_tof:
+            if not self.lane_tof_alignment_active:
+                self.get_logger().info(
+                    "Lane waypoint reached; starting ToF x fine alignment"
+                )
+            self.lane_tof_alignment_active = True
             return self.lane_tof_shift_command()
+        self.lane_tof_alignment_active = False
 
         self.coverage_command = self.coverage_controller.command(
             robot_x=self.robot_x,
@@ -1459,6 +1523,7 @@ class RLModelPolicyNode(Node):
             self.pose_x_correction_pub.publish(correction)
             self.pending_pose_x_correction = correction.data
             self.pending_pose_x_correction_time = self.get_clock().now()
+        self.lane_tof_alignment_active = False
         self.coverage_controller.complete_current_leg("SHIFT_TO_NEXT_LANE")
         self.coverage_command = self.coverage_controller.hold_command(
             "TOF_LANE_ALIGNED"
@@ -1964,10 +2029,7 @@ class RLModelPolicyNode(Node):
                     "enabled": bool(
                         self.get_parameter("lane_tof_correction_enabled").value
                     ),
-                    "active": (
-                        self.coverage_controller.current_leg.phase
-                        == "SHIFT_TO_NEXT_LANE"
-                    ),
+                    "active": self.lane_tof_alignment_active,
                     "distance_m": (
                         None
                         if self.latest_wall_distance_m is None

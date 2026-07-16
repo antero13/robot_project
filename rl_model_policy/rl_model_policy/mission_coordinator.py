@@ -6,6 +6,7 @@ class MissionPhase:
     IDLE = "IDLE"
     COLLECTING = "COLLECTING"
     RETURN_MAIN_ROAD = "RETURN_MAIN_ROAD"
+    REJOIN_STORAGE_LANE = "REJOIN_STORAGE_LANE"
     RETURN_STAGING = "RETURN_STAGING"
     MOVE_TO_STORAGE_Y = "MOVE_TO_STORAGE_Y"
     CORRECT_STORAGE_X = "CORRECT_STORAGE_X"
@@ -22,6 +23,7 @@ class MissionPhase:
 
     STORAGE_PHASES = frozenset(
         {
+            REJOIN_STORAGE_LANE,
             RETURN_MAIN_ROAD,
             RETURN_STAGING,
             MOVE_TO_STORAGE_Y,
@@ -42,6 +44,13 @@ class ReturnReason:
     TARGET_COUNT = "TARGET_COUNT"
     TIME_LIMIT = "TIME_LIMIT"
     MANUAL = "MANUAL"
+
+
+def storage_return_start_phase(tof_enabled):
+    """Start a storage return by descending directly on the current lane."""
+    if bool(tof_enabled):
+        return MissionPhase.CORRECT_STORAGE_Y
+    return MissionPhase.MOVE_TO_STORAGE_Y
 
 
 @dataclass(frozen=True)

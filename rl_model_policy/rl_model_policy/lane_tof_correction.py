@@ -15,6 +15,21 @@ class LaneTofCommand:
     reached: bool
 
 
+def should_run_lane_tof_fine_alignment(
+    *,
+    enabled,
+    leg_phase,
+    waypoint_reached,
+    alignment_active,
+):
+    """Use ToF only after odometry reaches a lane-shift waypoint."""
+    return (
+        bool(enabled)
+        and str(leg_phase) == "SHIFT_TO_NEXT_LANE"
+        and (bool(alignment_active) or bool(waypoint_reached))
+    )
+
+
 def robot_x_from_left_wall_distance(
     distance_m,
     left_wall_x_m,

@@ -213,17 +213,20 @@ curve-avoid forward scale: 0.70
 ```
 
 The integrated launch starts `wall_distance_sensor` by default. After returning
-south on a lane, `SHIFT_TO_NEXT_LANE` selects the wall from the lane-shift
-direction. Normal lane order (1 -> 2 -> 3 -> 4) faces the west wall at x=-2.0.
-After storage, reverse lane order (4 -> 3 -> 2 -> 1) faces the east wall at
-x=2.0. Both directions wait for a fresh VL53L1X measurement and use that
-distance instead of odom x for the horizontal move. Coverage and storage
-waypoints, `robot_x/y`, and pose correction topics all use the geometric body
-center as their coordinate reference. When the next corridor center is reached,
-the policy publishes that
-body-center x to `/robot_pose/correct_x`. The pose tracker changes x only; y,
-IMU yaw, and accumulated travel counters are preserved. If the ToF message is
-stale, the robot stops with phase `WAITING_FOR_LANE_TOF`.
+south on a lane, `SHIFT_TO_NEXT_LANE` first drives to the next lane center
+with the existing odometry waypoint controller. ToF is not required during this
+move. Only after odometry enters the waypoint tolerance does the robot turn
+toward the wall selected from the lane-shift direction. Normal lane order
+(1 -> 2 -> 3 -> 4) uses the west wall at x=-2.0; after storage, reverse lane
+order (4 -> 3 -> 2 -> 1) uses the east wall at x=2.0. A fresh VL53L1X range is
+then used to measure and correct the remaining x error to the configured
+tolerance (3 cm by default) before the next scan leg begins. Coverage and
+storage waypoints, `robot_x/y`, and pose correction topics all use the
+geometric body center as their coordinate reference. When alignment completes,
+the policy publishes the target body-center x to `/robot_pose/correct_x`. The
+pose tracker changes x only; y, IMU yaw, and accumulated travel counters are
+preserved. If the ToF message is stale after waypoint arrival, the robot stops
+with phase `WAITING_FOR_LANE_TOF`.
 
 The wall coordinate and sensor offset can be overridden as follows:
 
@@ -374,8 +377,7 @@ The RL target controller now runs below a deterministic mission coordinator:
 
 ```text
 COLLECTING
-  -> RETURN_MAIN_ROAD
-  -> RETURN_STAGING
+  -> REJOIN_STORAGE_LANE
   -> CORRECT_STORAGE_Y
   -> ALIGN_STORAGE_ENTRY
   -> OPEN_STORAGE_ENTRY
@@ -388,14 +390,16 @@ COLLECTING
 
 The default capacity is four objects and the mission target is seven objects.
 After four pickups, or after collecting the seventh object, the robot follows
-odometry waypoints to the lower-left Storage Zone. With 30 seconds remaining it
-also returns whenever at least one object is onboard. An empty robot continues
-searching until it picks an object or the 180 second match expires.
+the existing lane-rejoin motion before starting the storage route. With 30
+seconds remaining it also returns whenever at least one object is onboard. An
+empty robot continues searching until it picks an object or the 180 second
+match expires.
 
-On the main road the robot first reaches the east-side approach x at `-1.25 m`
-and faces south. Bottom-wall ToF then drives the body center to `y=-1.75 m`;
-with the 9 cm sensor offset the expected wall distance is 16 cm. A stale ToF
-measurement holds the robot instead of entering storage.
+The rejoin motion returns to the active search lane x at the pickup y. The robot
+then faces south on that lane and bottom-wall ToF drives the body center directly
+to `y=-1.75 m`; it does not first visit main-road `y=-1.3343 m` or staging
+`x=-1.25 m`. With the 9 cm sensor offset the expected wall distance is 16 cm. A
+stale ToF measurement holds the robot instead of entering storage.
 
 After Y alignment the robot turns right to face west, opens the gripper, and
 waits for the servo motion. West-wall ToF then drives to body-center
@@ -412,7 +416,7 @@ waypoints are:
 
 ```text
 main road y:       -1.3343 m
-storage Y target:  (-1.25, -1.75) m
+storage Y target:  (active lane x, -1.75) m
 storage center:    (-1.75, -1.75) m
 storage X exit:    (-1.25, -1.75) m
 Y approach yaw:    -90 deg (south)
@@ -425,7 +429,7 @@ inside the 40 cm Storage Zone:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
-  storage_staging_x:=-1.25 storage_staging_y:=-1.75 \
+  storage_staging_y:=-1.75 \
   storage_center_x:=-1.75 storage_center_y:=-1.75 \
   storage_exit_x:=-1.25 \
   storage_entry_yaw_deg:=-90.0 \
@@ -434,5 +438,6 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_tof_sensor_forward_offset_m:=0.09
 ```
 
-Set `storage_tof_correction_enabled:=false` to use odometry fallback for the Y
-approach and X entry. `storage_tof_xy_tolerance_m` defaults to `0.03` m.
+Set `storage_tof_correction_enabled:=false` to use odometry fallback from the
+same active-lane x for the Y approach and for the X entry.
+`storage_tof_xy_tolerance_m` defaults to `0.03` m.

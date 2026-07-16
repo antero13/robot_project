@@ -5,6 +5,7 @@ from rl_model_policy.lane_tof_correction import (
     make_lane_tof_command,
     robot_x_from_left_wall_distance,
     robot_x_from_right_wall_distance,
+    should_run_lane_tof_fine_alignment,
 )
 
 
@@ -32,6 +33,44 @@ def make_command(**overrides):
 
 
 class LaneTofCorrectionTest(unittest.TestCase):
+
+    def test_tof_fine_alignment_stays_off_before_waypoint_arrival(self):
+        active = should_run_lane_tof_fine_alignment(
+            enabled=True,
+            leg_phase="SHIFT_TO_NEXT_LANE",
+            waypoint_reached=False,
+            alignment_active=False,
+        )
+
+        self.assertFalse(active)
+
+    def test_tof_fine_alignment_starts_at_waypoint_and_stays_latched(self):
+        starting = should_run_lane_tof_fine_alignment(
+            enabled=True,
+            leg_phase="SHIFT_TO_NEXT_LANE",
+            waypoint_reached=True,
+            alignment_active=False,
+        )
+        after_odom_moves_outside_tolerance = should_run_lane_tof_fine_alignment(
+            enabled=True,
+            leg_phase="SHIFT_TO_NEXT_LANE",
+            waypoint_reached=False,
+            alignment_active=True,
+        )
+
+        self.assertTrue(starting)
+        self.assertTrue(after_odom_moves_outside_tolerance)
+
+    def test_tof_fine_alignment_does_not_run_on_scan_legs(self):
+        active = should_run_lane_tof_fine_alignment(
+            enabled=True,
+            leg_phase="SCAN_LANE_UP",
+            waypoint_reached=True,
+            alignment_active=True,
+        )
+
+        self.assertFalse(active)
+
     def test_converts_left_wall_range_to_robot_center_x(self):
         robot_x = robot_x_from_left_wall_distance(1.15, -2.0, 0.10)
 

@@ -648,7 +648,7 @@ def generate_launch_description():
             "lane_tof_correction_enabled",
             default_value="true",
             description=(
-                "Use VL53L1X x alignment only while shifting to the next lane."
+                "Fine-align x with VL53L1X after reaching the lane waypoint."
             ),
         ),
         DeclareLaunchArgument("lane_tof_left_wall_x_m", default_value="-2.0"),
