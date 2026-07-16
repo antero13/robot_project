@@ -378,15 +378,78 @@ The RL target controller now runs below a deterministic mission coordinator:
 ```text
 COLLECTING
   -> REJOIN_STORAGE_LANE
+  -> MOVE_TO_STORAGE_Y
   -> CORRECT_STORAGE_Y
   -> ALIGN_STORAGE_ENTRY
   -> OPEN_STORAGE_ENTRY
   -> CORRECT_STORAGE_X
   -> EXIT_STORAGE
+  -> CORRECT_STORAGE_EXIT_X
   -> CLOSE_STORAGE_EXIT
   -> RETURN_FROM_STORAGE
   -> COLLECTING (lanes 4 -> 3 -> 2 -> 1) or COMPLETE
 ```
+### Current `TOF_correction` sequence
+
+All waypoints and `robot_x/y` use the geometric body center. The ToF sensor
+is modeled 9 cm ahead of that center, and `/wall/distance_angle` supplies the
+two-sensor wall-distance estimate used to recover a body-center coordinate.
+
+1. **Lane search**
+   - The initial route searches lanes 1->2->3->4 at centered-frame x values
+     `1.25`, `0.25`, `-0.75`, and `-1.25 m`. Each lane is searched northbound,
+     followed by an in-place 180-degree turn and a southbound pass.
+   - A lane shift first uses the original odometry waypoint controller. Only
+     after entering its 10 cm tolerance does ToF reduce the remaining x error
+     to 3 cm. Forward order references the west wall; reverse order references
+     the east wall.
+
+2. **Rejoin after a pickup**
+   - The existing `REJOIN_LANE` motion returns to the active lane-center x. Its
+     rejoin y is the pickup-completion y, not the first RL-detection coordinate.
+   - A capacity, seventh-object, final-30-second, or manual storage return first
+     runs `REJOIN_STORAGE_LANE`; storage travel starts only after that rejoin.
+
+3. **Storage y approach: waypoint, then ToF**
+   - The robot keeps the active-lane x, faces south, and uses an odometry
+     waypoint to reach `y=-1.75 m`. It does not first visit main-road
+     `y=-1.3343 m` or staging `x=-1.25 m`.
+   - After entering the 4 cm waypoint tolerance, bottom-wall ToF checks and
+     corrects y to the 3 cm ToF tolerance. The expected target range is 16 cm.
+   - A missing or stale range stops the robot during this final y check.
+
+4. **Storage x entry: continuous ToF drive**
+   - After y alignment, the robot turns right to face west and opens the servo.
+   - There is no x waypoint for entry. The robot drives west at `0.25 m/s` and
+     uses ToF to judge arrival at `x=-1.75 m`. There is no approach slowdown.
+   - If the wall is still outside sensor range, the robot keeps driving until a
+     range becomes available; a valid range then controls the final 3 cm check.
+
+5. **Storage exit: waypoint, then ToF**
+   - With the servo still open, the odometry waypoint controller reverses east
+     to `x=-1.25 m`.
+   - At waypoint arrival, west-wall ToF checks x again. The expected range is
+     66 cm, and the controller can drive forward or reverse to enter the 3 cm
+     tolerance.
+   - If no fresh exit range is received continuously for one second, the
+     controller assumes `x=-1.25 m`, publishes that pose correction, and
+     continues. The servo closes only after ToF success or this fallback.
+
+6. **Road return and reverse search**
+   - The robot turns right to face north and returns to main-road
+     `y=-1.3343 m`.
+   - Coverage is rebuilt in reverse order and searches lanes 4->3->2->1. These
+     lane shifts also use an odometry waypoint first and east-wall ToF second.
+
+7. **Pose and GUI updates**
+   - A completed ToF correction publishes the configured target coordinate,
+     rather than the raw measured coordinate, on `/robot_pose/correct_x` or
+     `/robot_pose/correct_y`.
+   - The pose tracker changes only that axis; the other axis, IMU yaw, and travel
+     counters remain unchanged.
+   - GUI `mission.waypoint` is the yellow target marker, while the robot marker
+     uses the corrected pose. The GUI adds `+2.0 m` to centered-frame x/y for
+     arena-map display.
 
 The default capacity is four objects and the mission target is seven objects.
 After four pickups, or after collecting the seventh object, the robot follows
@@ -396,18 +459,27 @@ empty robot continues searching until it picks an object or the 180 second
 match expires.
 
 The rejoin motion returns to the active search lane x at the pickup y. The robot
-then faces south on that lane and bottom-wall ToF drives the body center directly
-to `y=-1.75 m`; it does not first visit main-road `y=-1.3343 m` or staging
-`x=-1.25 m`. With the 9 cm sensor offset the expected wall distance is 16 cm. A
-stale ToF measurement holds the robot instead of entering storage.
+then uses the odometry waypoint controller to drive south on that lane to
+`y=-1.75 m`; it does not first visit main-road `y=-1.3343 m` or staging
+`x=-1.25 m`. After the waypoint tolerance is reached, bottom-wall ToF checks and
+corrects the remaining y error. With the 9 cm sensor offset the expected wall
+distance is 16 cm. A stale ToF measurement holds the robot only during this
+final y check.
 
 After Y alignment the robot turns right to face west, opens the gripper, and
 waits for the servo motion. West-wall ToF then drives to body-center
-`x=-1.75 m` at a fixed `0.25 m/s` without approach slowdown. The gripper stays
-open while the robot reverses east to `x=-1.25 m`. Only after the reverse exit
-finishes does the robot stop, close the gripper, and wait for the servo motion.
-It then turns right to face north and returns to the main road at `y=-1.3343 m`
-before collection can resume.
+`x=-1.75 m` at a fixed `0.25 m/s` without approach slowdown. If the west-wall
+range is not available yet during entry, the robot continues forward at the
+fixed entry speed until ToF can judge the x position.
+
+The gripper stays open while the odometry waypoint controller reverses east to
+`x=-1.25 m`. After the waypoint tolerance is reached, west-wall ToF checks and
+corrects the remaining exit x error; the expected range is 66 cm. If no fresh
+ToF value arrives continuously for one second during this final check, the
+controller assumes `x=-1.25 m`, publishes that pose correction, and continues.
+After either ToF verification or this fallback, the robot stops, closes the
+gripper, turns right to face north, and returns to the main road at
+`y=-1.3343 m` before collection resumes.
 
 The initial coverage route includes lanes 1, 2, 3, and 4. After a storage trip,
 a new reverse controller starts at lane 4 and scans x positions `-1.25`,
@@ -435,7 +507,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_entry_yaw_deg:=-90.0 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_bottom_wall_y_m:=-2.0 \
-  storage_tof_sensor_forward_offset_m:=0.09
+  storage_tof_sensor_forward_offset_m:=0.09 \
+  storage_exit_tof_fallback_timeout_s:=1.0
 ```
 
 Set `storage_tof_correction_enabled:=false` to use odometry fallback from the

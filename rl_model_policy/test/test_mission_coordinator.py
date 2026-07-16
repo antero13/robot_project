@@ -34,13 +34,9 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(self.mission.phase, MissionPhase.COLLECTING)
 
-    def test_storage_return_starts_with_direct_y_descent(self):
+    def test_storage_return_starts_with_y_waypoint(self):
         self.assertEqual(
-            storage_return_start_phase(True),
-            MissionPhase.CORRECT_STORAGE_Y,
-        )
-        self.assertEqual(
-            storage_return_start_phase(False),
+            storage_return_start_phase(),
             MissionPhase.MOVE_TO_STORAGE_Y,
         )
 
@@ -58,6 +54,10 @@ class MissionCoordinatorTest(unittest.TestCase):
 
         self.mission.set_phase(MissionPhase.CORRECT_STORAGE_Y, 21.0)
         self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.CORRECT_STORAGE_EXIT_X, 21.5)
+        self.assertTrue(self.mission.is_storage_phase())
+
         self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, 22.0)
         self.assertTrue(self.mission.is_storage_phase())
 

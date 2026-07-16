@@ -3,6 +3,7 @@ import unittest
 
 from rl_model_policy.storage_tof_correction import (
     make_storage_tof_command,
+    measurement_gap_timed_out,
     robot_coordinate_from_min_wall_distance,
 )
 
@@ -30,6 +31,11 @@ def make_command(**overrides):
 
 
 class StorageTofCorrectionTest(unittest.TestCase):
+    def test_measurement_gap_timeout_requires_one_continuous_second(self):
+        self.assertFalse(measurement_gap_timed_out(None, 11.0, 1.0))
+        self.assertFalse(measurement_gap_timed_out(10.0, 10.99, 1.0))
+        self.assertTrue(measurement_gap_timed_out(10.0, 11.0, 1.0))
+
     def test_converts_min_wall_range_to_robot_center_coordinate(self):
         coordinate = robot_coordinate_from_min_wall_distance(0.16, -2.0, 0.09)
 
@@ -55,11 +61,33 @@ class StorageTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.phase, "STORAGE_TOF_Y_ALIGNED")
         self.assertAlmostEqual(command.measured_coordinate, -1.75)
 
+    def test_exit_x_check_uses_west_wall_distance(self):
+        command = make_command(
+            distance_m=0.66,
+            target_coordinate=-1.25,
+        )
+
+        self.assertTrue(command.reached)
+        self.assertEqual(command.phase, "STORAGE_TOF_X_ALIGNED")
+        self.assertAlmostEqual(command.measured_coordinate, -1.25)
+
     def test_stale_measurement_stops_the_robot(self):
         command = make_command(measurement_age_s=0.50)
 
         self.assertEqual(command.phase, "WAITING_FOR_STORAGE_TOF_X")
         self.assertEqual(command.linear_x, 0.0)
+        self.assertFalse(command.reached)
+
+    def test_x_entry_advances_until_tof_becomes_available(self):
+        command = make_command(
+            distance_m=None,
+            measurement_age_s=None,
+            advance_without_measurement=True,
+        )
+
+        self.assertEqual(command.phase, "APPROACH_STORAGE_TOF_X")
+        self.assertAlmostEqual(command.linear_x, 0.25)
+        self.assertIsNone(command.measured_coordinate)
         self.assertFalse(command.reached)
 
     def test_drives_toward_min_wall_when_coordinate_is_too_large(self):

@@ -40,6 +40,20 @@ def robot_coordinate_from_min_wall_distance(
     return wall_coordinate_m + distance_m + sensor_forward_offset_m
 
 
+def measurement_gap_timed_out(missing_started_at_s, now_s, timeout_s):
+    """Return true after one continuous interval without a usable measurement."""
+    if missing_started_at_s is None:
+        return False
+    missing_started_at_s = float(missing_started_at_s)
+    now_s = float(now_s)
+    timeout_s = float(timeout_s)
+    if not all(math.isfinite(v) for v in (missing_started_at_s, now_s, timeout_s)):
+        raise ValueError("measurement timeout values must be finite")
+    if timeout_s < 0.0:
+        raise ValueError("measurement timeout cannot be negative")
+    return max(0.0, now_s - missing_started_at_s) >= timeout_s
+
+
 def make_storage_tof_command(
     *,
     axis,
@@ -57,6 +71,7 @@ def make_storage_tof_command(
     heading_gain,
     max_angular_speed,
     heading_tolerance,
+    advance_without_measurement=False,
 ):
     """Align one storage-staging axis using the left or bottom arena wall."""
     axis = str(axis).strip().lower()
@@ -94,6 +109,15 @@ def make_storage_tof_command(
         and 0.0 <= float(measurement_age_s) <= float(measurement_timeout_s)
     )
     if not measurement_is_fresh:
+        if bool(advance_without_measurement):
+            return StorageTofCommand(
+                linear_x=float(transit_speed),
+                angular_z=angular_z,
+                phase=f"APPROACH_STORAGE_TOF_{axis_name}",
+                measured_coordinate=None,
+                coordinate_error=None,
+                reached=False,
+            )
         return StorageTofCommand(
             linear_x=0.0,
             angular_z=angular_z,

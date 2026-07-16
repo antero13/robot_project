@@ -15,6 +15,7 @@ class MissionPhase:
     OPEN_STORAGE_ENTRY = "OPEN_STORAGE_ENTRY"
     ENTER_STORAGE = "ENTER_STORAGE"
     EXIT_STORAGE = "EXIT_STORAGE"
+    CORRECT_STORAGE_EXIT_X = "CORRECT_STORAGE_EXIT_X"
     CLOSE_STORAGE_EXIT = "CLOSE_STORAGE_EXIT"
     RETURN_FROM_STORAGE = "RETURN_FROM_STORAGE"
     COMPLETE = "COMPLETE"
@@ -33,6 +34,7 @@ class MissionPhase:
             OPEN_STORAGE_ENTRY,
             ENTER_STORAGE,
             EXIT_STORAGE,
+            CORRECT_STORAGE_EXIT_X,
             CLOSE_STORAGE_EXIT,
             RETURN_FROM_STORAGE,
         }
@@ -46,10 +48,8 @@ class ReturnReason:
     MANUAL = "MANUAL"
 
 
-def storage_return_start_phase(tof_enabled):
-    """Start a storage return by descending directly on the current lane."""
-    if bool(tof_enabled):
-        return MissionPhase.CORRECT_STORAGE_Y
+def storage_return_start_phase():
+    """Start storage descent with odometry before the ToF fine check."""
     return MissionPhase.MOVE_TO_STORAGE_Y
 
 

@@ -159,6 +159,9 @@ def generate_launch_description():
     storage_tof_measurement_timeout_s = LaunchConfiguration(
         "storage_tof_measurement_timeout_s"
     )
+    storage_exit_tof_fallback_timeout_s = LaunchConfiguration(
+        "storage_exit_tof_fallback_timeout_s"
+    )
     storage_tof_xy_tolerance_m = LaunchConfiguration("storage_tof_xy_tolerance_m")
     storage_tof_min_speed = LaunchConfiguration("storage_tof_min_speed")
     storage_tof_slowdown_distance_m = LaunchConfiguration(
@@ -349,6 +352,9 @@ def generate_launch_description():
                 storage_tof_sensor_forward_offset_m
             ),
             "storage_tof_measurement_timeout_s": (storage_tof_measurement_timeout_s),
+            "storage_exit_tof_fallback_timeout_s": (
+                storage_exit_tof_fallback_timeout_s
+            ),
             "storage_tof_xy_tolerance_m": storage_tof_xy_tolerance_m,
             "storage_tof_min_speed": storage_tof_min_speed,
             "storage_tof_slowdown_distance_m": (storage_tof_slowdown_distance_m),
@@ -723,6 +729,10 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "storage_tof_measurement_timeout_s",
                 default_value="0.25",
+            ),
+            DeclareLaunchArgument(
+                "storage_exit_tof_fallback_timeout_s",
+                default_value="1.0",
             ),
             DeclareLaunchArgument("storage_tof_xy_tolerance_m", default_value="0.03"),
             DeclareLaunchArgument("storage_tof_min_speed", default_value="0.05"),
