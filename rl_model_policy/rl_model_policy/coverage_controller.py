@@ -173,6 +173,23 @@ class CoverageController:
     def current_leg(self):
         return self.legs[self.leg_index]
 
+    def complete_current_leg(self, expected_phase=None):
+        """Advance one leg after an external position reference reaches it."""
+        if (
+            expected_phase is not None
+            and self.current_leg.phase != str(expected_phase)
+        ):
+            return False
+        self._advance_leg()
+        return True
+
+    def hold_command(self, phase):
+        return self._make_command(0.0, 0.0, phase)
+
+    def external_command(self, linear_x, angular_z, phase):
+        """Describe a command produced by a leg-specific external controller."""
+        return self._make_command(linear_x, angular_z, phase)
+
     def command(
         self,
         robot_x,

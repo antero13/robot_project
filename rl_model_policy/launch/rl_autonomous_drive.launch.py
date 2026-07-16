@@ -53,6 +53,15 @@ def generate_launch_description():
     pose_timeout_s = LaunchConfiguration("pose_timeout_s")
     pose_observation_enabled = LaunchConfiguration("pose_observation_enabled")
     launch_pose_tracker = LaunchConfiguration("launch_pose_tracker")
+    pose_x_correction_topic = LaunchConfiguration("pose_x_correction_topic")
+    launch_wall_distance_sensor = LaunchConfiguration(
+        "launch_wall_distance_sensor"
+    )
+    wall_driver_backend = LaunchConfiguration("wall_driver_backend")
+    wall_left_i2c_bus = LaunchConfiguration("wall_left_i2c_bus")
+    wall_right_i2c_bus = LaunchConfiguration("wall_right_i2c_bus")
+    wall_ranging_mode = LaunchConfiguration("wall_ranging_mode")
+    wall_distance_angle_topic = LaunchConfiguration("wall_distance_angle_topic")
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
     pose_bounds_tolerance_m = LaunchConfiguration("pose_bounds_tolerance_m")
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
@@ -102,6 +111,21 @@ def generate_launch_description():
     )
     coverage_reacquire_angular_z = LaunchConfiguration(
         "coverage_reacquire_angular_z"
+    )
+    lane_tof_correction_enabled = LaunchConfiguration(
+        "lane_tof_correction_enabled"
+    )
+    lane_tof_left_wall_x_m = LaunchConfiguration("lane_tof_left_wall_x_m")
+    lane_tof_sensor_forward_offset_m = LaunchConfiguration(
+        "lane_tof_sensor_forward_offset_m"
+    )
+    lane_tof_measurement_timeout_s = LaunchConfiguration(
+        "lane_tof_measurement_timeout_s"
+    )
+    lane_tof_x_tolerance_m = LaunchConfiguration("lane_tof_x_tolerance_m")
+    lane_tof_min_speed = LaunchConfiguration("lane_tof_min_speed")
+    lane_tof_slowdown_distance_m = LaunchConfiguration(
+        "lane_tof_slowdown_distance_m"
     )
     initial_x = LaunchConfiguration("initial_x")
     initial_y = LaunchConfiguration("initial_y")
@@ -188,6 +212,7 @@ def generate_launch_description():
         ]),
         launch_arguments={
             "cmd_vel_topic": "/cmd_vel",
+            "x_correction_topic": pose_x_correction_topic,
             "initial_x": initial_x,
             "initial_y": initial_y,
             "initial_yaw_deg": initial_yaw_deg,
@@ -197,6 +222,23 @@ def generate_launch_description():
             "publish_tf": "true",
         }.items(),
         condition=IfCondition(launch_pose_tracker),
+    )
+
+    wall_distance_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([
+            FindPackageShare("wall_distance_sensor"),
+            "launch",
+            "wall_distance_angle.launch.py",
+        ]),
+        launch_arguments={
+            "driver_backend": wall_driver_backend,
+            "left_i2c_bus": wall_left_i2c_bus,
+            "right_i2c_bus": wall_right_i2c_bus,
+            "ranging_mode": wall_ranging_mode,
+            "update_rate_hz": "20.0",
+            "distance_angle_topic": wall_distance_angle_topic,
+        }.items(),
+        condition=IfCondition(launch_wall_distance_sensor),
     )
 
     policy_launch = IncludeLaunchDescription(
@@ -251,6 +293,17 @@ def generate_launch_description():
                 coverage_reacquire_reverse_after_s
             ),
             "coverage_reacquire_angular_z": coverage_reacquire_angular_z,
+            "lane_tof_correction_enabled": lane_tof_correction_enabled,
+            "wall_distance_angle_topic": wall_distance_angle_topic,
+            "pose_x_correction_topic": pose_x_correction_topic,
+            "lane_tof_left_wall_x_m": lane_tof_left_wall_x_m,
+            "lane_tof_sensor_forward_offset_m": (
+                lane_tof_sensor_forward_offset_m
+            ),
+            "lane_tof_measurement_timeout_s": lane_tof_measurement_timeout_s,
+            "lane_tof_x_tolerance_m": lane_tof_x_tolerance_m,
+            "lane_tof_min_speed": lane_tof_min_speed,
+            "lane_tof_slowdown_distance_m": lane_tof_slowdown_distance_m,
             "gripper_enabled": gripper_enabled,
             "gripper_type": gripper_type,
             "gripper_servo_id": gripper_servo_id,
@@ -468,6 +521,23 @@ def generate_launch_description():
             default_value="true",
             description="Start command/IMU pose tracking used by coverage search.",
         ),
+        DeclareLaunchArgument(
+            "pose_x_correction_topic",
+            default_value="/robot_pose/correct_x",
+        ),
+        DeclareLaunchArgument(
+            "launch_wall_distance_sensor",
+            default_value="true",
+            description="Start the two-VL53L1X wall distance node.",
+        ),
+        DeclareLaunchArgument("wall_driver_backend", default_value="vl53l1x"),
+        DeclareLaunchArgument("wall_left_i2c_bus", default_value="1"),
+        DeclareLaunchArgument("wall_right_i2c_bus", default_value="0"),
+        DeclareLaunchArgument("wall_ranging_mode", default_value="2"),
+        DeclareLaunchArgument(
+            "wall_distance_angle_topic",
+            default_value="/wall/distance_angle",
+        ),
         DeclareLaunchArgument("arena_half_extent_m", default_value="2.0"),
         DeclareLaunchArgument("pose_bounds_tolerance_m", default_value="0.25"),
         DeclareLaunchArgument("camera_horizontal_fov_deg", default_value="80.0"),
@@ -524,6 +594,28 @@ def generate_launch_description():
             default_value="0.75",
         ),
         DeclareLaunchArgument("coverage_reacquire_angular_z", default_value="0.35"),
+        DeclareLaunchArgument(
+            "lane_tof_correction_enabled",
+            default_value="true",
+            description=(
+                "Use VL53L1X x alignment only while shifting to the next lane."
+            ),
+        ),
+        DeclareLaunchArgument("lane_tof_left_wall_x_m", default_value="-2.0"),
+        DeclareLaunchArgument(
+            "lane_tof_sensor_forward_offset_m",
+            default_value="0.10",
+        ),
+        DeclareLaunchArgument(
+            "lane_tof_measurement_timeout_s",
+            default_value="0.25",
+        ),
+        DeclareLaunchArgument("lane_tof_x_tolerance_m", default_value="0.03"),
+        DeclareLaunchArgument("lane_tof_min_speed", default_value="0.08"),
+        DeclareLaunchArgument(
+            "lane_tof_slowdown_distance_m",
+            default_value="0.20",
+        ),
         DeclareLaunchArgument("leave_start_enabled", default_value="true"),
         DeclareLaunchArgument("leave_start_distance_m", default_value="0.55"),
         DeclareLaunchArgument("leave_start_speed", default_value="0.25"),
@@ -591,6 +683,7 @@ def generate_launch_description():
         controller_launch,
         yolo_launch,
         motor_launch,
+        wall_distance_launch,
         pose_tracker_launch,
         policy_launch,
         object_mapper_node,

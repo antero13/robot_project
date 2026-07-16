@@ -46,6 +46,30 @@ class PoseEstimatorTest(unittest.TestCase):
         self.assertEqual(estimator.distance_travelled, 0.0)
         self.assertEqual(estimator.rotation_travelled, 0.0)
 
+    def test_correct_x_preserves_y_yaw_and_travel_counters(self):
+        estimator = PoseEstimator(x=1.0, y=-0.5, yaw=0.7)
+        estimator.step(0.5, 0.2, 0.1)
+        previous_y = estimator.y
+        previous_yaw = estimator.yaw
+        previous_distance = estimator.distance_travelled
+        previous_rotation = estimator.rotation_travelled
+
+        estimator.correct_x(0.25)
+
+        self.assertAlmostEqual(estimator.x, 0.25)
+        self.assertAlmostEqual(estimator.y, previous_y)
+        self.assertAlmostEqual(estimator.yaw, previous_yaw)
+        self.assertAlmostEqual(estimator.distance_travelled, previous_distance)
+        self.assertAlmostEqual(estimator.rotation_travelled, previous_rotation)
+
+    def test_correct_x_rejects_non_finite_values(self):
+        estimator = PoseEstimator(x=1.0)
+
+        with self.assertRaises(ValueError):
+            estimator.correct_x(float('nan'))
+
+        self.assertEqual(estimator.x, 1.0)
+
     def test_normalize_angle_uses_ros_yaw_range(self):
         self.assertAlmostEqual(normalize_angle(3.0 * math.pi), -math.pi)
 

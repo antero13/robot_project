@@ -70,6 +70,23 @@ def generate_launch_description():
     coverage_reacquire_angular_z = LaunchConfiguration(
         'coverage_reacquire_angular_z'
     )
+    lane_tof_correction_enabled = LaunchConfiguration(
+        'lane_tof_correction_enabled'
+    )
+    wall_distance_angle_topic = LaunchConfiguration('wall_distance_angle_topic')
+    pose_x_correction_topic = LaunchConfiguration('pose_x_correction_topic')
+    lane_tof_left_wall_x_m = LaunchConfiguration('lane_tof_left_wall_x_m')
+    lane_tof_sensor_forward_offset_m = LaunchConfiguration(
+        'lane_tof_sensor_forward_offset_m'
+    )
+    lane_tof_measurement_timeout_s = LaunchConfiguration(
+        'lane_tof_measurement_timeout_s'
+    )
+    lane_tof_x_tolerance_m = LaunchConfiguration('lane_tof_x_tolerance_m')
+    lane_tof_min_speed = LaunchConfiguration('lane_tof_min_speed')
+    lane_tof_slowdown_distance_m = LaunchConfiguration(
+        'lane_tof_slowdown_distance_m'
+    )
     gripper_enabled = LaunchConfiguration('gripper_enabled')
     gripper_type = LaunchConfiguration('gripper_type')
     gripper_servo_id = LaunchConfiguration('gripper_servo_id')
@@ -197,6 +214,36 @@ def generate_launch_description():
             default_value='0.75',
         ),
         DeclareLaunchArgument('coverage_reacquire_angular_z', default_value='0.35'),
+        DeclareLaunchArgument(
+            'lane_tof_correction_enabled',
+            default_value='true',
+            description=(
+                'Use the left-wall VL53L1X distance only during SHIFT_TO_NEXT_LANE.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'wall_distance_angle_topic',
+            default_value='/wall/distance_angle',
+        ),
+        DeclareLaunchArgument(
+            'pose_x_correction_topic',
+            default_value='/robot_pose/correct_x',
+        ),
+        DeclareLaunchArgument('lane_tof_left_wall_x_m', default_value='-2.0'),
+        DeclareLaunchArgument(
+            'lane_tof_sensor_forward_offset_m',
+            default_value='0.10',
+        ),
+        DeclareLaunchArgument(
+            'lane_tof_measurement_timeout_s',
+            default_value='0.25',
+        ),
+        DeclareLaunchArgument('lane_tof_x_tolerance_m', default_value='0.03'),
+        DeclareLaunchArgument('lane_tof_min_speed', default_value='0.08'),
+        DeclareLaunchArgument(
+            'lane_tof_slowdown_distance_m',
+            default_value='0.20',
+        ),
         DeclareLaunchArgument('leave_start_enabled', default_value='true'),
         DeclareLaunchArgument('leave_start_distance_m', default_value='0.55'),
         DeclareLaunchArgument('leave_start_speed', default_value='0.25'),
@@ -376,6 +423,36 @@ def generate_launch_description():
                 ),
                 'coverage_reacquire_angular_z': ParameterValue(
                     coverage_reacquire_angular_z,
+                    value_type=float,
+                ),
+                'lane_tof_correction_enabled': ParameterValue(
+                    lane_tof_correction_enabled,
+                    value_type=bool,
+                ),
+                'wall_distance_angle_topic': wall_distance_angle_topic,
+                'pose_x_correction_topic': pose_x_correction_topic,
+                'lane_tof_left_wall_x_m': ParameterValue(
+                    lane_tof_left_wall_x_m,
+                    value_type=float,
+                ),
+                'lane_tof_sensor_forward_offset_m': ParameterValue(
+                    lane_tof_sensor_forward_offset_m,
+                    value_type=float,
+                ),
+                'lane_tof_measurement_timeout_s': ParameterValue(
+                    lane_tof_measurement_timeout_s,
+                    value_type=float,
+                ),
+                'lane_tof_x_tolerance_m': ParameterValue(
+                    lane_tof_x_tolerance_m,
+                    value_type=float,
+                ),
+                'lane_tof_min_speed': ParameterValue(
+                    lane_tof_min_speed,
+                    value_type=float,
+                ),
+                'lane_tof_slowdown_distance_m': ParameterValue(
+                    lane_tof_slowdown_distance_m,
                     value_type=float,
                 ),
 

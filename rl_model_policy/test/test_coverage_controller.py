@@ -177,6 +177,20 @@ class CoverageControllerTest(unittest.TestCase):
         self.assertFalse(controller.begin_rejoin(robot_y=-1.10))
         self.assertFalse(controller.rejoin_active)
 
+    def test_external_reference_can_complete_only_expected_shift_leg(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 3
+
+        self.assertFalse(controller.complete_current_leg("SCAN_LANE_UP"))
+        self.assertEqual(controller.leg_index, 3)
+        self.assertTrue(controller.complete_current_leg("SHIFT_TO_NEXT_LANE"))
+
+        hold = controller.hold_command("TOF_LANE_ALIGNED")
+        self.assertEqual(controller.leg_index, 4)
+        self.assertEqual(hold.phase, "TOF_LANE_ALIGNED")
+        self.assertEqual(hold.linear_x, 0.0)
+        self.assertEqual(hold.waypoint_x, 0.25)
+
     def test_last_leg_wraps_to_a_new_cycle(self):
         controller = CoverageController(make_legs())
         controller.leg_index = len(controller.legs) - 1

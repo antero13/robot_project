@@ -1,0 +1,74 @@
+import math
+import unittest
+
+from rl_model_policy.lane_tof_correction import (
+    make_lane_tof_command,
+    robot_x_from_left_wall_distance,
+)
+
+
+def make_command(**overrides):
+    values = {
+        "distance_m": 2.15,
+        "measurement_age_s": 0.02,
+        "robot_yaw": math.pi,
+        "target_x": 0.25,
+        "left_wall_x_m": -2.0,
+        "sensor_forward_offset_m": 0.10,
+        "transit_speed": 0.30,
+        "minimum_speed": 0.08,
+        "slowdown_distance_m": 0.20,
+        "x_tolerance_m": 0.03,
+        "measurement_timeout_s": 0.25,
+        "heading_gain": 2.4,
+        "max_angular_speed": 1.0,
+        "heading_tolerance": 0.08,
+    }
+    values.update(overrides)
+    return make_lane_tof_command(**values)
+
+
+class LaneTofCorrectionTest(unittest.TestCase):
+    def test_converts_left_wall_range_to_robot_center_x(self):
+        robot_x = robot_x_from_left_wall_distance(1.15, -2.0, 0.10)
+
+        self.assertAlmostEqual(robot_x, -0.75)
+
+    def test_rotates_before_using_wall_distance(self):
+        command = make_command(robot_yaw=math.pi / 2.0)
+
+        self.assertEqual(command.phase, "ALIGN_TOF_NEXT_LANE")
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertGreater(command.angular_z, 0.0)
+        self.assertIsNone(command.measured_robot_x)
+
+    def test_stale_measurement_stops_instead_of_using_odometry(self):
+        command = make_command(measurement_age_s=0.40)
+
+        self.assertEqual(command.phase, "WAITING_FOR_LANE_TOF")
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertFalse(command.reached)
+
+    def test_drives_left_until_next_lane_is_reached(self):
+        command = make_command(distance_m=2.40)
+
+        self.assertEqual(command.phase, "TOF_SHIFT_TO_NEXT_LANE")
+        self.assertGreater(command.linear_x, 0.0)
+        self.assertAlmostEqual(command.measured_robot_x, 0.50)
+
+    def test_reverses_after_overshooting_lane_center(self):
+        command = make_command(distance_m=2.00)
+
+        self.assertLess(command.linear_x, 0.0)
+        self.assertLess(command.x_error, 0.0)
+
+    def test_reports_alignment_inside_x_tolerance(self):
+        command = make_command(distance_m=2.15)
+
+        self.assertTrue(command.reached)
+        self.assertEqual(command.phase, "TOF_LANE_ALIGNED")
+        self.assertEqual(command.linear_x, 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()

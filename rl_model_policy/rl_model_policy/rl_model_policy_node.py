@@ -5,12 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import rclpy
-from geometry_msgs.msg import PointStamped, Twist
+from geometry_msgs.msg import PointStamped, Twist, Vector3Stamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from ros_robot_controller_msgs.msg import BusServoState, PWMServoState
 from ros_robot_controller_msgs.msg import SetBusServoState, SetPWMServoState
-from std_msgs.msg import Bool, Float32, String
+from std_msgs.msg import Bool, Float32, Float64, String
 
 from rl_model_policy.coverage_controller import (
     CoverageController,
@@ -37,6 +37,7 @@ from rl_model_policy.observation import (
 )
 from rl_model_policy.pickup_trigger import pickup_is_ready
 from rl_model_policy.leave_start import make_leave_start_command
+from rl_model_policy.lane_tof_correction import make_lane_tof_command
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
 from rl_model_policy.target_activation import target_is_eligible
@@ -161,6 +162,15 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("coverage_reacquire_duration_s", 1.5)
         self.declare_parameter("coverage_reacquire_reverse_after_s", 0.75)
         self.declare_parameter("coverage_reacquire_angular_z", 0.35)
+        self.declare_parameter("lane_tof_correction_enabled", True)
+        self.declare_parameter("wall_distance_angle_topic", "/wall/distance_angle")
+        self.declare_parameter("pose_x_correction_topic", "/robot_pose/correct_x")
+        self.declare_parameter("lane_tof_left_wall_x_m", -2.0)
+        self.declare_parameter("lane_tof_sensor_forward_offset_m", 0.10)
+        self.declare_parameter("lane_tof_measurement_timeout_s", 0.25)
+        self.declare_parameter("lane_tof_x_tolerance_m", 0.03)
+        self.declare_parameter("lane_tof_min_speed", 0.08)
+        self.declare_parameter("lane_tof_slowdown_distance_m", 0.20)
 
         self.declare_parameter("avoid_area_ratio", 0.42)
         self.declare_parameter("avoid_center_band", 0.75)
@@ -270,6 +280,12 @@ class RLModelPolicyNode(Node):
         self.had_visible_target = False
         self.target_lost_started_at = None
         self.coverage_command = None
+        self.latest_wall_distance_m = None
+        self.latest_wall_angle_rad = None
+        self.latest_wall_min_distance_m = None
+        self.latest_wall_measurement_time = None
+        self.pending_pose_x_correction = None
+        self.pending_pose_x_correction_time = None
         self.mission_waypoint = None
         self.return_lane_x = 0.0
 
@@ -296,6 +312,11 @@ class RLModelPolicyNode(Node):
 
         self.cmd_vel_pub = self.create_publisher(Twist, self.get_parameter("cmd_vel_topic").value, 10)
         self.state_pub = self.create_publisher(String, self.get_parameter("state_topic").value, 10)
+        self.pose_x_correction_pub = self.create_publisher(
+            Float64,
+            self.get_parameter("pose_x_correction_topic").value,
+            10,
+        )
         self.pwm_servo_pub = self.create_publisher(
             SetPWMServoState,
             self.get_parameter("pwm_servo_topic").value,
@@ -328,6 +349,12 @@ class RLModelPolicyNode(Node):
             Float32,
             self.get_parameter("target_center_y_topic").value,
             self.target_center_y_callback,
+            10,
+        )
+        self.wall_distance_sub = self.create_subscription(
+            Vector3Stamped,
+            self.get_parameter("wall_distance_angle_topic").value,
+            self.wall_distance_callback,
             10,
         )
         self.avoid_sub = self.create_subscription(
@@ -494,6 +521,19 @@ class RLModelPolicyNode(Node):
         self.latest_target_center_y = float(msg.data)
         self.latest_target_center_y_time = self.get_clock().now()
 
+    def wall_distance_callback(self, msg):
+        values = (
+            float(msg.vector.x),
+            float(msg.vector.y),
+            float(msg.vector.z),
+        )
+        if not all(math.isfinite(value) for value in values):
+            return
+        self.latest_wall_distance_m = values[0]
+        self.latest_wall_angle_rad = values[1]
+        self.latest_wall_min_distance_m = values[2]
+        self.latest_wall_measurement_time = self.get_clock().now()
+
     def odometry_callback(self, msg):
         position = msg.pose.pose.position
         orientation = msg.pose.pose.orientation
@@ -549,6 +589,8 @@ class RLModelPolicyNode(Node):
             self.mission.start(self.now_s())
             self.coverage_controller.reset()
             self.coverage_command = None
+            self.pending_pose_x_correction = None
+            self.pending_pose_x_correction_time = None
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
@@ -588,6 +630,8 @@ class RLModelPolicyNode(Node):
             self.filtered_action = [0.0, 0.0]
             self.coverage_controller.reset()
             self.coverage_command = None
+            self.pending_pose_x_correction = None
+            self.pending_pose_x_correction_time = None
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
@@ -1150,6 +1194,20 @@ class RLModelPolicyNode(Node):
             self.set_control_mode(self.MODE_WAITING_FOR_POSE)
             return (0.0, 0.0)
 
+        if self.waiting_for_pose_x_correction():
+            self.coverage_command = self.coverage_controller.hold_command(
+                "WAITING_FOR_POSE_X_CORRECTION"
+            )
+            self.set_control_mode(self.MODE_COVERAGE_SEARCH)
+            return (0.0, 0.0)
+
+        if (
+            bool(self.get_parameter("lane_tof_correction_enabled").value)
+            and self.coverage_controller.current_leg.phase
+            == "SHIFT_TO_NEXT_LANE"
+        ):
+            return self.lane_tof_shift_command()
+
         self.coverage_command = self.coverage_controller.command(
             robot_x=self.robot_x,
             robot_y=self.robot_y,
@@ -1163,6 +1221,81 @@ class RLModelPolicyNode(Node):
             self.coverage_command.linear_x,
             self.coverage_command.angular_z,
         )
+
+    def lane_tof_shift_command(self):
+        leg = self.coverage_controller.current_leg
+        age_s = self.wall_measurement_age_s()
+        command = make_lane_tof_command(
+            distance_m=self.latest_wall_distance_m,
+            measurement_age_s=age_s,
+            robot_yaw=self.robot_yaw,
+            target_x=leg.target_x,
+            left_wall_x_m=self.get_float("lane_tof_left_wall_x_m"),
+            sensor_forward_offset_m=self.get_float(
+                "lane_tof_sensor_forward_offset_m"
+            ),
+            transit_speed=abs(float(leg.speed)),
+            minimum_speed=self.get_float("lane_tof_min_speed"),
+            slowdown_distance_m=self.get_float(
+                "lane_tof_slowdown_distance_m"
+            ),
+            x_tolerance_m=self.get_float("lane_tof_x_tolerance_m"),
+            measurement_timeout_s=self.get_float(
+                "lane_tof_measurement_timeout_s"
+            ),
+            heading_gain=self.get_float("coverage_heading_gain"),
+            max_angular_speed=self.get_float("coverage_max_angular_speed"),
+            heading_tolerance=self.get_float("coverage_heading_tolerance"),
+        )
+        self.coverage_command = self.coverage_controller.external_command(
+            command.linear_x,
+            command.angular_z,
+            command.phase,
+        )
+        self.set_control_mode(self.MODE_COVERAGE_SEARCH)
+        if not command.reached:
+            return (command.linear_x, command.angular_z)
+
+        correction = Float64()
+        correction.data = float(leg.target_x)
+        if not self.dry_run:
+            self.pose_x_correction_pub.publish(correction)
+            self.pending_pose_x_correction = correction.data
+            self.pending_pose_x_correction_time = self.get_clock().now()
+        self.coverage_controller.complete_current_leg("SHIFT_TO_NEXT_LANE")
+        self.coverage_command = self.coverage_controller.hold_command(
+            "TOF_LANE_ALIGNED"
+        )
+        self.get_logger().info(
+            "ToF lane alignment complete: "
+            f"measured_x={command.measured_robot_x:.3f}, "
+            f"pose_x->{correction.data:.3f}"
+        )
+        return (0.0, 0.0)
+
+    def wall_measurement_age_s(self):
+        if self.latest_wall_measurement_time is None:
+            return None
+        age = self.get_clock().now() - self.latest_wall_measurement_time
+        return max(0.0, age.nanoseconds / 1_000_000_000.0)
+
+    def waiting_for_pose_x_correction(self):
+        if self.pending_pose_x_correction is None:
+            return False
+        tolerance = min(0.01, self.get_float("lane_tof_x_tolerance_m"))
+        if abs(self.robot_x - self.pending_pose_x_correction) <= tolerance:
+            self.pending_pose_x_correction = None
+            self.pending_pose_x_correction_time = None
+            return False
+        age = self.get_clock().now() - self.pending_pose_x_correction_time
+        if age.nanoseconds / 1_000_000_000.0 <= self.get_float("pose_timeout_s"):
+            return True
+        self.get_logger().warning(
+            "Timed out waiting for pose tracker to publish the ToF x correction"
+        )
+        self.pending_pose_x_correction = None
+        self.pending_pose_x_correction_time = None
+        return False
 
     def set_control_mode(self, mode):
         if mode == self.control_mode:
@@ -1596,6 +1729,25 @@ class RLModelPolicyNode(Node):
                     "x": round(self.robot_x, 4),
                     "y": round(self.robot_y, 4),
                     "yaw": round(self.robot_yaw, 4),
+                },
+                "lane_tof": {
+                    "enabled": bool(
+                        self.get_parameter("lane_tof_correction_enabled").value
+                    ),
+                    "active": (
+                        self.coverage_controller.current_leg.phase
+                        == "SHIFT_TO_NEXT_LANE"
+                    ),
+                    "distance_m": None
+                    if self.latest_wall_distance_m is None
+                    else round(self.latest_wall_distance_m, 4),
+                    "angle_rad": None
+                    if self.latest_wall_angle_rad is None
+                    else round(self.latest_wall_angle_rad, 4),
+                    "age_s": None
+                    if self.wall_measurement_age_s() is None
+                    else round(self.wall_measurement_age_s(), 4),
+                    "pending_pose_x": self.pending_pose_x_correction,
                 },
                 "coverage": {
                     "enabled": self.coverage_is_enabled(),

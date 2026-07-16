@@ -6,7 +6,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
-from std_msgs.msg import String
+from std_msgs.msg import Float64, String
 from std_srvs.srv import Trigger
 from tf2_ros import TransformBroadcaster
 
@@ -22,6 +22,7 @@ class RobotPoseTracker(Node):
         self.declare_parameter('pose_topic', '/robot_pose')
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('status_topic', '/robot_pose/status')
+        self.declare_parameter('x_correction_topic', '/robot_pose/correct_x')
         self.declare_parameter('reset_service', '/robot_pose/reset')
         self.declare_parameter('recalibrate_service', '/robot_pose/recalibrate_gyro')
         self.declare_parameter('odom_frame', 'odom')
@@ -94,6 +95,12 @@ class RobotPoseTracker(Node):
             self.imu_callback,
             qos_profile_sensor_data,
         )
+        self.x_correction_sub = self.create_subscription(
+            Float64,
+            self.get_parameter('x_correction_topic').value,
+            self.x_correction_callback,
+            10,
+        )
         self.reset_srv = self.create_service(
             Trigger,
             self.get_parameter('reset_service').value,
@@ -161,6 +168,21 @@ class RobotPoseTracker(Node):
                 f'Gyro calibration complete: z bias={self.gyro_bias_z:.6f} rad/s '
                 f'from {self.gyro_bias_samples} samples.'
             )
+
+    def x_correction_callback(self, msg):
+        try:
+            self.estimator.correct_x(msg.data)
+        except (TypeError, ValueError) as exc:
+            self.get_logger().warning(f'Ignoring invalid x correction: {exc}')
+            return
+
+        # Do not integrate an old non-zero command across the landmark update.
+        self.latest_cmd = Twist()
+        self.latest_cmd_time = None
+        self.last_update_time = self.get_clock().now()
+        self.get_logger().info(
+            f'Pose x corrected from external landmark: x={self.estimator.x:.3f} m'
+        )
 
     def update(self):
         now = self.get_clock().now()

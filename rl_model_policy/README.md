@@ -45,6 +45,9 @@ when one is passed explicitly through `model_path`.
   - arena-center pose used by the no-target coverage controller
   - never included in the bundled 10-input model observation
   - optionally included in a legacy 18-input model with `pose_observation_enabled:=true`
+- `/wall/distance_angle` (`geometry_msgs/Vector3Stamped`)
+  - `vector.x`: left-wall perpendicular distance from the two VL53L1X sensors
+  - used only during `SHIFT_TO_NEXT_LANE`, never during a y-axis lane scan
 
 For a new 10-input checkpoint, pose data is never sent to the network. For a
 legacy 18-input checkpoint, disabling pose observation supplies zeros for its
@@ -56,6 +59,7 @@ testing a calibrated legacy pose model.
 - `/cmd_vel` (`geometry_msgs/Twist`)
 - `/ros_robot_controller/bus_servo/set_state` for the default bus-servo gripper
 - `/rl_estimated_objects` (`std_msgs/String`) for GUI map markers
+- `/robot_pose/correct_x` (`std_msgs/Float64`) after a ToF lane alignment
 
 ## Run
 
@@ -115,7 +119,7 @@ Build the integrated runtime packages once after pulling the repository:
 ```bash
 cd ~/ros2_ws
 source /opt/ros/humble/setup.bash
-colcon build --packages-up-to mission_manager robot_pose_tracker rl_model_policy --symlink-install
+colcon build --packages-up-to mission_manager wall_distance_sensor robot_pose_tracker rl_model_policy --symlink-install
 source ~/ros2_ws/install/setup.bash
 ```
 
@@ -206,6 +210,27 @@ coverage angular limit: 1.00 rad/s
 waypoint tolerance: 0.10 m
 curve-avoid forward scale: 0.70
 ```
+
+The integrated launch starts `wall_distance_sensor` by default. After returning
+south on a lane, `SHIFT_TO_NEXT_LANE` turns the robot toward the left wall,
+waits for a fresh VL53L1X measurement, and uses that distance instead of odom x
+for the horizontal move. When the next corridor center is reached, the policy
+publishes the corridor x to `/robot_pose/correct_x`. The pose tracker changes x
+only; y, IMU yaw, and accumulated travel counters are preserved. If the ToF
+message is stale, the robot stops with phase `WAITING_FOR_LANE_TOF`.
+
+Calibrate these two physical dimensions on the real field:
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  lane_tof_left_wall_x_m:=-2.0 \
+  lane_tof_sensor_forward_offset_m:=0.10
+```
+
+`lane_tof_sensor_forward_offset_m` is the distance from `base_link` to the ToF
+sensor plane. Disable only this correction with
+`lane_tof_correction_enabled:=false`; disable launching the hardware node with
+`launch_wall_distance_sensor:=false`.
 
 Inspect the current mode, waypoint, pose, and route leg with:
 
