@@ -23,6 +23,8 @@ def generate_launch_description():
     target_classes = LaunchConfiguration("target_classes")
     avoid_classes = LaunchConfiguration("avoid_classes")
     confidence = LaunchConfiguration("confidence")
+    yolo_iou = LaunchConfiguration("yolo_iou")
+    agnostic_nms = LaunchConfiguration("agnostic_nms")
     publish_annotated = LaunchConfiguration("publish_annotated")
     correction_enabled = LaunchConfiguration("correction_enabled")
     yolo_imgsz = LaunchConfiguration("yolo_imgsz")
@@ -33,6 +35,7 @@ def generate_launch_description():
     )
     speed_scale = LaunchConfiguration("speed_scale")
     target_timeout_s = LaunchConfiguration("target_timeout_s")
+    target_tracking_timeout_s = LaunchConfiguration("target_tracking_timeout_s")
     target_confirmation_window = LaunchConfiguration("target_confirmation_window")
     target_confirmation_min_detections = LaunchConfiguration(
         "target_confirmation_min_detections"
@@ -158,6 +161,8 @@ def generate_launch_description():
             "target_classes": target_classes,
             "avoid_classes": avoid_classes,
             "confidence": confidence,
+            "iou": yolo_iou,
+            "agnostic_nms": agnostic_nms,
             "publish_annotated": publish_annotated,
             "correction_enabled": correction_enabled,
             "imgsz": yolo_imgsz,
@@ -204,6 +209,7 @@ def generate_launch_description():
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
             "target_timeout_s": target_timeout_s,
+            "target_tracking_timeout_s": target_tracking_timeout_s,
             "target_confirmation_window": target_confirmation_window,
             "target_confirmation_min_detections": (
                 target_confirmation_min_detections
@@ -390,6 +396,16 @@ def generate_launch_description():
         DeclareLaunchArgument("target_classes", default_value="0"),
         DeclareLaunchArgument("avoid_classes", default_value=""),
         DeclareLaunchArgument("confidence", default_value="0.25"),
+        DeclareLaunchArgument(
+            "yolo_iou",
+            default_value="0.45",
+            description="IoU threshold used to suppress duplicate YOLO boxes.",
+        ),
+        DeclareLaunchArgument(
+            "agnostic_nms",
+            default_value="true",
+            description="Suppress overlapping boxes even when their classes differ.",
+        ),
         DeclareLaunchArgument("publish_annotated", default_value="false"),
         DeclareLaunchArgument("correction_enabled", default_value="true"),
         DeclareLaunchArgument("yolo_imgsz", default_value="800"),
@@ -401,6 +417,13 @@ def generate_launch_description():
             "target_timeout_s",
             default_value="1.0",
             description="Keep tracking the last target through short YOLO detection gaps.",
+        ),
+        DeclareLaunchArgument(
+            "target_tracking_timeout_s",
+            default_value="1.5",
+            description=(
+                "Keep the last target briefly during class flicker after RL tracking starts."
+            ),
         ),
         DeclareLaunchArgument(
             "target_confirmation_window",

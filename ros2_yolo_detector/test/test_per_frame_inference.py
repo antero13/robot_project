@@ -22,6 +22,9 @@ class PerFrameInferenceTest(unittest.TestCase):
         self.assertIn("predict", calls)
         self.assertNotIn("track", calls)
 
+    def test_inference_enables_configurable_class_agnostic_nms(self):
+        self.assertIn('"agnostic_nms": self.agnostic_nms', self.source)
+
     def test_detector_has_no_cross_frame_tracking_state(self):
         forbidden_names = {
             "stable_tracks",

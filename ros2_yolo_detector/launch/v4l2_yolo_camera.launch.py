@@ -66,6 +66,7 @@ def generate_launch_description():
             DeclareLaunchArgument("gain", default_value="20"),
             DeclareLaunchArgument("confidence", default_value="0.25"),
             DeclareLaunchArgument("iou", default_value="0.45"),
+            DeclareLaunchArgument("agnostic_nms", default_value="true"),
             DeclareLaunchArgument("device", default_value=""),
             DeclareLaunchArgument("imgsz", default_value="800"),
             DeclareLaunchArgument("correction_enabled", default_value="true"),
@@ -109,6 +110,10 @@ def generate_launch_description():
                         "image_topic": LaunchConfiguration("image_topic"),
                         "confidence": ParameterValue(LaunchConfiguration("confidence"), value_type=float),
                         "iou": ParameterValue(LaunchConfiguration("iou"), value_type=float),
+                        "agnostic_nms": ParameterValue(
+                            LaunchConfiguration("agnostic_nms"),
+                            value_type=bool,
+                        ),
                         "device": LaunchConfiguration("device"),
                         "imgsz": ParameterValue(LaunchConfiguration("imgsz"), value_type=int),
                         "correction_enabled": ParameterValue(

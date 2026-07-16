@@ -120,6 +120,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("dry_run", False)
         self.declare_parameter("timer_rate_hz", 20.0)
         self.declare_parameter("target_timeout_s", 1.0)
+        self.declare_parameter("target_tracking_timeout_s", 1.5)
         self.declare_parameter("target_confirmation_window", 5)
         self.declare_parameter("target_confirmation_min_detections", 3)
         self.declare_parameter("target_activation_center_y_min", 0.30)
@@ -1056,9 +1057,17 @@ class RLModelPolicyNode(Node):
 
     def current_target_center_y(self):
         center_y = None
-        if self.is_fresh(self.latest_target_center_y_time, "target_timeout_s"):
+        if self.target_data_is_fresh(self.latest_target_center_y_time):
             center_y = self.latest_target_center_y
         return center_y
+
+    def target_data_is_fresh(self, stamp):
+        timeout_param = (
+            "target_tracking_timeout_s"
+            if self.control_mode == self.MODE_TRACK_TARGET
+            else "target_timeout_s"
+        )
+        return self.is_fresh(stamp, timeout_param)
 
     def target_activation_is_met(self, tracking_active=None):
         if tracking_active is None:
@@ -1165,7 +1174,7 @@ class RLModelPolicyNode(Node):
         self.get_logger().info(f"Control mode: {previous_mode} -> {mode}")
 
     def current_target(self):
-        if not self.is_fresh(self.latest_target_time, "target_timeout_s"):
+        if not self.target_data_is_fresh(self.latest_target_time):
             return None
 
         target = self.make_point(
@@ -1470,7 +1479,7 @@ class RLModelPolicyNode(Node):
         )
 
     def current_target_label(self):
-        if not self.is_fresh(self.latest_target_label_time, "target_timeout_s"):
+        if not self.target_data_is_fresh(self.latest_target_label_time):
             return None
         return self.latest_target_label
 
@@ -1528,6 +1537,11 @@ class RLModelPolicyNode(Node):
                     ),
                     "tracking_hysteresis_active": (
                         self.control_mode == self.MODE_TRACK_TARGET
+                    ),
+                    "active_timeout_s": self.get_float(
+                        "target_tracking_timeout_s"
+                        if self.control_mode == self.MODE_TRACK_TARGET
+                        else "target_timeout_s"
                     ),
                 },
                 "leave_start": {

@@ -32,6 +32,7 @@ class YoloCameraNode(Node):
         self.declare_parameter("detections_topic", "/yolo/detections")
         self.declare_parameter("confidence", 0.25)
         self.declare_parameter("iou", 0.45)
+        self.declare_parameter("agnostic_nms", True)
         self.declare_parameter("device", "")
         self.declare_parameter("imgsz", 640)
         self.declare_parameter("correction_enabled", False)
@@ -63,6 +64,9 @@ class YoloCameraNode(Node):
         self.detections_topic = self.get_parameter("detections_topic").get_parameter_value().string_value
         self.confidence = self.get_parameter("confidence").get_parameter_value().double_value
         self.iou = self.get_parameter("iou").get_parameter_value().double_value
+        self.agnostic_nms = (
+            self.get_parameter("agnostic_nms").get_parameter_value().bool_value
+        )
         self.device = self.get_parameter("device").get_parameter_value().string_value
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
         self.correction_enabled = self.get_parameter(
@@ -310,6 +314,7 @@ class YoloCameraNode(Node):
                 "source": inference_frame,
                 "conf": self.confidence,
                 "iou": self.iou,
+                "agnostic_nms": self.agnostic_nms,
                 "imgsz": self.imgsz,
                 "verbose": False,
             }

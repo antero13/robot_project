@@ -11,6 +11,7 @@ def generate_launch_description():
     speed_scale = LaunchConfiguration('speed_scale')
     dry_run = LaunchConfiguration('dry_run')
     target_timeout_s = LaunchConfiguration('target_timeout_s')
+    target_tracking_timeout_s = LaunchConfiguration('target_tracking_timeout_s')
     target_visibility_topic = LaunchConfiguration('target_visibility_topic')
     target_center_y_topic = LaunchConfiguration('target_center_y_topic')
     target_confirmation_window = LaunchConfiguration('target_confirmation_window')
@@ -123,6 +124,11 @@ def generate_launch_description():
             'target_timeout_s',
             default_value='1.0',
             description='Keep tracking the last target through short YOLO detection gaps.',
+        ),
+        DeclareLaunchArgument(
+            'target_tracking_timeout_s',
+            default_value='1.5',
+            description='Use a longer target timeout after RL tracking has started.',
         ),
         DeclareLaunchArgument(
             'target_bearing_prediction_enabled',
@@ -249,6 +255,10 @@ def generate_launch_description():
                 'dry_run': dry_run,
                 'timer_rate_hz': 20.0,
                 'target_timeout_s': ParameterValue(target_timeout_s, value_type=float),
+                'target_tracking_timeout_s': ParameterValue(
+                    target_tracking_timeout_s,
+                    value_type=float,
+                ),
                 'target_confirmation_window': ParameterValue(
                     target_confirmation_window,
                     value_type=int,
