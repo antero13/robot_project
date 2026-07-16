@@ -26,6 +26,13 @@ class PoseEstimator:
             raise ValueError('corrected x must be finite')
         self.x = x
 
+    def correct_y(self, y):
+        """Apply an absolute y landmark without changing x, yaw, or counters."""
+        y = float(y)
+        if not math.isfinite(y):
+            raise ValueError('corrected y must be finite')
+        self.y = y
+
     def step(self, dt, linear_velocity, angular_velocity):
         if dt <= 0.0:
             return

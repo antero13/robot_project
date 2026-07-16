@@ -46,8 +46,8 @@ when one is passed explicitly through `model_path`.
   - never included in the bundled 10-input model observation
   - optionally included in a legacy 18-input model with `pose_observation_enabled:=true`
 - `/wall/distance_angle` (`geometry_msgs/Vector3Stamped`)
-  - `vector.x`: left-wall perpendicular distance from the two VL53L1X sensors
-  - used only during `SHIFT_TO_NEXT_LANE`, never during a y-axis lane scan
+  - `vector.x`: perpendicular wall distance from the two VL53L1X sensors
+  - used for lane x alignment and storage-staging x/y alignment
 
 For a new 10-input checkpoint, pose data is never sent to the network. For a
 legacy 18-input checkpoint, disabling pose observation supplies zeros for its
@@ -59,7 +59,8 @@ testing a calibrated legacy pose model.
 - `/cmd_vel` (`geometry_msgs/Twist`)
 - `/ros_robot_controller/bus_servo/set_state` for the default bus-servo gripper
 - `/rl_estimated_objects` (`std_msgs/String`) for GUI map markers
-- `/robot_pose/correct_x` (`std_msgs/Float64`) after a ToF lane alignment
+- `/robot_pose/correct_x` (`std_msgs/Float64`) after lane or storage x alignment
+- `/robot_pose/correct_y` (`std_msgs/Float64`) after storage y alignment
 
 ## Run
 
@@ -183,13 +184,13 @@ Local reacquisition stops forward motion and searches for 1.5 seconds. It
 turns toward the last visible target side for 0.75 seconds, then reverses the
 turn for another 0.75 seconds. Coverage search starts only if both sweeps fail.
 
-The seven legal object columns are spaced by 0.5 m. Coverage follows the three
-center corridors between column pairs 1-2, 3-4, and 5-6 at centered-frame x
-coordinates `1.25`, `0.25`, and `-0.75` m. In each corridor the robot drives
-north, turns 180 degrees in place at the top, and drives south with its front
-camera facing the travel direction. It shifts to the next corridor only on the
-lower road. Storage deposit preserves the current coverage leg, so the second
-collection run continues from the previous search progress.
+The seven legal object columns are spaced by 0.5 m. Coverage uses four lanes at
+centered-frame x coordinates `1.25`, `0.25`, `-0.75`, and `-1.25 m`. In each
+lane the robot drives north, turns 180 degrees in place at the top, and drives
+south with its front camera facing the travel direction. It shifts to the next
+lane only on the lower road. The initial route is lanes 1->2->3->4; after a
+storage deposit the controller is rebuilt and searches the reverse route
+4->3->2->1 from the main road.
 
 Small heading errors are corrected while moving. When a non-target object gets
 too close during a lane scan, the robot keeps 70% of its forward speed and adds
@@ -200,7 +201,7 @@ If `/odom` is missing or stale, the mode becomes `WAITING_FOR_POSE` and the
 robot publishes a stop command. The default lane settings are:
 
 ```text
-x corridors: 1.25, 0.25, -0.75 m
+x corridors: 1.25, 0.25, -0.75, -1.25 m (lanes 1, 2, 3, 4)
 main road y: -1.3343 m
 scan end y: 1.0 m
 upward scan speed: 0.24 m/s
@@ -212,25 +213,38 @@ curve-avoid forward scale: 0.70
 ```
 
 The integrated launch starts `wall_distance_sensor` by default. After returning
-south on a lane, `SHIFT_TO_NEXT_LANE` turns the robot toward the left wall,
-waits for a fresh VL53L1X measurement, and uses that distance instead of odom x
-for the horizontal move. When the next corridor center is reached, the policy
-publishes the corridor x to `/robot_pose/correct_x`. The pose tracker changes x
-only; y, IMU yaw, and accumulated travel counters are preserved. If the ToF
-message is stale, the robot stops with phase `WAITING_FOR_LANE_TOF`.
+south on a lane, `SHIFT_TO_NEXT_LANE` selects the wall from the lane-shift
+direction. Normal lane order (1 -> 2 -> 3 -> 4) faces the west wall at x=-2.0.
+After storage, reverse lane order (4 -> 3 -> 2 -> 1) faces the east wall at
+x=2.0. Both directions wait for a fresh VL53L1X measurement and use that
+distance instead of odom x for the horizontal move. Coverage and storage
+waypoints, `robot_x/y`, and pose correction topics all use the geometric body
+center as their coordinate reference. When the next corridor center is reached,
+the policy publishes that
+body-center x to `/robot_pose/correct_x`. The pose tracker changes x only; y,
+IMU yaw, and accumulated travel counters are preserved. If the ToF message is
+stale, the robot stops with phase `WAITING_FOR_LANE_TOF`.
 
-Calibrate these two physical dimensions on the real field:
+The wall coordinate and sensor offset can be overridden as follows:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   lane_tof_left_wall_x_m:=-2.0 \
-  lane_tof_sensor_forward_offset_m:=0.10
+  lane_tof_right_wall_x_m:=2.0 \
+  lane_tof_sensor_forward_offset_m:=0.09
 ```
 
-`lane_tof_sensor_forward_offset_m` is the distance from `base_link` to the ToF
-sensor plane. Disable only this correction with
+`lane_tof_sensor_forward_offset_m` is the distance from the body center to the
+ToF sensor plane. For the 40 cm chassis, the body center is at 20 cm and the
+sensor is 11 cm behind the front edge, so the sensor position is 29 cm and the
+offset is 29 - 20 = 9 cm. The rotation center at y=16 cm affects the physical
+turning motion, but it is not used as the map-coordinate origin. Disable only
+this correction with
 `lane_tof_correction_enabled:=false`; disable launching the hardware node with
 `launch_wall_distance_sensor:=false`.
+
+The integrated sensor launch uses VL53L1X mode `3` (long range) by default.
+Override it only when needed with `wall_ranging_mode:=1` or `2`.
 
 Inspect the current mode, waypoint, pose, and route leg with:
 
@@ -249,7 +263,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   target_timeout_s:=1.0 \
   target_bearing_prediction_enabled:=true \
   coverage_reacquire_duration_s:=1.5 \
-  coverage_min_x:=-0.75 coverage_max_x:=1.25 \
+  coverage_min_x:=-1.25 coverage_max_x:=1.25 \
   coverage_avoid_linear_scale:=0.70 \
   coverage_rejoin_speed:=0.20 \
   coverage_turn_in_place_threshold:=0.65 \
@@ -362,11 +376,14 @@ The RL target controller now runs below a deterministic mission coordinator:
 COLLECTING
   -> RETURN_MAIN_ROAD
   -> RETURN_STAGING
-  -> ENTER_STORAGE
-  -> DEPOSIT
+  -> CORRECT_STORAGE_Y
+  -> ALIGN_STORAGE_ENTRY
+  -> OPEN_STORAGE_ENTRY
+  -> CORRECT_STORAGE_X
   -> EXIT_STORAGE
-  -> CLOSE_AFTER_DEPOSIT
-  -> COLLECTING or COMPLETE
+  -> CLOSE_STORAGE_EXIT
+  -> RETURN_FROM_STORAGE
+  -> COLLECTING (lanes 4 -> 3 -> 2 -> 1) or COMPLETE
 ```
 
 The default capacity is four objects and the mission target is seven objects.
@@ -375,17 +392,32 @@ odometry waypoints to the lower-left Storage Zone. With 30 seconds remaining it
 also returns whenever at least one object is onboard. An empty robot continues
 searching until it picks an object or the 180 second match expires.
 
-Inside storage the gripper opens, the robot reverses to a dedicated exit point,
-and the gripper closes before collection resumes. The exit is 0.75 m from the
-storage center, 1.5 times the former 0.50 m path. The default centered-frame
+On the main road the robot first reaches the east-side approach x at `-1.25 m`
+and faces south. Bottom-wall ToF then drives the body center to `y=-1.75 m`;
+with the 9 cm sensor offset the expected wall distance is 16 cm. A stale ToF
+measurement holds the robot instead of entering storage.
+
+After Y alignment the robot turns right to face west, opens the gripper, and
+waits for the servo motion. West-wall ToF then drives to body-center
+`x=-1.75 m` at a fixed `0.25 m/s` without approach slowdown. The gripper stays
+open while the robot reverses east to `x=-1.25 m`. Only after the reverse exit
+finishes does the robot stop, close the gripper, and wait for the servo motion.
+It then turns right to face north and returns to the main road at `y=-1.3343 m`
+before collection can resume.
+
+The initial coverage route includes lanes 1, 2, 3, and 4. After a storage trip,
+a new reverse controller starts at lane 4 and scans x positions `-1.25`,
+`-0.75`, `0.25`, and `1.25 m` in that order. The default body-center
 waypoints are:
 
 ```text
-main road y: -1.3343 m
-storage staging: (-1.75, -1.25) m
-storage center:  (-1.75, -1.75) m
-storage exit y:  -1.00 m
-entry heading:   -90 deg
+main road y:       -1.3343 m
+storage Y target:  (-1.25, -1.75) m
+storage center:    (-1.75, -1.75) m
+storage X exit:    (-1.25, -1.75) m
+Y approach yaw:    -90 deg (south)
+X entry yaw:       180 deg (west)
+road return yaw:    90 deg (north)
 ```
 
 Tune these from the integrated launch if the real robot center does not land
@@ -393,8 +425,14 @@ inside the 40 cm Storage Zone:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
-  storage_staging_x:=-1.75 storage_staging_y:=-1.25 \
+  storage_staging_x:=-1.25 storage_staging_y:=-1.75 \
   storage_center_x:=-1.75 storage_center_y:=-1.75 \
-  storage_exit_y:=-1.0 \
-  storage_entry_yaw_deg:=-90.0
+  storage_exit_x:=-1.25 \
+  storage_entry_yaw_deg:=-90.0 \
+  storage_tof_left_wall_x_m:=-2.0 \
+  storage_tof_bottom_wall_y_m:=-2.0 \
+  storage_tof_sensor_forward_offset_m:=0.09
 ```
+
+Set `storage_tof_correction_enabled:=false` to use odometry fallback for the Y
+approach and X entry. `storage_tof_xy_tolerance_m` defaults to `0.03` m.

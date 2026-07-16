@@ -19,6 +19,10 @@ def generate_launch_description():
             'x_correction_topic',
             default_value='/robot_pose/correct_x',
         ),
+        DeclareLaunchArgument(
+            'y_correction_topic',
+            default_value='/robot_pose/correct_y',
+        ),
         DeclareLaunchArgument('linear_scale', default_value='1.0'),
         DeclareLaunchArgument('imu_yaw_sign', default_value='1.0'),
         DeclareLaunchArgument('gyro_calibration_duration_s', default_value='2.0'),
@@ -32,6 +36,7 @@ def generate_launch_description():
                 'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
                 'imu_topic': LaunchConfiguration('imu_topic'),
                 'x_correction_topic': LaunchConfiguration('x_correction_topic'),
+                'y_correction_topic': LaunchConfiguration('y_correction_topic'),
                 'initial_x': ParameterValue(
                     LaunchConfiguration('initial_x'),
                     value_type=float,

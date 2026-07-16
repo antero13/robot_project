@@ -38,6 +38,49 @@ class CoverageControllerTest(unittest.TestCase):
         )
         self.assertTrue(all(leg.speed > 0.0 for leg in legs))
 
+    def test_generates_four_lanes_in_reverse_order(self):
+        legs = generate_coverage_legs(
+            min_x=-1.25,
+            max_x=1.25,
+            main_road_y=-1.3343,
+            scan_end_y=1.0,
+            lane_spacing=1.0,
+            scan_speed=0.24,
+            transit_speed=0.30,
+            return_speed=0.24,
+            reverse_order=True,
+        )
+
+        scan_lane_x_positions = [
+            leg.target_x for leg in legs if leg.phase == "SCAN_LANE_UP"
+        ]
+
+        self.assertEqual(len(legs), 12)
+        self.assertEqual(scan_lane_x_positions, [-1.25, -0.75, 0.25, 1.25])
+
+    def test_normal_route_lane_shift_faces_left_wall(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 3
+
+        self.assertEqual(controller.current_shift_wall_side(), "left")
+
+    def test_reverse_route_lane_shift_faces_right_wall(self):
+        legs = generate_coverage_legs(
+            min_x=-1.25,
+            max_x=1.25,
+            main_road_y=-1.3343,
+            scan_end_y=1.0,
+            lane_spacing=1.0,
+            scan_speed=0.24,
+            transit_speed=0.30,
+            return_speed=0.24,
+            reverse_order=True,
+        )
+        controller = CoverageController(legs)
+        controller.leg_index = 3
+
+        self.assertEqual(controller.current_shift_wall_side(), "right")
+
     def test_rotates_before_driving_when_heading_error_is_large(self):
         controller = CoverageController(make_legs())
 
@@ -203,7 +246,7 @@ class CoverageControllerTest(unittest.TestCase):
 
     def test_default_route_completes_within_match_time_without_obstacles(self):
         legs = generate_coverage_legs(
-            min_x=-0.75,
+            min_x=-1.25,
             max_x=1.25,
             main_road_y=-1.3343,
             scan_end_y=1.0,
@@ -232,7 +275,7 @@ class CoverageControllerTest(unittest.TestCase):
                 break
 
         self.assertEqual(controller.cycle_count, 1)
-        self.assertLess(step * dt, 100.0)
+        self.assertLess(step * dt, 140.0)
 
     def test_normalize_angle_wraps_at_pi(self):
         self.assertAlmostEqual(normalize_angle(3.0 * math.pi), math.pi)

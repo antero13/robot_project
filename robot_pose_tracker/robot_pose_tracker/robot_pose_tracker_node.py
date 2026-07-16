@@ -23,6 +23,7 @@ class RobotPoseTracker(Node):
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('status_topic', '/robot_pose/status')
         self.declare_parameter('x_correction_topic', '/robot_pose/correct_x')
+        self.declare_parameter('y_correction_topic', '/robot_pose/correct_y')
         self.declare_parameter('reset_service', '/robot_pose/reset')
         self.declare_parameter('recalibrate_service', '/robot_pose/recalibrate_gyro')
         self.declare_parameter('odom_frame', 'odom')
@@ -99,6 +100,12 @@ class RobotPoseTracker(Node):
             Float64,
             self.get_parameter('x_correction_topic').value,
             self.x_correction_callback,
+            10,
+        )
+        self.y_correction_sub = self.create_subscription(
+            Float64,
+            self.get_parameter('y_correction_topic').value,
+            self.y_correction_callback,
             10,
         )
         self.reset_srv = self.create_service(
@@ -182,6 +189,21 @@ class RobotPoseTracker(Node):
         self.last_update_time = self.get_clock().now()
         self.get_logger().info(
             f'Pose x corrected from external landmark: x={self.estimator.x:.3f} m'
+        )
+
+    def y_correction_callback(self, msg):
+        try:
+            self.estimator.correct_y(msg.data)
+        except (TypeError, ValueError) as exc:
+            self.get_logger().warning(f'Ignoring invalid y correction: {exc}')
+            return
+
+        # Do not integrate an old non-zero command across the landmark update.
+        self.latest_cmd = Twist()
+        self.latest_cmd_time = None
+        self.last_update_time = self.get_clock().now()
+        self.get_logger().info(
+            f'Pose y corrected from external landmark: y={self.estimator.y:.3f} m'
         )
 
     def update(self):

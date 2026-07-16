@@ -30,6 +30,7 @@ def generate_coverage_legs(
     scan_speed,
     transit_speed,
     return_speed,
+    reverse_order=False,
 ):
     min_x = float(min_x)
     max_x = float(max_x)
@@ -56,6 +57,8 @@ def generate_coverage_legs(
         lane_x -= lane_spacing
     if lane_x_positions[-1] > min_x + 1e-9:
         lane_x_positions.append(min_x)
+    if bool(reverse_order):
+        lane_x_positions.reverse()
 
     # Each lane is centered between two object columns. The robot scans north,
     # turns around, scans south with its front camera, then shifts to the next
@@ -130,9 +133,7 @@ class CoverageController:
         if self.heading_gain <= 0.0 or self.max_angular_speed <= 0.0:
             raise ValueError("heading controller values must be positive")
         if self.turn_in_place_threshold <= self.heading_tolerance:
-            raise ValueError(
-                "turn_in_place_threshold must exceed heading_tolerance"
-            )
+            raise ValueError("turn_in_place_threshold must exceed heading_tolerance")
         if self.avoid_danger_threshold < 0.0 or self.avoid_angular_speed <= 0.0:
             raise ValueError("avoidance controller values are invalid")
         if not 0.0 < self.avoid_linear_scale <= 1.0:
@@ -173,12 +174,18 @@ class CoverageController:
     def current_leg(self):
         return self.legs[self.leg_index]
 
+    def current_shift_wall_side(self):
+        """Return the wall faced while moving toward the current lane center."""
+        if self.current_leg.phase != "SHIFT_TO_NEXT_LANE":
+            raise RuntimeError("current leg is not a lane shift")
+        previous_leg = self.legs[(self.leg_index - 1) % len(self.legs)]
+        if self.current_leg.target_x > previous_leg.target_x:
+            return "right"
+        return "left"
+
     def complete_current_leg(self, expected_phase=None):
         """Advance one leg after an external position reference reaches it."""
-        if (
-            expected_phase is not None
-            and self.current_leg.phase != str(expected_phase)
-        ):
+        if expected_phase is not None and self.current_leg.phase != str(expected_phase):
             return False
         self._advance_leg()
         return True
@@ -246,8 +253,7 @@ class CoverageController:
             )
             danger_span = max(1e-6, 1.0 - self.avoid_danger_threshold)
             danger = clamp(
-                (avoid_danger - self.avoid_danger_threshold)
-                / danger_span,
+                (avoid_danger - self.avoid_danger_threshold) / danger_span,
                 0.0,
                 1.0,
             )

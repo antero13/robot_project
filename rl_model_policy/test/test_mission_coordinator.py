@@ -5,7 +5,7 @@ from rl_model_policy.mission_coordinator import (
     MissionCoordinator,
     MissionPhase,
     ReturnReason,
-    reverse_exit_command,
+    reverse_storage_x_exit_command,
     waypoint_command,
 )
 
@@ -36,6 +36,24 @@ class MissionCoordinatorTest(unittest.TestCase):
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)
         self.assertEqual(reason, ReturnReason.TIME_LIMIT)
+        self.assertTrue(self.mission.is_storage_phase())
+
+    def test_storage_tof_correction_phases_remain_storage_phases(self):
+        self.mission.set_phase(MissionPhase.CORRECT_STORAGE_X, 20.0)
+        self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.CORRECT_STORAGE_Y, 21.0)
+        self.assertTrue(self.mission.is_storage_phase())
+        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, 22.0)
+        self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.OPEN_STORAGE_ENTRY, 23.0)
+        self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.CLOSE_STORAGE_EXIT, 24.0)
+        self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, 25.0)
         self.assertTrue(self.mission.is_storage_phase())
 
     def test_deposit_then_resume_until_seven_objects_are_delivered(self):
@@ -76,10 +94,26 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertLess(command.angular_z, 0.0)
         self.assertFalse(command.reached)
 
-    def test_reverse_exit_stops_after_crossing_staging_y(self):
-        moving = reverse_exit_command(-1.7, -math.pi / 2.0, -1.25, -math.pi / 2.0, 0.1)
-        stopped = reverse_exit_command(-1.2, -math.pi / 2.0, -1.25, -math.pi / 2.0, 0.1)
+    def test_storage_entry_and_road_return_turn_clockwise(self):
+        west = waypoint_command(
+            -1.25, -1.75, -math.pi / 2.0, -1.25, -1.75, 0.0, final_yaw=math.pi
+        )
+        north = waypoint_command(-1.25, -1.75, math.pi, -1.25, -1.3343, 0.25)
+
+        self.assertEqual((west.linear_x, north.linear_x), (0.0, 0.0))
+        self.assertLess(west.angular_z, 0.0)
+        self.assertLess(north.angular_z, 0.0)
+
+    def test_reverse_storage_exit_stops_at_x_minus_1_25(self):
+        moving = reverse_storage_x_exit_command(
+            -1.75, math.pi, -1.25, math.pi, 0.25, x_tolerance=0.04
+        )
+        stopped = reverse_storage_x_exit_command(
+            -1.24, math.pi, -1.25, math.pi, 0.25, x_tolerance=0.04
+        )
+
         self.assertLess(moving.linear_x, 0.0)
+        self.assertAlmostEqual(moving.angular_z, 0.0)
         self.assertTrue(stopped.reached)
 
 

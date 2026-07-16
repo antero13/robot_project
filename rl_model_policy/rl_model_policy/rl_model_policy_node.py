@@ -20,7 +20,7 @@ from rl_model_policy.mission_coordinator import (
     MissionCoordinator,
     MissionPhase,
     ReturnReason,
-    reverse_exit_command,
+    reverse_storage_x_exit_command,
     waypoint_command,
 )
 from rl_model_policy.observation import (
@@ -38,6 +38,7 @@ from rl_model_policy.observation import (
 from rl_model_policy.pickup_trigger import pickup_is_ready
 from rl_model_policy.leave_start import make_leave_start_command
 from rl_model_policy.lane_tof_correction import make_lane_tof_command
+from rl_model_policy.storage_tof_correction import make_storage_tof_command
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
 from rl_model_policy.target_activation import target_is_eligible
@@ -57,6 +58,7 @@ except ImportError:
 
 
 if torch is not None:
+
     class PolicyNetwork(torch.nn.Module):
         def __init__(self, observation_dim):
             super().__init__()
@@ -89,7 +91,6 @@ class RLModelPolicyNode(Node):
     MODE_GRAB_SEQUENCE = "GRAB_SEQUENCE"
     MODE_RETURN_TO_STORAGE = "RETURN_TO_STORAGE"
     MODE_ENTER_STORAGE = "ENTER_STORAGE"
-    MODE_DEPOSIT = "DEPOSIT"
     MODE_EXIT_STORAGE = "EXIT_STORAGE"
     MODE_MISSION_COMPLETE = "MISSION_COMPLETE"
     MODE_MISSION_TIMEOUT = "MISSION_TIMEOUT"
@@ -103,7 +104,9 @@ class RLModelPolicyNode(Node):
     def __init__(self):
         super().__init__("rl_model_policy")
 
-        self.declare_parameter("model_path", "mission_manager/models/rl_avoid_search_best.pt")
+        self.declare_parameter(
+            "model_path", "mission_manager/models/rl_avoid_search_best.pt"
+        )
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("target_object_topic", "/target_object")
         self.declare_parameter("target_label_topic", "/target_label")
@@ -114,8 +117,12 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("control_topic", "/rl_model_policy_control")
         self.declare_parameter("state_topic", "/rl_model_policy_state")
         self.declare_parameter("odometry_topic", "/odom")
-        self.declare_parameter("pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state")
-        self.declare_parameter("bus_servo_topic", "/ros_robot_controller/bus_servo/set_state")
+        self.declare_parameter(
+            "pwm_servo_topic", "/ros_robot_controller/pwm_servo/set_state"
+        )
+        self.declare_parameter(
+            "bus_servo_topic", "/ros_robot_controller/bus_servo/set_state"
+        )
 
         self.declare_parameter("active_on_start", False)
         self.declare_parameter("dry_run", False)
@@ -142,7 +149,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("leave_start_max_angular_speed", 0.40)
 
         self.declare_parameter("coverage_enabled", True)
-        self.declare_parameter("coverage_min_x", -0.75)
+        self.declare_parameter("coverage_min_x", -1.25)
         self.declare_parameter("coverage_max_x", 1.25)
         self.declare_parameter("coverage_main_road_y", -1.3343)
         self.declare_parameter("coverage_scan_end_y", 1.0)
@@ -165,8 +172,10 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("lane_tof_correction_enabled", True)
         self.declare_parameter("wall_distance_angle_topic", "/wall/distance_angle")
         self.declare_parameter("pose_x_correction_topic", "/robot_pose/correct_x")
+        self.declare_parameter("pose_y_correction_topic", "/robot_pose/correct_y")
         self.declare_parameter("lane_tof_left_wall_x_m", -2.0)
-        self.declare_parameter("lane_tof_sensor_forward_offset_m", 0.10)
+        self.declare_parameter("lane_tof_right_wall_x_m", 2.0)
+        self.declare_parameter("lane_tof_sensor_forward_offset_m", 0.09)
         self.declare_parameter("lane_tof_measurement_timeout_s", 0.25)
         self.declare_parameter("lane_tof_x_tolerance_m", 0.03)
         self.declare_parameter("lane_tof_min_speed", 0.08)
@@ -195,15 +204,15 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_capacity", 4)
         self.declare_parameter("target_object_count", 7)
         self.declare_parameter("storage_main_road_y", -1.3343)
-        self.declare_parameter("storage_staging_x", -1.75)
-        self.declare_parameter("storage_staging_y", -1.25)
-        self.declare_parameter("storage_exit_y", -1.0)
+        self.declare_parameter("storage_staging_x", -1.25)
+        self.declare_parameter("storage_staging_y", -1.75)
+        self.declare_parameter("storage_exit_x", -1.25)
         self.declare_parameter("storage_center_x", -1.75)
         self.declare_parameter("storage_center_y", -1.75)
         self.declare_parameter("storage_entry_yaw_deg", -90.0)
         self.declare_parameter("storage_return_speed", 0.25)
-        self.declare_parameter("storage_entry_speed", 0.12)
-        self.declare_parameter("storage_exit_reverse_speed", 0.16)
+        self.declare_parameter("storage_entry_speed", 0.25)
+        self.declare_parameter("storage_exit_reverse_speed", 0.25)
         self.declare_parameter("storage_waypoint_tolerance", 0.10)
         self.declare_parameter("storage_entry_tolerance", 0.04)
         self.declare_parameter("storage_heading_tolerance", 0.14)
@@ -211,6 +220,14 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_heading_gain", 1.5)
         self.declare_parameter("storage_max_angular_speed", 0.60)
         self.declare_parameter("storage_avoid_danger_threshold", 0.20)
+        self.declare_parameter("storage_tof_correction_enabled", True)
+        self.declare_parameter("storage_tof_left_wall_x_m", -2.0)
+        self.declare_parameter("storage_tof_bottom_wall_y_m", -2.0)
+        self.declare_parameter("storage_tof_sensor_forward_offset_m", 0.09)
+        self.declare_parameter("storage_tof_measurement_timeout_s", 0.25)
+        self.declare_parameter("storage_tof_xy_tolerance_m", 0.03)
+        self.declare_parameter("storage_tof_min_speed", 0.05)
+        self.declare_parameter("storage_tof_slowdown_distance_m", 0.20)
 
         self.declare_parameter("gripper_enabled", True)
         self.declare_parameter("gripper_type", "bus")
@@ -245,9 +262,7 @@ class RLModelPolicyNode(Node):
             self.target_confirmation_window,
             self.target_confirmation_min_detections,
         )
-        self.target_visibility_history = deque(
-            maxlen=self.target_confirmation_window
-        )
+        self.target_visibility_history = deque(maxlen=self.target_confirmation_window)
         self.latest_avoid = None
         self.latest_avoid_time = None
         self.latest_avoid_objects = []
@@ -269,8 +284,8 @@ class RLModelPolicyNode(Node):
         self.motion_paused = False
         self.pickup_label = None
         self.control_mode = self.MODE_IDLE
-        self.leave_start_active = (
-            self.active and bool(self.get_parameter("leave_start_enabled").value)
+        self.leave_start_active = self.active and bool(
+            self.get_parameter("leave_start_enabled").value
         )
         self.leave_start_origin = None
         self.leave_start_yaw = None
@@ -286,18 +301,16 @@ class RLModelPolicyNode(Node):
         self.latest_wall_measurement_time = None
         self.pending_pose_x_correction = None
         self.pending_pose_x_correction_time = None
+        self.pending_pose_y_correction = None
+        self.pending_pose_y_correction_time = None
         self.mission_waypoint = None
         self.return_lane_x = 0.0
 
         self.mission = MissionCoordinator(
             storage_capacity=int(self.get_parameter("storage_capacity").value),
-            target_object_count=int(
-                self.get_parameter("target_object_count").value
-            ),
+            target_object_count=int(self.get_parameter("target_object_count").value),
             mission_duration_s=self.get_float("mission_duration_s"),
-            force_return_remaining_s=self.get_float(
-                "force_return_remaining_s"
-            ),
+            force_return_remaining_s=self.get_float("force_return_remaining_s"),
         )
         if self.active:
             self.mission.start(self.now_s())
@@ -310,11 +323,20 @@ class RLModelPolicyNode(Node):
         self.load_model()
         self.coverage_controller = self.create_coverage_controller()
 
-        self.cmd_vel_pub = self.create_publisher(Twist, self.get_parameter("cmd_vel_topic").value, 10)
-        self.state_pub = self.create_publisher(String, self.get_parameter("state_topic").value, 10)
+        self.cmd_vel_pub = self.create_publisher(
+            Twist, self.get_parameter("cmd_vel_topic").value, 10
+        )
+        self.state_pub = self.create_publisher(
+            String, self.get_parameter("state_topic").value, 10
+        )
         self.pose_x_correction_pub = self.create_publisher(
             Float64,
             self.get_parameter("pose_x_correction_topic").value,
+            10,
+        )
+        self.pose_y_correction_pub = self.create_publisher(
+            Float64,
+            self.get_parameter("pose_y_correction_topic").value,
             10,
         )
         self.pwm_servo_pub = self.create_publisher(
@@ -385,7 +407,9 @@ class RLModelPolicyNode(Node):
             self.get_logger().info(
                 "Odometry is enabled for coverage search but remains excluded from RL observations"
             )
-        elif self.model_observation_dim == OBSERVATION_DIM and self.odometry_sub is None:
+        elif (
+            self.model_observation_dim == OBSERVATION_DIM and self.odometry_sub is None
+        ):
             self.get_logger().info(
                 "Legacy 18-input policy loaded with pose disabled; pose inputs remain zero"
             )
@@ -418,7 +442,9 @@ class RLModelPolicyNode(Node):
             self.active = False
             return
 
-        model_path = self.resolve_model_path(str(self.get_parameter("model_path").value))
+        model_path = self.resolve_model_path(
+            str(self.get_parameter("model_path").value)
+        )
         if model_path is None:
             self.get_logger().error(
                 "Cannot find RL model. Pass -p model_path:=<path to rl_avoid_search_best.pt>."
@@ -476,7 +502,11 @@ class RLModelPolicyNode(Node):
         candidates.append(Path.cwd() / raw)
 
         default_name = "rl_avoid_search_best.pt"
-        for root in [Path.cwd(), *Path.cwd().parents, *Path(__file__).resolve().parents]:
+        for root in [
+            Path.cwd(),
+            *Path.cwd().parents,
+            *Path(__file__).resolve().parents,
+        ]:
             candidates.append(root / "mission_manager" / "models" / default_name)
             candidates.append(root / "models" / default_name)
 
@@ -561,7 +591,9 @@ class RLModelPolicyNode(Node):
             self.get_logger().warning(f"Invalid avoid_objects JSON: {exc}")
             return
 
-        raw_objects = payload.get("objects", payload) if isinstance(payload, dict) else payload
+        raw_objects = (
+            payload.get("objects", payload) if isinstance(payload, dict) else payload
+        )
         if not isinstance(raw_objects, list):
             return
 
@@ -591,6 +623,8 @@ class RLModelPolicyNode(Node):
             self.coverage_command = None
             self.pending_pose_x_correction = None
             self.pending_pose_x_correction_time = None
+            self.pending_pose_y_correction = None
+            self.pending_pose_y_correction_time = None
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
@@ -632,6 +666,8 @@ class RLModelPolicyNode(Node):
             self.coverage_command = None
             self.pending_pose_x_correction = None
             self.pending_pose_x_correction_time = None
+            self.pending_pose_y_correction = None
+            self.pending_pose_y_correction_time = None
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
@@ -685,10 +721,7 @@ class RLModelPolicyNode(Node):
         target_control_ready = (
             target is not None
             and self.target_activation_is_met(tracking_active=tracking_target)
-            and (
-                tracking_target
-                or self.target_confirmation_is_met()
-            )
+            and (tracking_target or self.target_confirmation_is_met())
         )
         confirmed_target = target if target_control_ready else None
         grab_cmd = (
@@ -725,22 +758,16 @@ class RLModelPolicyNode(Node):
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
-        elif (
-            self.active
-            and collecting
-            and self.coverage_controller.rejoin_active
-        ):
+        elif self.active and collecting and self.coverage_controller.rejoin_active:
             linear_x, angular_z = self.coverage_search_command(bins)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
-        elif (
-            self.active
-            and confirmed_target is not None
-            and self.policy is not None
-        ):
+        elif self.active and confirmed_target is not None and self.policy is not None:
             self.set_control_mode(self.MODE_TRACK_TARGET)
             self.raw_action = self.infer_action(obs)
-            self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
+            self.filtered_action = self.filter_action(
+                self.filtered_action, self.raw_action
+            )
             linear_x, angular_z = self.action_to_cmd(self.filtered_action)
             self.coverage_command = None
         elif self.active and self.should_locally_reacquire():
@@ -752,9 +779,7 @@ class RLModelPolicyNode(Node):
             angular_z = reacquire_angular_velocity(
                 last_target_direction=self.last_target_direction,
                 elapsed_s=self.target_lost_age_s(),
-                reverse_after_s=self.get_float(
-                    "coverage_reacquire_reverse_after_s"
-                ),
+                reverse_after_s=self.get_float("coverage_reacquire_reverse_after_s"),
                 angular_speed=self.get_float("coverage_reacquire_angular_z"),
             )
         elif self.active and self.coverage_is_enabled():
@@ -764,7 +789,9 @@ class RLModelPolicyNode(Node):
         elif self.active and self.policy is not None:
             self.set_control_mode(self.MODE_TRACK_TARGET)
             self.raw_action = self.infer_action(obs)
-            self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
+            self.filtered_action = self.filter_action(
+                self.filtered_action, self.raw_action
+            )
             linear_x, angular_z = self.action_to_cmd(self.filtered_action)
             self.coverage_command = None
         else:
@@ -775,7 +802,9 @@ class RLModelPolicyNode(Node):
             else:
                 self.set_control_mode(self.MODE_IDLE)
             self.raw_action = [0.0, 0.0]
-            self.filtered_action = self.filter_action(self.filtered_action, self.raw_action)
+            self.filtered_action = self.filter_action(
+                self.filtered_action, self.raw_action
+            )
             linear_x, angular_z = (0.0, 0.0)
             self.coverage_command = None
 
@@ -816,6 +845,10 @@ class RLModelPolicyNode(Node):
     def prepare_storage_return(self):
         self.cancel_leave_start()
         self.coverage_controller.cancel_rejoin()
+        self.pending_pose_x_correction = None
+        self.pending_pose_x_correction_time = None
+        self.pending_pose_y_correction = None
+        self.pending_pose_y_correction_time = None
         return_min_x = min(
             self.get_float("coverage_min_x"),
             self.get_float("storage_staging_x"),
@@ -854,6 +887,20 @@ class RLModelPolicyNode(Node):
             self.set_control_mode(self.MODE_WAITING_FOR_POSE)
             return (0.0, 0.0)
 
+        if self.waiting_for_pose_x_correction() or self.waiting_for_pose_y_correction():
+            if self.waiting_for_pose_x_correction():
+                self.mission_waypoint = (
+                    self.get_float("storage_center_x"),
+                    self.get_float("storage_center_y"),
+                )
+            else:
+                self.mission_waypoint = (
+                    self.get_float("storage_staging_x"),
+                    self.get_float("storage_staging_y"),
+                )
+            self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
+            return (0.0, 0.0)
+
         phase = self.mission.phase
         entry_yaw = math.radians(self.get_float("storage_entry_yaw_deg"))
 
@@ -879,18 +926,95 @@ class RLModelPolicyNode(Node):
             command = self.storage_waypoint_command(
                 bins,
                 self.get_float("storage_staging_x"),
-                self.get_float("storage_staging_y"),
+                self.get_float("storage_main_road_y"),
                 self.get_float("storage_return_speed"),
                 final_yaw=entry_yaw,
             )
             if command.reached:
-                self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
+                if bool(self.get_parameter("storage_tof_correction_enabled").value):
+                    self.mission.set_phase(
+                        MissionPhase.CORRECT_STORAGE_Y,
+                        now_s,
+                    )
+                    self.mission_waypoint = (
+                        self.get_float("storage_staging_x"),
+                        self.get_float("storage_staging_y"),
+                    )
+                else:
+                    self.mission.set_phase(MissionPhase.MOVE_TO_STORAGE_Y, now_s)
+                    self.mission_waypoint = (
+                        self.get_float("storage_staging_x"),
+                        self.get_float("storage_staging_y"),
+                    )
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.MOVE_TO_STORAGE_Y:
+            self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
+            command = self.storage_waypoint_command(
+                bins,
+                self.get_float("storage_staging_x"),
+                self.get_float("storage_staging_y"),
+                self.get_float("storage_entry_speed"),
+                final_yaw=entry_yaw,
+                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
+            )
+            if command.reached:
+                self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
                 self.mission_waypoint = (
-                    self.get_float("storage_center_x"),
-                    self.get_float("storage_center_y"),
+                    self.get_float("storage_staging_x"),
+                    self.get_float("storage_staging_y"),
                 )
                 return (0.0, 0.0)
             return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.CORRECT_STORAGE_X:
+            return self.storage_tof_axis_command("x", now_s)
+
+        if phase == MissionPhase.CORRECT_STORAGE_Y:
+            return self.storage_tof_axis_command("y", now_s)
+
+        if phase == MissionPhase.ALIGN_STORAGE_ENTRY:
+            self.set_control_mode(self.MODE_ENTER_STORAGE)
+            self.mission_waypoint = (
+                self.get_float("storage_staging_x"),
+                self.get_float("storage_staging_y"),
+            )
+            command = waypoint_command(
+                robot_x=self.robot_x,
+                robot_y=self.robot_y,
+                robot_yaw=self.robot_yaw,
+                target_x=self.robot_x,
+                target_y=self.robot_y,
+                speed=0.0,
+                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
+                heading_tolerance=self.get_float("storage_heading_tolerance"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_max_angular_speed"),
+                final_yaw=math.pi,
+                final_yaw_tolerance=self.get_float("storage_final_yaw_tolerance"),
+            )
+            if command.reached:
+                self.command_gripper(open_gripper=True)
+                self.mission.set_phase(MissionPhase.OPEN_STORAGE_ENTRY, now_s)
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.OPEN_STORAGE_ENTRY:
+            self.set_control_mode(self.MODE_ENTER_STORAGE)
+            self.mission_waypoint = (
+                self.get_float("storage_center_x"),
+                self.get_float("storage_center_y"),
+            )
+            if self.mission.phase_age_s(now_s) < self.get_float(
+                "gripper_move_duration_s"
+            ):
+                return (0.0, 0.0)
+            if bool(self.get_parameter("storage_tof_correction_enabled").value):
+                self.mission.set_phase(MissionPhase.CORRECT_STORAGE_X, now_s)
+            else:
+                self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
+            return (0.0, 0.0)
 
         if phase == MissionPhase.ENTER_STORAGE:
             self.set_control_mode(self.MODE_ENTER_STORAGE)
@@ -899,62 +1023,68 @@ class RLModelPolicyNode(Node):
                 self.get_float("storage_center_x"),
                 self.get_float("storage_center_y"),
                 self.get_float("storage_entry_speed"),
-                final_yaw=entry_yaw,
-                waypoint_tolerance=self.get_float(
-                    "storage_entry_tolerance"
-                ),
+                final_yaw=math.pi,
+                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
             )
             if command.reached:
-                self.publish_cmd(0.0, 0.0)
-                self.command_gripper(open_gripper=True)
-                self.mission.set_phase(MissionPhase.DEPOSIT, now_s)
-                self.mission_waypoint = None
-                return (0.0, 0.0)
+                return self.complete_storage_entry(now_s)
             return (command.linear_x, command.angular_z)
-
-        if phase == MissionPhase.DEPOSIT:
-            self.set_control_mode(self.MODE_DEPOSIT)
-            self.mission_waypoint = None
-            if self.mission.phase_age_s(now_s) >= self.get_float(
-                "gripper_move_duration_s"
-            ):
-                deposited_count = self.mission.onboard_count
-                self.mission.record_deposit(now_s)
-                self.get_logger().info(
-                    f"Deposited {deposited_count} object(s); "
-                    f"total delivered={self.mission.delivered_count}"
-                )
-            return (0.0, 0.0)
 
         if phase == MissionPhase.EXIT_STORAGE:
             self.set_control_mode(self.MODE_EXIT_STORAGE)
             self.mission_waypoint = (
-                self.get_float("storage_staging_x"),
-                self.get_float("storage_exit_y"),
+                self.get_float("storage_exit_x"),
+                self.get_float("storage_center_y"),
             )
-            command = reverse_exit_command(
-                robot_y=self.robot_y,
+            command = reverse_storage_x_exit_command(
+                robot_x=self.robot_x,
                 robot_yaw=self.robot_yaw,
-                exit_y=self.get_float("storage_exit_y"),
-                desired_yaw=entry_yaw,
+                exit_x=self.get_float("storage_exit_x"),
+                desired_yaw=math.pi,
                 reverse_speed=self.get_float("storage_exit_reverse_speed"),
-                y_tolerance=self.get_float("storage_waypoint_tolerance"),
+                x_tolerance=self.get_float("storage_entry_tolerance"),
                 heading_gain=self.get_float("storage_heading_gain"),
                 max_angular_speed=self.get_float("storage_max_angular_speed"),
             )
             if command.reached:
                 self.publish_cmd(0.0, 0.0)
                 self.command_gripper(open_gripper=False)
-                self.mission.set_phase(MissionPhase.CLOSE_AFTER_DEPOSIT, now_s)
+                self.mission.set_phase(MissionPhase.CLOSE_STORAGE_EXIT, now_s)
+                self.mission_waypoint = (
+                    self.get_float("storage_exit_x"),
+                    self.get_float("storage_center_y"),
+                )
                 return (0.0, 0.0)
             return (command.linear_x, command.angular_z)
 
-        if phase == MissionPhase.CLOSE_AFTER_DEPOSIT:
+        if phase == MissionPhase.CLOSE_STORAGE_EXIT:
             self.set_control_mode(self.MODE_EXIT_STORAGE)
+            self.mission_waypoint = (
+                self.get_float("storage_exit_x"),
+                self.get_float("storage_center_y"),
+            )
             if self.mission.phase_age_s(now_s) < self.get_float(
                 "gripper_move_duration_s"
             ):
                 return (0.0, 0.0)
+            self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
+            self.mission_waypoint = (
+                self.get_float("storage_exit_x"),
+                self.get_float("storage_main_road_y"),
+            )
+            return (0.0, 0.0)
+
+        if phase == MissionPhase.RETURN_FROM_STORAGE:
+            self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
+            command = self.storage_waypoint_command(
+                bins,
+                self.get_float("storage_exit_x"),
+                self.get_float("storage_main_road_y"),
+                self.get_float("storage_return_speed"),
+                final_yaw=math.pi / 2.0,
+            )
+            if not command.reached:
+                return (command.linear_x, command.angular_z)
             next_phase = self.mission.finish_storage_exit(now_s)
             self.mission_waypoint = None
             if next_phase == MissionPhase.COMPLETE:
@@ -967,6 +1097,88 @@ class RLModelPolicyNode(Node):
             self.resume_collection_after_storage()
             return (0.0, 0.0)
 
+        return (0.0, 0.0)
+
+    def storage_tof_axis_command(self, axis, now_s):
+        axis = str(axis).strip().lower()
+        target_coordinate = self.get_float(
+            "storage_center_x" if axis == "x" else "storage_staging_y"
+        )
+        wall_coordinate = self.get_float(
+            "storage_tof_left_wall_x_m"
+            if axis == "x"
+            else "storage_tof_bottom_wall_y_m"
+        )
+        command = make_storage_tof_command(
+            axis=axis,
+            distance_m=self.latest_wall_distance_m,
+            measurement_age_s=self.wall_measurement_age_s(),
+            robot_yaw=self.robot_yaw,
+            target_coordinate=target_coordinate,
+            wall_coordinate_m=wall_coordinate,
+            sensor_forward_offset_m=self.get_float(
+                "storage_tof_sensor_forward_offset_m"
+            ),
+            transit_speed=self.get_float("storage_entry_speed"),
+            minimum_speed=(
+                self.get_float("storage_entry_speed")
+                if axis == "x"
+                else self.get_float("storage_tof_min_speed")
+            ),
+            slowdown_distance_m=(
+                self.get_float("storage_tof_xy_tolerance_m")
+                if axis == "x"
+                else self.get_float("storage_tof_slowdown_distance_m")
+            ),
+            coordinate_tolerance_m=self.get_float("storage_tof_xy_tolerance_m"),
+            measurement_timeout_s=self.get_float("storage_tof_measurement_timeout_s"),
+            heading_gain=self.get_float("storage_heading_gain"),
+            max_angular_speed=self.get_float("storage_max_angular_speed"),
+            heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
+        )
+        self.mission_waypoint = (
+            self.get_float("storage_center_x" if axis == "x" else "storage_staging_x"),
+            self.get_float("storage_center_y" if axis == "x" else "storage_staging_y"),
+        )
+        self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
+        if not command.reached:
+            return (command.linear_x, command.angular_z)
+
+        correction = Float64()
+        correction.data = target_coordinate
+        if not self.dry_run:
+            if axis == "x":
+                self.pose_x_correction_pub.publish(correction)
+                self.pending_pose_x_correction = correction.data
+                self.pending_pose_x_correction_time = self.get_clock().now()
+            else:
+                self.pose_y_correction_pub.publish(correction)
+                self.pending_pose_y_correction = correction.data
+                self.pending_pose_y_correction_time = self.get_clock().now()
+
+        if axis == "y":
+            self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
+        self.get_logger().info(
+            f"Storage ToF {axis} alignment complete: "
+            f"measured_{axis}={command.measured_coordinate:.3f}, "
+            f"pose_{axis}->{correction.data:.3f}"
+        )
+        if axis == "x":
+            return self.complete_storage_entry(now_s)
+        return (0.0, 0.0)
+
+    def complete_storage_entry(self, now_s):
+        self.publish_cmd(0.0, 0.0)
+        deposited_count = self.mission.onboard_count
+        self.mission.record_deposit(now_s)
+        self.mission_waypoint = (
+            self.get_float("storage_exit_x"),
+            self.get_float("storage_center_y"),
+        )
+        self.get_logger().info(
+            f"Deposited {deposited_count} object(s); "
+            f"total delivered={self.mission.delivered_count}; reversing with gripper open"
+        )
         return (0.0, 0.0)
 
     def storage_waypoint_command(
@@ -983,8 +1195,7 @@ class RLModelPolicyNode(Node):
             direction = 1.0 if float(bins[0]) <= float(bins[2]) else -1.0
             return SimpleNamespace(
                 linear_x=0.0,
-                angular_z=direction
-                * self.get_float("coverage_avoid_angular_speed"),
+                angular_z=direction * self.get_float("coverage_avoid_angular_speed"),
                 reached=False,
             )
         return waypoint_command(
@@ -1003,9 +1214,7 @@ class RLModelPolicyNode(Node):
             heading_gain=self.get_float("storage_heading_gain"),
             max_angular_speed=self.get_float("storage_max_angular_speed"),
             final_yaw=final_yaw,
-            final_yaw_tolerance=self.get_float(
-                "storage_final_yaw_tolerance"
-            ),
+            final_yaw_tolerance=self.get_float("storage_final_yaw_tolerance"),
         )
 
     def storage_pose_is_valid(self):
@@ -1020,7 +1229,7 @@ class RLModelPolicyNode(Node):
         )
 
     def resume_collection_after_storage(self):
-        self.coverage_controller.cancel_avoidance()
+        self.coverage_controller = self.create_coverage_controller(reverse_order=True)
         self.coverage_command = None
         self.latest_target = None
         self.latest_target_time = None
@@ -1029,14 +1238,13 @@ class RLModelPolicyNode(Node):
         self.had_visible_target = False
         self.target_lost_started_at = None
         self.change_grab_state(self.GRAB_TRACKING)
-        self.coverage_controller.begin_rejoin(self.robot_y)
         self.set_control_mode(self.MODE_COVERAGE_SEARCH)
         self.get_logger().info(
-            "Storage exit complete; resuming collection with "
+            "Storage return complete; scanning lanes 4->3->2->1 with "
             f"{self.mission.delivered_count}/{self.mission.target_object_count} delivered"
         )
 
-    def create_coverage_controller(self):
+    def create_coverage_controller(self, reverse_order=False):
         legs = generate_coverage_legs(
             min_x=self.get_float("coverage_min_x"),
             max_x=self.get_float("coverage_max_x"),
@@ -1046,6 +1254,7 @@ class RLModelPolicyNode(Node):
             scan_speed=self.get_float("coverage_scan_speed"),
             transit_speed=self.get_float("coverage_transit_speed"),
             return_speed=self.get_float("coverage_return_speed"),
+            reverse_order=reverse_order,
         )
         controller = CoverageController(
             legs=legs,
@@ -1053,21 +1262,13 @@ class RLModelPolicyNode(Node):
             heading_tolerance=self.get_float("coverage_heading_tolerance"),
             heading_gain=self.get_float("coverage_heading_gain"),
             max_angular_speed=self.get_float("coverage_max_angular_speed"),
-            turn_in_place_threshold=self.get_float(
-                "coverage_turn_in_place_threshold"
-            ),
-            avoid_danger_threshold=self.get_float(
-                "coverage_avoid_danger_threshold"
-            ),
+            turn_in_place_threshold=self.get_float("coverage_turn_in_place_threshold"),
+            avoid_danger_threshold=self.get_float("coverage_avoid_danger_threshold"),
             avoid_angular_speed=self.get_float("coverage_avoid_angular_speed"),
-            avoid_linear_scale=self.get_float(
-                "coverage_avoid_linear_scale"
-            ),
+            avoid_linear_scale=self.get_float("coverage_avoid_linear_scale"),
             rejoin_speed=self.get_float("coverage_rejoin_speed"),
         )
-        scan_lane_count = sum(
-            leg.phase.startswith("SCAN_LANE") for leg in legs
-        )
+        scan_lane_count = sum(leg.phase.startswith("SCAN_LANE") for leg in legs)
         self.get_logger().info(
             f"Coverage search ready with {len(legs)} legs "
             f"({scan_lane_count} scan lanes)"
@@ -1127,9 +1328,7 @@ class RLModelPolicyNode(Node):
         self.leave_start_origin = None
         self.leave_start_yaw = None
         self.leave_start_traveled_m = 0.0
-        self.leave_start_active = bool(
-            self.get_parameter("leave_start_enabled").value
-        )
+        self.leave_start_active = bool(self.get_parameter("leave_start_enabled").value)
         self.set_control_mode(
             self.MODE_LEAVE_START
             if self.leave_start_active
@@ -1170,7 +1369,9 @@ class RLModelPolicyNode(Node):
         if command.complete:
             self.leave_start_active = False
             self.set_control_mode(self.MODE_COVERAGE_SEARCH)
-            self.get_logger().info("Start zone exit complete; beginning coverage search")
+            self.get_logger().info(
+                "Start zone exit complete; beginning coverage search"
+            )
         else:
             self.set_control_mode(self.MODE_LEAVE_START)
         return (command.linear_x, command.angular_z)
@@ -1203,8 +1404,7 @@ class RLModelPolicyNode(Node):
 
         if (
             bool(self.get_parameter("lane_tof_correction_enabled").value)
-            and self.coverage_controller.current_leg.phase
-            == "SHIFT_TO_NEXT_LANE"
+            and self.coverage_controller.current_leg.phase == "SHIFT_TO_NEXT_LANE"
         ):
             return self.lane_tof_shift_command()
 
@@ -1224,6 +1424,7 @@ class RLModelPolicyNode(Node):
 
     def lane_tof_shift_command(self):
         leg = self.coverage_controller.current_leg
+        wall_side = self.coverage_controller.current_shift_wall_side()
         age_s = self.wall_measurement_age_s()
         command = make_lane_tof_command(
             distance_m=self.latest_wall_distance_m,
@@ -1231,18 +1432,14 @@ class RLModelPolicyNode(Node):
             robot_yaw=self.robot_yaw,
             target_x=leg.target_x,
             left_wall_x_m=self.get_float("lane_tof_left_wall_x_m"),
-            sensor_forward_offset_m=self.get_float(
-                "lane_tof_sensor_forward_offset_m"
-            ),
+            right_wall_x_m=self.get_float("lane_tof_right_wall_x_m"),
+            wall_side=wall_side,
+            sensor_forward_offset_m=self.get_float("lane_tof_sensor_forward_offset_m"),
             transit_speed=abs(float(leg.speed)),
             minimum_speed=self.get_float("lane_tof_min_speed"),
-            slowdown_distance_m=self.get_float(
-                "lane_tof_slowdown_distance_m"
-            ),
+            slowdown_distance_m=self.get_float("lane_tof_slowdown_distance_m"),
             x_tolerance_m=self.get_float("lane_tof_x_tolerance_m"),
-            measurement_timeout_s=self.get_float(
-                "lane_tof_measurement_timeout_s"
-            ),
+            measurement_timeout_s=self.get_float("lane_tof_measurement_timeout_s"),
             heading_gain=self.get_float("coverage_heading_gain"),
             max_angular_speed=self.get_float("coverage_max_angular_speed"),
             heading_tolerance=self.get_float("coverage_heading_tolerance"),
@@ -1269,6 +1466,7 @@ class RLModelPolicyNode(Node):
         self.get_logger().info(
             "ToF lane alignment complete: "
             f"measured_x={command.measured_robot_x:.3f}, "
+            f"wall={wall_side}, "
             f"pose_x->{correction.data:.3f}"
         )
         return (0.0, 0.0)
@@ -1282,7 +1480,12 @@ class RLModelPolicyNode(Node):
     def waiting_for_pose_x_correction(self):
         if self.pending_pose_x_correction is None:
             return False
-        tolerance = min(0.01, self.get_float("lane_tof_x_tolerance_m"))
+        tolerance_parameter = (
+            "storage_tof_xy_tolerance_m"
+            if self.mission.is_storage_phase()
+            else "lane_tof_x_tolerance_m"
+        )
+        tolerance = min(0.01, self.get_float(tolerance_parameter))
         if abs(self.robot_x - self.pending_pose_x_correction) <= tolerance:
             self.pending_pose_x_correction = None
             self.pending_pose_x_correction_time = None
@@ -1295,6 +1498,24 @@ class RLModelPolicyNode(Node):
         )
         self.pending_pose_x_correction = None
         self.pending_pose_x_correction_time = None
+        return False
+
+    def waiting_for_pose_y_correction(self):
+        if self.pending_pose_y_correction is None:
+            return False
+        tolerance = min(0.01, self.get_float("storage_tof_xy_tolerance_m"))
+        if abs(self.robot_y - self.pending_pose_y_correction) <= tolerance:
+            self.pending_pose_y_correction = None
+            self.pending_pose_y_correction_time = None
+            return False
+        age = self.get_clock().now() - self.pending_pose_y_correction_time
+        if age.nanoseconds / 1_000_000_000.0 <= self.get_float("pose_timeout_s"):
+            return True
+        self.get_logger().warning(
+            "Timed out waiting for pose tracker to publish the ToF y correction"
+        )
+        self.pending_pose_y_correction = None
+        self.pending_pose_y_correction_time = None
         return False
 
     def set_control_mode(self, mode):
@@ -1392,7 +1613,7 @@ class RLModelPolicyNode(Node):
 
     def infer_action(self, obs):
         validate_observation(obs)
-        model_obs = obs[:self.model_observation_dim]
+        model_obs = obs[: self.model_observation_dim]
         with torch.no_grad():
             obs_tensor = torch.tensor(model_obs, dtype=torch.float32).unsqueeze(0)
             scaled = (obs_tensor - self.obs_mean) / torch.sqrt(
@@ -1404,7 +1625,10 @@ class RLModelPolicyNode(Node):
 
     def filter_action(self, current, target):
         alpha = self.get_float("action_filter_alpha")
-        max_delta = [self.get_float("max_linear_action_delta"), self.get_float("max_angular_action_delta")]
+        max_delta = [
+            self.get_float("max_linear_action_delta"),
+            self.get_float("max_angular_action_delta"),
+        ]
         out = []
         for old, new, limit in zip(current, target, max_delta):
             delta = self.clamp(new - old, -limit, limit)
@@ -1480,9 +1704,8 @@ class RLModelPolicyNode(Node):
                 self.coverage_controller.begin_rejoin(self.robot_y)
             self.pickup_label = None
             self.change_grab_state(self.GRAB_COMPLETE)
-            if (
-                not self.full_mission_is_enabled()
-                and bool(self.get_parameter("stop_after_grab").value)
+            if not self.full_mission_is_enabled() and bool(
+                self.get_parameter("stop_after_grab").value
             ):
                 self.active = False
                 self.get_logger().info("Object grabbed; RL drive stopped")
@@ -1509,12 +1732,18 @@ class RLModelPolicyNode(Node):
     def current_avoid_objects(self, target):
         if self.is_fresh(self.latest_avoid_objects_time, "avoid_timeout_s"):
             objects = list(self.latest_avoid_objects)
-        elif self.is_fresh(self.latest_avoid_time, "avoid_timeout_s") and self.latest_avoid is not None:
+        elif (
+            self.is_fresh(self.latest_avoid_time, "avoid_timeout_s")
+            and self.latest_avoid is not None
+        ):
             objects = [self.latest_avoid]
         else:
             objects = []
 
-        if bool(self.get_parameter("avoid_only_if_closer_than_target").value) and target is not None:
+        if (
+            bool(self.get_parameter("avoid_only_if_closer_than_target").value)
+            and target is not None
+        ):
             threshold = target.y * self.get_float("avoid_closer_ratio")
             objects = [obj for obj in objects if obj.y >= threshold]
         return objects
@@ -1536,7 +1765,9 @@ class RLModelPolicyNode(Node):
                 continue
 
             centered = self.clamp(1.0 - abs(obj.x) / center_band, 0.0, 1.0)
-            danger = self.clamp(obj.y * obj.y * (1.0 + center_weight * centered), 0.0, 1.0)
+            danger = self.clamp(
+                obj.y * obj.y * (1.0 + center_weight * centered), 0.0, 1.0
+            )
             if obj.x < 0.0:
                 left = max(left, danger)
             if obj.x > 0.0:
@@ -1558,7 +1789,9 @@ class RLModelPolicyNode(Node):
     def command_gripper(self, open_gripper):
         action = "open" if open_gripper else "close"
         if not bool(self.get_parameter("gripper_enabled").value):
-            self.get_logger().info(f"Gripper {action} skipped because gripper_enabled is false")
+            self.get_logger().info(
+                f"Gripper {action} skipped because gripper_enabled is false"
+            )
             return
         if self.dry_run:
             self.get_logger().info(f"Gripper {action} skipped in dry-run mode")
@@ -1606,10 +1839,7 @@ class RLModelPolicyNode(Node):
 
     def grab_state_age_s(self):
         elapsed = self.get_clock().now() - self.grab_state_started_at
-        return (
-            self.grab_state_elapsed_offset_s
-            + elapsed.nanoseconds / 1_000_000_000.0
-        )
+        return self.grab_state_elapsed_offset_s + elapsed.nanoseconds / 1_000_000_000.0
 
     def current_target_label(self):
         if not self.target_data_is_fresh(self.latest_target_label_time):
@@ -1639,7 +1869,7 @@ class RLModelPolicyNode(Node):
                 "model_loaded": self.policy is not None,
                 "control_mode": self.control_mode,
                 "observation_dim": self.model_observation_dim,
-                "observation_names": OBSERVATION_NAMES[:self.model_observation_dim],
+                "observation_names": OBSERVATION_NAMES[: self.model_observation_dim],
                 "pose_observation_enabled": self.pose_observation_is_active(),
                 "pose_observation_requested": bool(
                     self.get_parameter("pose_observation_enabled").value
@@ -1693,24 +1923,22 @@ class RLModelPolicyNode(Node):
                     "elapsed_s": round(self.mission.elapsed_s(now_s), 2),
                     "remaining_s": round(self.mission.remaining_s(now_s), 2),
                     "duration_s": self.mission.mission_duration_s,
-                    "force_return_remaining_s": (
-                        self.mission.force_return_remaining_s
-                    ),
+                    "force_return_remaining_s": (self.mission.force_return_remaining_s),
                     "storage_capacity": self.mission.storage_capacity,
                     "target_object_count": self.mission.target_object_count,
                     "onboard_count": self.mission.onboard_count,
                     "delivered_count": self.mission.delivered_count,
-                    "total_collected_count": (
-                        self.mission.total_collected_count
+                    "total_collected_count": (self.mission.total_collected_count),
+                    "waypoint": (
+                        None
+                        if mission_waypoint is None
+                        else {
+                            "x": round(float(mission_waypoint[0]), 4),
+                            "y": round(float(mission_waypoint[1]), 4),
+                        }
                     ),
-                    "waypoint": None
-                    if mission_waypoint is None
-                    else {
-                        "x": round(float(mission_waypoint[0]), 4),
-                        "y": round(float(mission_waypoint[1]), 4),
-                    },
                 },
-                "obs": [round(v, 4) for v in obs[:self.model_observation_dim]],
+                "obs": [round(v, 4) for v in obs[: self.model_observation_dim]],
                 "raw_action": [round(v, 4) for v in self.raw_action],
                 "filtered_action": [round(v, 4) for v in self.filtered_action],
                 "linear_x": round(float(linear_x), 4),
@@ -1723,13 +1951,15 @@ class RLModelPolicyNode(Node):
                 "nearest_avoid_x": None if nearest is None else round(nearest.x, 4),
                 "nearest_avoid_y": None if nearest is None else round(nearest.y, 4),
                 "pose_fresh": pose_fresh,
-                "pose": None
-                if not pose_fresh
-                else {
-                    "x": round(self.robot_x, 4),
-                    "y": round(self.robot_y, 4),
-                    "yaw": round(self.robot_yaw, 4),
-                },
+                "pose": (
+                    None
+                    if not pose_fresh
+                    else {
+                        "x": round(self.robot_x, 4),
+                        "y": round(self.robot_y, 4),
+                        "yaw": round(self.robot_yaw, 4),
+                    }
+                ),
                 "lane_tof": {
                     "enabled": bool(
                         self.get_parameter("lane_tof_correction_enabled").value
@@ -1738,28 +1968,60 @@ class RLModelPolicyNode(Node):
                         self.coverage_controller.current_leg.phase
                         == "SHIFT_TO_NEXT_LANE"
                     ),
-                    "distance_m": None
-                    if self.latest_wall_distance_m is None
-                    else round(self.latest_wall_distance_m, 4),
-                    "angle_rad": None
-                    if self.latest_wall_angle_rad is None
-                    else round(self.latest_wall_angle_rad, 4),
-                    "age_s": None
-                    if self.wall_measurement_age_s() is None
-                    else round(self.wall_measurement_age_s(), 4),
+                    "distance_m": (
+                        None
+                        if self.latest_wall_distance_m is None
+                        else round(self.latest_wall_distance_m, 4)
+                    ),
+                    "angle_rad": (
+                        None
+                        if self.latest_wall_angle_rad is None
+                        else round(self.latest_wall_angle_rad, 4)
+                    ),
+                    "age_s": (
+                        None
+                        if self.wall_measurement_age_s() is None
+                        else round(self.wall_measurement_age_s(), 4)
+                    ),
                     "pending_pose_x": self.pending_pose_x_correction,
+                },
+                "storage_tof": {
+                    "enabled": bool(
+                        self.get_parameter("storage_tof_correction_enabled").value
+                    ),
+                    "active_axis": (
+                        "x"
+                        if self.mission.phase == MissionPhase.CORRECT_STORAGE_X
+                        else (
+                            "y"
+                            if self.mission.phase == MissionPhase.CORRECT_STORAGE_Y
+                            else None
+                        )
+                    ),
+                    "distance_m": (
+                        None
+                        if self.latest_wall_distance_m is None
+                        else round(self.latest_wall_distance_m, 4)
+                    ),
+                    "age_s": (
+                        None
+                        if self.wall_measurement_age_s() is None
+                        else round(self.wall_measurement_age_s(), 4)
+                    ),
+                    "pending_pose_x": self.pending_pose_x_correction,
+                    "pending_pose_y": self.pending_pose_y_correction,
                 },
                 "coverage": {
                     "enabled": self.coverage_is_enabled(),
                     "phase": None if coverage is None else coverage.phase,
                     "leg_index": None if coverage is None else coverage.leg_index,
                     "leg_count": len(self.coverage_controller.legs),
-                    "waypoint_x": None
-                    if coverage is None
-                    else round(coverage.waypoint_x, 4),
-                    "waypoint_y": None
-                    if coverage is None
-                    else round(coverage.waypoint_y, 4),
+                    "waypoint_x": (
+                        None if coverage is None else round(coverage.waypoint_x, 4)
+                    ),
+                    "waypoint_y": (
+                        None if coverage is None else round(coverage.waypoint_y, 4)
+                    ),
                     "cycle_count": self.coverage_controller.cycle_count,
                 },
             },

@@ -7,10 +7,15 @@ class MissionPhase:
     COLLECTING = "COLLECTING"
     RETURN_MAIN_ROAD = "RETURN_MAIN_ROAD"
     RETURN_STAGING = "RETURN_STAGING"
+    MOVE_TO_STORAGE_Y = "MOVE_TO_STORAGE_Y"
+    CORRECT_STORAGE_X = "CORRECT_STORAGE_X"
+    CORRECT_STORAGE_Y = "CORRECT_STORAGE_Y"
+    ALIGN_STORAGE_ENTRY = "ALIGN_STORAGE_ENTRY"
+    OPEN_STORAGE_ENTRY = "OPEN_STORAGE_ENTRY"
     ENTER_STORAGE = "ENTER_STORAGE"
-    DEPOSIT = "DEPOSIT"
     EXIT_STORAGE = "EXIT_STORAGE"
-    CLOSE_AFTER_DEPOSIT = "CLOSE_AFTER_DEPOSIT"
+    CLOSE_STORAGE_EXIT = "CLOSE_STORAGE_EXIT"
+    RETURN_FROM_STORAGE = "RETURN_FROM_STORAGE"
     COMPLETE = "COMPLETE"
     TIMEOUT = "TIMEOUT"
     STOPPED = "STOPPED"
@@ -19,10 +24,15 @@ class MissionPhase:
         {
             RETURN_MAIN_ROAD,
             RETURN_STAGING,
+            MOVE_TO_STORAGE_Y,
+            CORRECT_STORAGE_X,
+            CORRECT_STORAGE_Y,
+            ALIGN_STORAGE_ENTRY,
+            OPEN_STORAGE_ENTRY,
             ENTER_STORAGE,
-            DEPOSIT,
             EXIT_STORAGE,
-            CLOSE_AFTER_DEPOSIT,
+            CLOSE_STORAGE_EXIT,
+            RETURN_FROM_STORAGE,
         }
     )
 
@@ -217,17 +227,18 @@ def waypoint_command(
     return NavigationCommand(linear_x, angular_z, False)
 
 
-def reverse_exit_command(
-    robot_y,
+def reverse_storage_x_exit_command(
+    robot_x,
     robot_yaw,
-    exit_y,
+    exit_x,
     desired_yaw,
     reverse_speed,
-    y_tolerance=0.08,
+    x_tolerance=0.04,
     heading_gain=1.5,
     max_angular_speed=0.30,
 ):
-    if float(robot_y) >= float(exit_y) - float(y_tolerance):
+    """Reverse east out of storage while the chassis remains facing west."""
+    if float(robot_x) >= float(exit_x) - float(x_tolerance):
         return NavigationCommand(0.0, 0.0, True)
     heading_error = normalize_angle(float(desired_yaw) - float(robot_yaw))
     return NavigationCommand(

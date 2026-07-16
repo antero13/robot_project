@@ -43,9 +43,7 @@ def generate_launch_description():
     target_activation_center_y_min = LaunchConfiguration(
         "target_activation_center_y_min"
     )
-    target_tracking_center_y_min = LaunchConfiguration(
-        "target_tracking_center_y_min"
-    )
+    target_tracking_center_y_min = LaunchConfiguration("target_tracking_center_y_min")
     target_bearing_prediction_enabled = LaunchConfiguration(
         "target_bearing_prediction_enabled"
     )
@@ -54,9 +52,8 @@ def generate_launch_description():
     pose_observation_enabled = LaunchConfiguration("pose_observation_enabled")
     launch_pose_tracker = LaunchConfiguration("launch_pose_tracker")
     pose_x_correction_topic = LaunchConfiguration("pose_x_correction_topic")
-    launch_wall_distance_sensor = LaunchConfiguration(
-        "launch_wall_distance_sensor"
-    )
+    pose_y_correction_topic = LaunchConfiguration("pose_y_correction_topic")
+    launch_wall_distance_sensor = LaunchConfiguration("launch_wall_distance_sensor")
     wall_driver_backend = LaunchConfiguration("wall_driver_backend")
     wall_left_i2c_bus = LaunchConfiguration("wall_left_i2c_bus")
     wall_right_i2c_bus = LaunchConfiguration("wall_right_i2c_bus")
@@ -71,15 +68,11 @@ def generate_launch_description():
     leave_start_distance_m = LaunchConfiguration("leave_start_distance_m")
     leave_start_speed = LaunchConfiguration("leave_start_speed")
     leave_start_heading_gain = LaunchConfiguration("leave_start_heading_gain")
-    leave_start_max_angular_speed = LaunchConfiguration(
-        "leave_start_max_angular_speed"
-    )
+    leave_start_max_angular_speed = LaunchConfiguration("leave_start_max_angular_speed")
     launch_object_mapper = LaunchConfiguration("launch_object_mapper")
     launch_status_gui = LaunchConfiguration("launch_status_gui")
     object_calibration_path = LaunchConfiguration("object_calibration_path")
-    object_association_radius_m = LaunchConfiguration(
-        "object_association_radius_m"
-    )
+    object_association_radius_m = LaunchConfiguration("object_association_radius_m")
     object_position_smoothing_alpha = LaunchConfiguration(
         "object_position_smoothing_alpha"
     )
@@ -97,27 +90,18 @@ def generate_launch_description():
     coverage_turn_in_place_threshold = LaunchConfiguration(
         "coverage_turn_in_place_threshold"
     )
-    coverage_max_angular_speed = LaunchConfiguration(
-        "coverage_max_angular_speed"
-    )
-    coverage_avoid_angular_speed = LaunchConfiguration(
-        "coverage_avoid_angular_speed"
-    )
-    coverage_avoid_linear_scale = LaunchConfiguration(
-        "coverage_avoid_linear_scale"
-    )
+    coverage_max_angular_speed = LaunchConfiguration("coverage_max_angular_speed")
+    coverage_avoid_angular_speed = LaunchConfiguration("coverage_avoid_angular_speed")
+    coverage_avoid_linear_scale = LaunchConfiguration("coverage_avoid_linear_scale")
     coverage_rejoin_speed = LaunchConfiguration("coverage_rejoin_speed")
     coverage_reacquire_duration_s = LaunchConfiguration("coverage_reacquire_duration_s")
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
         "coverage_reacquire_reverse_after_s"
     )
-    coverage_reacquire_angular_z = LaunchConfiguration(
-        "coverage_reacquire_angular_z"
-    )
-    lane_tof_correction_enabled = LaunchConfiguration(
-        "lane_tof_correction_enabled"
-    )
+    coverage_reacquire_angular_z = LaunchConfiguration("coverage_reacquire_angular_z")
+    lane_tof_correction_enabled = LaunchConfiguration("lane_tof_correction_enabled")
     lane_tof_left_wall_x_m = LaunchConfiguration("lane_tof_left_wall_x_m")
+    lane_tof_right_wall_x_m = LaunchConfiguration("lane_tof_right_wall_x_m")
     lane_tof_sensor_forward_offset_m = LaunchConfiguration(
         "lane_tof_sensor_forward_offset_m"
     )
@@ -126,9 +110,7 @@ def generate_launch_description():
     )
     lane_tof_x_tolerance_m = LaunchConfiguration("lane_tof_x_tolerance_m")
     lane_tof_min_speed = LaunchConfiguration("lane_tof_min_speed")
-    lane_tof_slowdown_distance_m = LaunchConfiguration(
-        "lane_tof_slowdown_distance_m"
-    )
+    lane_tof_slowdown_distance_m = LaunchConfiguration("lane_tof_slowdown_distance_m")
     initial_x = LaunchConfiguration("initial_x")
     initial_y = LaunchConfiguration("initial_y")
     initial_yaw_deg = LaunchConfiguration("initial_yaw_deg")
@@ -158,7 +140,7 @@ def generate_launch_description():
     storage_main_road_y = LaunchConfiguration("storage_main_road_y")
     storage_staging_x = LaunchConfiguration("storage_staging_x")
     storage_staging_y = LaunchConfiguration("storage_staging_y")
-    storage_exit_y = LaunchConfiguration("storage_exit_y")
+    storage_exit_x = LaunchConfiguration("storage_exit_x")
     storage_center_x = LaunchConfiguration("storage_center_x")
     storage_center_y = LaunchConfiguration("storage_center_y")
     storage_entry_yaw_deg = LaunchConfiguration("storage_entry_yaw_deg")
@@ -166,21 +148,41 @@ def generate_launch_description():
     storage_entry_speed = LaunchConfiguration("storage_entry_speed")
     storage_exit_reverse_speed = LaunchConfiguration("storage_exit_reverse_speed")
     storage_entry_tolerance = LaunchConfiguration("storage_entry_tolerance")
+    storage_tof_correction_enabled = LaunchConfiguration(
+        "storage_tof_correction_enabled"
+    )
+    storage_tof_left_wall_x_m = LaunchConfiguration("storage_tof_left_wall_x_m")
+    storage_tof_bottom_wall_y_m = LaunchConfiguration("storage_tof_bottom_wall_y_m")
+    storage_tof_sensor_forward_offset_m = LaunchConfiguration(
+        "storage_tof_sensor_forward_offset_m"
+    )
+    storage_tof_measurement_timeout_s = LaunchConfiguration(
+        "storage_tof_measurement_timeout_s"
+    )
+    storage_tof_xy_tolerance_m = LaunchConfiguration("storage_tof_xy_tolerance_m")
+    storage_tof_min_speed = LaunchConfiguration("storage_tof_min_speed")
+    storage_tof_slowdown_distance_m = LaunchConfiguration(
+        "storage_tof_slowdown_distance_m"
+    )
 
     controller_launch = IncludeLaunchDescription(
-        PathJoinSubstitution([
+        PathJoinSubstitution(
+            [
             FindPackageShare("ros_robot_controller"),
             "launch",
             "ros_robot_controller.launch.xml",
-        ])
+            ]
+        )
     )
 
     yolo_launch = IncludeLaunchDescription(
-        PathJoinSubstitution([
+        PathJoinSubstitution(
+            [
             FindPackageShare("ros2_yolo_detector"),
             "launch",
             "v4l2_yolo_camera.launch.py",
-        ]),
+            ]
+        ),
         launch_arguments={
             "model_path": yolo_model_path,
             "video_device": video_device,
@@ -199,22 +201,27 @@ def generate_launch_description():
     )
 
     motor_launch = IncludeLaunchDescription(
-        PathJoinSubstitution([
+        PathJoinSubstitution(
+            [
             FindPackageShare("cmd_vel_to_motor"),
             "launch",
             "cmd_vel_to_motor.launch.py",
-        ])
+            ]
+        )
     )
 
     pose_tracker_launch = IncludeLaunchDescription(
-        PathJoinSubstitution([
+        PathJoinSubstitution(
+            [
             FindPackageShare("robot_pose_tracker"),
             "launch",
             "robot_pose_tracker.launch.py",
-        ]),
+            ]
+        ),
         launch_arguments={
             "cmd_vel_topic": "/cmd_vel",
             "x_correction_topic": pose_x_correction_topic,
+            "y_correction_topic": pose_y_correction_topic,
             "initial_x": initial_x,
             "initial_y": initial_y,
             "initial_yaw_deg": initial_yaw_deg,
@@ -227,11 +234,13 @@ def generate_launch_description():
     )
 
     wall_distance_launch = IncludeLaunchDescription(
-        PathJoinSubstitution([
+        PathJoinSubstitution(
+            [
             FindPackageShare("wall_distance_sensor"),
             "launch",
             "wall_distance_angle.launch.py",
-        ]),
+            ]
+        ),
         launch_arguments={
             "driver_backend": wall_driver_backend,
             "left_i2c_bus": wall_left_i2c_bus,
@@ -246,20 +255,20 @@ def generate_launch_description():
     )
 
     policy_launch = IncludeLaunchDescription(
-        PathJoinSubstitution([
+        PathJoinSubstitution(
+            [
             FindPackageShare("rl_model_policy"),
             "launch",
             "rl_model_policy.launch.py",
-        ]),
+            ]
+        ),
         launch_arguments={
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
             "target_timeout_s": target_timeout_s,
             "target_tracking_timeout_s": target_tracking_timeout_s,
             "target_confirmation_window": target_confirmation_window,
-            "target_confirmation_min_detections": (
-                target_confirmation_min_detections
-            ),
+            "target_confirmation_min_detections": (target_confirmation_min_detections),
             "target_activation_center_y_min": target_activation_center_y_min,
             "target_tracking_center_y_min": target_tracking_center_y_min,
             "target_bearing_prediction_enabled": target_bearing_prediction_enabled,
@@ -285,25 +294,21 @@ def generate_launch_description():
             "coverage_transit_speed": coverage_transit_speed,
             "coverage_return_speed": coverage_return_speed,
             "coverage_waypoint_tolerance": coverage_waypoint_tolerance,
-            "coverage_turn_in_place_threshold": (
-                coverage_turn_in_place_threshold
-            ),
+            "coverage_turn_in_place_threshold": (coverage_turn_in_place_threshold),
             "coverage_max_angular_speed": coverage_max_angular_speed,
             "coverage_avoid_angular_speed": coverage_avoid_angular_speed,
             "coverage_avoid_linear_scale": coverage_avoid_linear_scale,
             "coverage_rejoin_speed": coverage_rejoin_speed,
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
-            "coverage_reacquire_reverse_after_s": (
-                coverage_reacquire_reverse_after_s
-            ),
+            "coverage_reacquire_reverse_after_s": (coverage_reacquire_reverse_after_s),
             "coverage_reacquire_angular_z": coverage_reacquire_angular_z,
             "lane_tof_correction_enabled": lane_tof_correction_enabled,
             "wall_distance_angle_topic": wall_distance_angle_topic,
             "pose_x_correction_topic": pose_x_correction_topic,
+            "pose_y_correction_topic": pose_y_correction_topic,
             "lane_tof_left_wall_x_m": lane_tof_left_wall_x_m,
-            "lane_tof_sensor_forward_offset_m": (
-                lane_tof_sensor_forward_offset_m
-            ),
+            "lane_tof_right_wall_x_m": lane_tof_right_wall_x_m,
+            "lane_tof_sensor_forward_offset_m": (lane_tof_sensor_forward_offset_m),
             "lane_tof_measurement_timeout_s": lane_tof_measurement_timeout_s,
             "lane_tof_x_tolerance_m": lane_tof_x_tolerance_m,
             "lane_tof_min_speed": lane_tof_min_speed,
@@ -329,7 +334,7 @@ def generate_launch_description():
             "storage_main_road_y": storage_main_road_y,
             "storage_staging_x": storage_staging_x,
             "storage_staging_y": storage_staging_y,
-            "storage_exit_y": storage_exit_y,
+            "storage_exit_x": storage_exit_x,
             "storage_center_x": storage_center_x,
             "storage_center_y": storage_center_y,
             "storage_entry_yaw_deg": storage_entry_yaw_deg,
@@ -337,6 +342,16 @@ def generate_launch_description():
             "storage_entry_speed": storage_entry_speed,
             "storage_exit_reverse_speed": storage_exit_reverse_speed,
             "storage_entry_tolerance": storage_entry_tolerance,
+            "storage_tof_correction_enabled": storage_tof_correction_enabled,
+            "storage_tof_left_wall_x_m": storage_tof_left_wall_x_m,
+            "storage_tof_bottom_wall_y_m": storage_tof_bottom_wall_y_m,
+            "storage_tof_sensor_forward_offset_m": (
+                storage_tof_sensor_forward_offset_m
+            ),
+            "storage_tof_measurement_timeout_s": (storage_tof_measurement_timeout_s),
+            "storage_tof_xy_tolerance_m": storage_tof_xy_tolerance_m,
+            "storage_tof_min_speed": storage_tof_min_speed,
+            "storage_tof_slowdown_distance_m": (storage_tof_slowdown_distance_m),
         }.items(),
     )
 
@@ -345,7 +360,8 @@ def generate_launch_description():
         executable="rl_object_world_mapper",
         name="rl_object_world_mapper",
         output="screen",
-        parameters=[{
+        parameters=[
+            {
             "detections_topic": "/yolo/detections",
             "odometry_topic": odometry_topic,
             "output_topic": "/rl_estimated_objects",
@@ -367,7 +383,8 @@ def generate_launch_description():
                 arena_half_extent_m,
                 value_type=float,
             ),
-        }],
+            }
+        ],
         condition=IfCondition(launch_object_mapper),
         respawn=True,
         respawn_delay=2.0,
@@ -398,7 +415,8 @@ def generate_launch_description():
         executable="robot_status_gui",
         name="robot_status_gui",
         output="screen",
-        parameters=[{
+        parameters=[
+            {
             "detections_topic": "/yolo/detections",
             "target_classes": ParameterValue(target_classes, value_type=str),
             "avoid_classes": ParameterValue(avoid_classes, value_type=str),
@@ -419,27 +437,33 @@ def generate_launch_description():
                 object_position_smoothing_alpha,
                 value_type=float,
             ),
-        }],
+            }
+        ],
         condition=IfCondition(launch_status_gui),
     )
 
-    return LaunchDescription([
+    return LaunchDescription(
+        [
         DeclareLaunchArgument(
             "yolo_model_path",
-            default_value=PathJoinSubstitution([
+                default_value=PathJoinSubstitution(
+                    [
                 FindPackageShare("ros2_yolo_detector"),
                 "models",
                 "best.pt",
-            ]),
+                    ]
+                ),
             description="YOLO .pt or TensorRT .engine model path.",
         ),
         DeclareLaunchArgument(
             "rl_model_path",
-            default_value=PathJoinSubstitution([
+                default_value=PathJoinSubstitution(
+                    [
                 FindPackageShare("mission_manager"),
                 "models",
                 "rl_avoid_search_best.pt",
-            ]),
+                    ]
+                ),
             description="Trained RL policy checkpoint path.",
         ),
         DeclareLaunchArgument(
@@ -468,7 +492,9 @@ def generate_launch_description():
         DeclareLaunchArgument("yolo_imgsz", default_value="800"),
         DeclareLaunchArgument("correction_backend", default_value="auto"),
         DeclareLaunchArgument("correction_device", default_value="cuda:0"),
-        DeclareLaunchArgument("yolo_performance_log_interval_s", default_value="5.0"),
+            DeclareLaunchArgument(
+                "yolo_performance_log_interval_s", default_value="5.0"
+            ),
         DeclareLaunchArgument("speed_scale", default_value="0.75"),
         DeclareLaunchArgument(
             "target_timeout_s",
@@ -529,6 +555,10 @@ def generate_launch_description():
             "pose_x_correction_topic",
             default_value="/robot_pose/correct_x",
         ),
+            DeclareLaunchArgument(
+                "pose_y_correction_topic",
+                default_value="/robot_pose/correct_y",
+            ),
         DeclareLaunchArgument(
             "launch_wall_distance_sensor",
             default_value="true",
@@ -547,7 +577,11 @@ def generate_launch_description():
             default_value="41",
             description="Integer I2C address; 41 decimal is 0x29.",
         ),
-        DeclareLaunchArgument("wall_ranging_mode", default_value="3"),
+        DeclareLaunchArgument(
+            "wall_ranging_mode",
+            default_value="3",
+            description="VL53L1X long-range mode (1=short, 2=medium, 3=long).",
+        ),
         DeclareLaunchArgument(
             "wall_distance_angle_topic",
             default_value="/wall/distance_angle",
@@ -567,11 +601,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "object_calibration_path",
-            default_value=PathJoinSubstitution([
+                default_value=PathJoinSubstitution(
+                    [
                 FindPackageShare("robot_status_gui"),
                 "config",
                 "distance_normalized_points.csv",
-            ]),
+                    ]
+                ),
             description="Measured bbox-center to camera-position calibration CSV.",
         ),
         DeclareLaunchArgument("object_association_radius_m", default_value="0.30"),
@@ -585,7 +621,7 @@ def generate_launch_description():
             default_value="true",
             description="Use odometry-based lane coverage while no target is visible.",
         ),
-        DeclareLaunchArgument("coverage_min_x", default_value="-0.75"),
+            DeclareLaunchArgument("coverage_min_x", default_value="-1.25"),
         DeclareLaunchArgument("coverage_max_x", default_value="1.25"),
         DeclareLaunchArgument("coverage_main_road_y", default_value="-1.3343"),
         DeclareLaunchArgument("coverage_scan_end_y", default_value="1.0"),
@@ -616,9 +652,10 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument("lane_tof_left_wall_x_m", default_value="-2.0"),
+            DeclareLaunchArgument("lane_tof_right_wall_x_m", default_value="2.0"),
         DeclareLaunchArgument(
             "lane_tof_sensor_forward_offset_m",
-            default_value="0.10",
+                default_value="0.09",
         ),
         DeclareLaunchArgument(
             "lane_tof_measurement_timeout_s",
@@ -659,19 +696,40 @@ def generate_launch_description():
         DeclareLaunchArgument("storage_capacity", default_value="4"),
         DeclareLaunchArgument("target_object_count", default_value="7"),
         DeclareLaunchArgument("storage_main_road_y", default_value="-1.3343"),
-        DeclareLaunchArgument("storage_staging_x", default_value="-1.75"),
-        DeclareLaunchArgument("storage_staging_y", default_value="-1.25"),
-        DeclareLaunchArgument("storage_exit_y", default_value="-1.0"),
+            DeclareLaunchArgument("storage_staging_x", default_value="-1.25"),
+            DeclareLaunchArgument("storage_staging_y", default_value="-1.75"),
+            DeclareLaunchArgument("storage_exit_x", default_value="-1.25"),
         DeclareLaunchArgument("storage_center_x", default_value="-1.75"),
         DeclareLaunchArgument("storage_center_y", default_value="-1.75"),
         DeclareLaunchArgument("storage_entry_yaw_deg", default_value="-90.0"),
         DeclareLaunchArgument("storage_return_speed", default_value="0.25"),
-        DeclareLaunchArgument("storage_entry_speed", default_value="0.12"),
+            DeclareLaunchArgument("storage_entry_speed", default_value="0.25"),
         DeclareLaunchArgument(
             "storage_exit_reverse_speed",
-            default_value="0.16",
+                default_value="0.25",
         ),
         DeclareLaunchArgument("storage_entry_tolerance", default_value="0.04"),
+            DeclareLaunchArgument(
+                "storage_tof_correction_enabled",
+                default_value="true",
+                description="Correct storage staging x and y from ToF before entry.",
+            ),
+            DeclareLaunchArgument("storage_tof_left_wall_x_m", default_value="-2.0"),
+            DeclareLaunchArgument("storage_tof_bottom_wall_y_m", default_value="-2.0"),
+            DeclareLaunchArgument(
+                "storage_tof_sensor_forward_offset_m",
+                default_value="0.09",
+            ),
+            DeclareLaunchArgument(
+                "storage_tof_measurement_timeout_s",
+                default_value="0.25",
+            ),
+            DeclareLaunchArgument("storage_tof_xy_tolerance_m", default_value="0.03"),
+            DeclareLaunchArgument("storage_tof_min_speed", default_value="0.05"),
+            DeclareLaunchArgument(
+                "storage_tof_slowdown_distance_m",
+                default_value="0.20",
+            ),
         DeclareLaunchArgument("gripper_enabled", default_value="true"),
         DeclareLaunchArgument("gripper_type", default_value="bus"),
         DeclareLaunchArgument("gripper_servo_id", default_value="1"),
@@ -703,4 +761,5 @@ def generate_launch_description():
         object_mapper_node,
         status_gui,
         delayed_start,
-    ])
+        ]
+    )

@@ -21,9 +21,7 @@ def generate_launch_description():
     target_activation_center_y_min = LaunchConfiguration(
         'target_activation_center_y_min'
     )
-    target_tracking_center_y_min = LaunchConfiguration(
-        'target_tracking_center_y_min'
-    )
+    target_tracking_center_y_min = LaunchConfiguration('target_tracking_center_y_min')
     target_bearing_prediction_enabled = LaunchConfiguration(
         'target_bearing_prediction_enabled'
     )
@@ -37,9 +35,7 @@ def generate_launch_description():
     leave_start_distance_m = LaunchConfiguration('leave_start_distance_m')
     leave_start_speed = LaunchConfiguration('leave_start_speed')
     leave_start_heading_gain = LaunchConfiguration('leave_start_heading_gain')
-    leave_start_max_angular_speed = LaunchConfiguration(
-        'leave_start_max_angular_speed'
-    )
+    leave_start_max_angular_speed = LaunchConfiguration('leave_start_max_angular_speed')
     coverage_enabled = LaunchConfiguration('coverage_enabled')
     coverage_min_x = LaunchConfiguration('coverage_min_x')
     coverage_max_x = LaunchConfiguration('coverage_max_x')
@@ -53,29 +49,21 @@ def generate_launch_description():
     coverage_turn_in_place_threshold = LaunchConfiguration(
         'coverage_turn_in_place_threshold'
     )
-    coverage_max_angular_speed = LaunchConfiguration(
-        'coverage_max_angular_speed'
-    )
-    coverage_avoid_angular_speed = LaunchConfiguration(
-        'coverage_avoid_angular_speed'
-    )
-    coverage_avoid_linear_scale = LaunchConfiguration(
-        'coverage_avoid_linear_scale'
-    )
+    coverage_max_angular_speed = LaunchConfiguration('coverage_max_angular_speed')
+    coverage_avoid_angular_speed = LaunchConfiguration('coverage_avoid_angular_speed')
+    coverage_avoid_linear_scale = LaunchConfiguration('coverage_avoid_linear_scale')
     coverage_rejoin_speed = LaunchConfiguration('coverage_rejoin_speed')
     coverage_reacquire_duration_s = LaunchConfiguration('coverage_reacquire_duration_s')
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
         'coverage_reacquire_reverse_after_s'
     )
-    coverage_reacquire_angular_z = LaunchConfiguration(
-        'coverage_reacquire_angular_z'
-    )
-    lane_tof_correction_enabled = LaunchConfiguration(
-        'lane_tof_correction_enabled'
-    )
+    coverage_reacquire_angular_z = LaunchConfiguration('coverage_reacquire_angular_z')
+    lane_tof_correction_enabled = LaunchConfiguration('lane_tof_correction_enabled')
     wall_distance_angle_topic = LaunchConfiguration('wall_distance_angle_topic')
     pose_x_correction_topic = LaunchConfiguration('pose_x_correction_topic')
+    pose_y_correction_topic = LaunchConfiguration('pose_y_correction_topic')
     lane_tof_left_wall_x_m = LaunchConfiguration('lane_tof_left_wall_x_m')
+    lane_tof_right_wall_x_m = LaunchConfiguration('lane_tof_right_wall_x_m')
     lane_tof_sensor_forward_offset_m = LaunchConfiguration(
         'lane_tof_sensor_forward_offset_m'
     )
@@ -84,9 +72,7 @@ def generate_launch_description():
     )
     lane_tof_x_tolerance_m = LaunchConfiguration('lane_tof_x_tolerance_m')
     lane_tof_min_speed = LaunchConfiguration('lane_tof_min_speed')
-    lane_tof_slowdown_distance_m = LaunchConfiguration(
-        'lane_tof_slowdown_distance_m'
-    )
+    lane_tof_slowdown_distance_m = LaunchConfiguration('lane_tof_slowdown_distance_m')
     gripper_enabled = LaunchConfiguration('gripper_enabled')
     gripper_type = LaunchConfiguration('gripper_type')
     gripper_servo_id = LaunchConfiguration('gripper_servo_id')
@@ -108,7 +94,7 @@ def generate_launch_description():
     storage_main_road_y = LaunchConfiguration('storage_main_road_y')
     storage_staging_x = LaunchConfiguration('storage_staging_x')
     storage_staging_y = LaunchConfiguration('storage_staging_y')
-    storage_exit_y = LaunchConfiguration('storage_exit_y')
+    storage_exit_x = LaunchConfiguration('storage_exit_x')
     storage_center_x = LaunchConfiguration('storage_center_x')
     storage_center_y = LaunchConfiguration('storage_center_y')
     storage_entry_yaw_deg = LaunchConfiguration('storage_entry_yaw_deg')
@@ -116,15 +102,34 @@ def generate_launch_description():
     storage_entry_speed = LaunchConfiguration('storage_entry_speed')
     storage_exit_reverse_speed = LaunchConfiguration('storage_exit_reverse_speed')
     storage_entry_tolerance = LaunchConfiguration('storage_entry_tolerance')
+    storage_tof_correction_enabled = LaunchConfiguration(
+        'storage_tof_correction_enabled'
+    )
+    storage_tof_left_wall_x_m = LaunchConfiguration('storage_tof_left_wall_x_m')
+    storage_tof_bottom_wall_y_m = LaunchConfiguration('storage_tof_bottom_wall_y_m')
+    storage_tof_sensor_forward_offset_m = LaunchConfiguration(
+        'storage_tof_sensor_forward_offset_m'
+    )
+    storage_tof_measurement_timeout_s = LaunchConfiguration(
+        'storage_tof_measurement_timeout_s'
+    )
+    storage_tof_xy_tolerance_m = LaunchConfiguration('storage_tof_xy_tolerance_m')
+    storage_tof_min_speed = LaunchConfiguration('storage_tof_min_speed')
+    storage_tof_slowdown_distance_m = LaunchConfiguration(
+        'storage_tof_slowdown_distance_m'
+    )
 
-    return LaunchDescription([
+    return LaunchDescription(
+        [
         DeclareLaunchArgument(
             'model_path',
-            default_value=PathJoinSubstitution([
+                default_value=PathJoinSubstitution(
+                    [
                 FindPackageShare('mission_manager'),
                 'models',
                 'rl_avoid_search_best.pt',
-            ]),
+                    ]
+                ),
             description='Path to the trained skrl best_agent.pt file.',
         ),
         DeclareLaunchArgument(
@@ -167,7 +172,7 @@ def generate_launch_description():
             default_value='true',
             description='Use odometry-based lane coverage while no target is visible.',
         ),
-        DeclareLaunchArgument('coverage_min_x', default_value='-0.75'),
+            DeclareLaunchArgument('coverage_min_x', default_value='-1.25'),
         DeclareLaunchArgument('coverage_max_x', default_value='1.25'),
         DeclareLaunchArgument('coverage_main_road_y', default_value='-1.3343'),
         DeclareLaunchArgument('coverage_scan_end_y', default_value='1.0'),
@@ -229,10 +234,15 @@ def generate_launch_description():
             'pose_x_correction_topic',
             default_value='/robot_pose/correct_x',
         ),
+            DeclareLaunchArgument(
+                'pose_y_correction_topic',
+                default_value='/robot_pose/correct_y',
+            ),
         DeclareLaunchArgument('lane_tof_left_wall_x_m', default_value='-2.0'),
+            DeclareLaunchArgument('lane_tof_right_wall_x_m', default_value='2.0'),
         DeclareLaunchArgument(
             'lane_tof_sensor_forward_offset_m',
-            default_value='0.10',
+                default_value='0.09',
         ),
         DeclareLaunchArgument(
             'lane_tof_measurement_timeout_s',
@@ -258,16 +268,37 @@ def generate_launch_description():
         DeclareLaunchArgument('storage_capacity', default_value='4'),
         DeclareLaunchArgument('target_object_count', default_value='7'),
         DeclareLaunchArgument('storage_main_road_y', default_value='-1.3343'),
-        DeclareLaunchArgument('storage_staging_x', default_value='-1.75'),
-        DeclareLaunchArgument('storage_staging_y', default_value='-1.25'),
-        DeclareLaunchArgument('storage_exit_y', default_value='-1.0'),
+            DeclareLaunchArgument('storage_staging_x', default_value='-1.25'),
+            DeclareLaunchArgument('storage_staging_y', default_value='-1.75'),
+            DeclareLaunchArgument('storage_exit_x', default_value='-1.25'),
         DeclareLaunchArgument('storage_center_x', default_value='-1.75'),
         DeclareLaunchArgument('storage_center_y', default_value='-1.75'),
         DeclareLaunchArgument('storage_entry_yaw_deg', default_value='-90.0'),
         DeclareLaunchArgument('storage_return_speed', default_value='0.25'),
-        DeclareLaunchArgument('storage_entry_speed', default_value='0.12'),
-        DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.16'),
+            DeclareLaunchArgument('storage_entry_speed', default_value='0.25'),
+            DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.25'),
         DeclareLaunchArgument('storage_entry_tolerance', default_value='0.04'),
+            DeclareLaunchArgument(
+                'storage_tof_correction_enabled',
+                default_value='true',
+                description='Correct storage staging x and y from ToF before entry.',
+            ),
+            DeclareLaunchArgument('storage_tof_left_wall_x_m', default_value='-2.0'),
+            DeclareLaunchArgument('storage_tof_bottom_wall_y_m', default_value='-2.0'),
+            DeclareLaunchArgument(
+                'storage_tof_sensor_forward_offset_m',
+                default_value='0.09',
+            ),
+            DeclareLaunchArgument(
+                'storage_tof_measurement_timeout_s',
+                default_value='0.25',
+            ),
+            DeclareLaunchArgument('storage_tof_xy_tolerance_m', default_value='0.03'),
+            DeclareLaunchArgument('storage_tof_min_speed', default_value='0.05'),
+            DeclareLaunchArgument(
+                'storage_tof_slowdown_distance_m',
+                default_value='0.20',
+            ),
         DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),
         DeclareLaunchArgument('gripper_servo_id', default_value='1'),
@@ -286,7 +317,8 @@ def generate_launch_description():
             executable='rl_model_policy',
             name='rl_model_policy',
             output='screen',
-            parameters=[{
+                parameters=[
+                    {
                 'model_path': model_path,
                 'cmd_vel_topic': '/cmd_vel',
                 'target_object_topic': '/target_object',
@@ -297,11 +329,12 @@ def generate_launch_description():
                 'control_topic': '/rl_model_policy_control',
                 'state_topic': '/rl_model_policy_state',
                 'odometry_topic': odometry_topic,
-
                 'active_on_start': False,
                 'dry_run': dry_run,
                 'timer_rate_hz': 20.0,
-                'target_timeout_s': ParameterValue(target_timeout_s, value_type=float),
+                        'target_timeout_s': ParameterValue(
+                            target_timeout_s, value_type=float
+                        ),
                 'target_tracking_timeout_s': ParameterValue(
                     target_tracking_timeout_s,
                     value_type=float,
@@ -328,12 +361,16 @@ def generate_launch_description():
                 ),
                 'avoid_timeout_s': 0.25,
                 'episode_length_s': 18.0,
-                'pose_timeout_s': ParameterValue(pose_timeout_s, value_type=float),
+                        'pose_timeout_s': ParameterValue(
+                            pose_timeout_s, value_type=float
+                        ),
                 'pose_observation_enabled': ParameterValue(
                     pose_observation_enabled,
                     value_type=bool,
                 ),
-                'arena_half_extent_m': ParameterValue(arena_half_extent_m, value_type=float),
+                        'arena_half_extent_m': ParameterValue(
+                            arena_half_extent_m, value_type=float
+                        ),
                 'pose_bounds_tolerance_m': ParameterValue(
                     pose_bounds_tolerance_m,
                     value_type=float,
@@ -362,9 +399,15 @@ def generate_launch_description():
                     leave_start_max_angular_speed,
                     value_type=float,
                 ),
-                'coverage_enabled': ParameterValue(coverage_enabled, value_type=bool),
-                'coverage_min_x': ParameterValue(coverage_min_x, value_type=float),
-                'coverage_max_x': ParameterValue(coverage_max_x, value_type=float),
+                        'coverage_enabled': ParameterValue(
+                            coverage_enabled, value_type=bool
+                        ),
+                        'coverage_min_x': ParameterValue(
+                            coverage_min_x, value_type=float
+                        ),
+                        'coverage_max_x': ParameterValue(
+                            coverage_max_x, value_type=float
+                        ),
                 'coverage_main_road_y': ParameterValue(
                     coverage_main_road_y,
                     value_type=float,
@@ -431,10 +474,15 @@ def generate_launch_description():
                 ),
                 'wall_distance_angle_topic': wall_distance_angle_topic,
                 'pose_x_correction_topic': pose_x_correction_topic,
+                        'pose_y_correction_topic': pose_y_correction_topic,
                 'lane_tof_left_wall_x_m': ParameterValue(
                     lane_tof_left_wall_x_m,
                     value_type=float,
                 ),
+                        'lane_tof_right_wall_x_m': ParameterValue(
+                            lane_tof_right_wall_x_m,
+                            value_type=float,
+                        ),
                 'lane_tof_sensor_forward_offset_m': ParameterValue(
                     lane_tof_sensor_forward_offset_m,
                     value_type=float,
@@ -455,14 +503,12 @@ def generate_launch_description():
                     lane_tof_slowdown_distance_m,
                     value_type=float,
                 ),
-
                 'avoid_area_ratio': 0.42,
                 'avoid_center_band': 0.75,
                 'avoid_center_corridor': 0.15,
                 'avoid_vfh_center_weight': 0.5,
                 'avoid_only_if_closer_than_target': False,
                 'avoid_closer_ratio': 0.85,
-
                 # These match the training environment before speed_scale.
                 'max_forward_speed': 0.20,
                 'max_reverse_speed': 0.05,
@@ -484,7 +530,9 @@ def generate_launch_description():
                     force_return_remaining_s,
                     value_type=float,
                 ),
-                'storage_capacity': ParameterValue(storage_capacity, value_type=int),
+                        'storage_capacity': ParameterValue(
+                            storage_capacity, value_type=int
+                        ),
                 'target_object_count': ParameterValue(
                     target_object_count,
                     value_type=int,
@@ -501,8 +549,8 @@ def generate_launch_description():
                     storage_staging_y,
                     value_type=float,
                 ),
-                'storage_exit_y': ParameterValue(
-                    storage_exit_y,
+                        'storage_exit_x': ParameterValue(
+                            storage_exit_x,
                     value_type=float,
                 ),
                 'storage_center_x': ParameterValue(
@@ -533,23 +581,78 @@ def generate_launch_description():
                     storage_entry_tolerance,
                     value_type=float,
                 ),
-
-                'gripper_enabled': ParameterValue(gripper_enabled, value_type=bool),
+                        'storage_tof_correction_enabled': ParameterValue(
+                            storage_tof_correction_enabled,
+                            value_type=bool,
+                        ),
+                        'storage_tof_left_wall_x_m': ParameterValue(
+                            storage_tof_left_wall_x_m,
+                            value_type=float,
+                        ),
+                        'storage_tof_bottom_wall_y_m': ParameterValue(
+                            storage_tof_bottom_wall_y_m,
+                            value_type=float,
+                        ),
+                        'storage_tof_sensor_forward_offset_m': ParameterValue(
+                            storage_tof_sensor_forward_offset_m,
+                            value_type=float,
+                        ),
+                        'storage_tof_measurement_timeout_s': ParameterValue(
+                            storage_tof_measurement_timeout_s,
+                            value_type=float,
+                        ),
+                        'storage_tof_xy_tolerance_m': ParameterValue(
+                            storage_tof_xy_tolerance_m,
+                            value_type=float,
+                        ),
+                        'storage_tof_min_speed': ParameterValue(
+                            storage_tof_min_speed,
+                            value_type=float,
+                        ),
+                        'storage_tof_slowdown_distance_m': ParameterValue(
+                            storage_tof_slowdown_distance_m,
+                            value_type=float,
+                        ),
+                        'gripper_enabled': ParameterValue(
+                            gripper_enabled, value_type=bool
+                        ),
                 'gripper_type': gripper_type,
-                'gripper_servo_id': ParameterValue(gripper_servo_id, value_type=int),
-                'gripper_open_position': ParameterValue(gripper_open_position, value_type=int),
-                'gripper_closed_position': ParameterValue(gripper_closed_position, value_type=int),
-                'gripper_move_duration_s': ParameterValue(gripper_move_duration_s, value_type=float),
-                'grab_center_tolerance': ParameterValue(grab_center_tolerance, value_type=float),
-                'grab_area_ratio': ParameterValue(grab_area_ratio, value_type=float),
+                        'gripper_servo_id': ParameterValue(
+                            gripper_servo_id, value_type=int
+                        ),
+                        'gripper_open_position': ParameterValue(
+                            gripper_open_position, value_type=int
+                        ),
+                        'gripper_closed_position': ParameterValue(
+                            gripper_closed_position, value_type=int
+                        ),
+                        'gripper_move_duration_s': ParameterValue(
+                            gripper_move_duration_s, value_type=float
+                        ),
+                        'grab_center_tolerance': ParameterValue(
+                            grab_center_tolerance, value_type=float
+                        ),
+                        'grab_area_ratio': ParameterValue(
+                            grab_area_ratio, value_type=float
+                        ),
                 'grab_detection_timeout_s': ParameterValue(
                     grab_detection_timeout_s,
                     value_type=float,
                 ),
-                'final_forward_linear_x': ParameterValue(final_forward_linear_x, value_type=float),
-                'final_forward_duration_s': ParameterValue(final_forward_duration_s, value_type=float),
-                'grab_duration_s': ParameterValue(grab_duration_s, value_type=float),
-                'stop_after_grab': ParameterValue(stop_after_grab, value_type=bool),
-            }],
+                        'final_forward_linear_x': ParameterValue(
+                            final_forward_linear_x, value_type=float
+                        ),
+                        'final_forward_duration_s': ParameterValue(
+                            final_forward_duration_s, value_type=float
         ),
-    ])
+                        'grab_duration_s': ParameterValue(
+                            grab_duration_s, value_type=float
+                        ),
+                        'stop_after_grab': ParameterValue(
+                            stop_after_grab, value_type=bool
+                        ),
+                    }
+                ],
+            ),
+        ]
+    )

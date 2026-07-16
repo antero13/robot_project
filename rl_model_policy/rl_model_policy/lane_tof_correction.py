@@ -36,6 +36,27 @@ def robot_x_from_left_wall_distance(
     return left_wall_x_m + distance_m + sensor_forward_offset_m
 
 
+def robot_x_from_right_wall_distance(
+    distance_m,
+    right_wall_x_m,
+    sensor_forward_offset_m,
+):
+    """Convert a front ToF wall distance to robot-center x while facing right."""
+    distance_m = float(distance_m)
+    right_wall_x_m = float(right_wall_x_m)
+    sensor_forward_offset_m = float(sensor_forward_offset_m)
+    if not all(
+        math.isfinite(value)
+        for value in (distance_m, right_wall_x_m, sensor_forward_offset_m)
+    ):
+        raise ValueError("wall-distance geometry values must be finite")
+    if distance_m <= 0.0:
+        raise ValueError("wall distance must be positive")
+    if sensor_forward_offset_m < 0.0:
+        raise ValueError("sensor_forward_offset_m cannot be negative")
+    return right_wall_x_m - distance_m - sensor_forward_offset_m
+
+
 def make_lane_tof_command(
     *,
     distance_m,
@@ -52,9 +73,17 @@ def make_lane_tof_command(
     heading_gain,
     max_angular_speed,
     heading_tolerance,
+    wall_side="left",
+    right_wall_x_m=2.0,
 ):
-    """Align to the next lane using ToF only after the robot faces the left wall."""
-    desired_yaw = math.pi
+    """Align to the next lane after facing the wall in the shift direction."""
+    wall_side = str(wall_side).strip().lower()
+    if wall_side == "left":
+        desired_yaw = math.pi
+    elif wall_side == "right":
+        desired_yaw = 0.0
+    else:
+        raise ValueError("wall_side must be 'left' or 'right'")
     heading_error = normalize_angle(desired_yaw - float(robot_yaw))
     angular_z = clamp(
         float(heading_gain) * heading_error,
@@ -90,11 +119,18 @@ def make_lane_tof_command(
             reached=False,
         )
 
-    measured_robot_x = robot_x_from_left_wall_distance(
-        distance_m,
-        left_wall_x_m,
-        sensor_forward_offset_m,
-    )
+    if wall_side == "left":
+        measured_robot_x = robot_x_from_left_wall_distance(
+            distance_m,
+            left_wall_x_m,
+            sensor_forward_offset_m,
+        )
+    else:
+        measured_robot_x = robot_x_from_right_wall_distance(
+            distance_m,
+            right_wall_x_m,
+            sensor_forward_offset_m,
+        )
     x_error = measured_robot_x - float(target_x)
     if abs(x_error) <= float(x_tolerance_m):
         return LaneTofCommand(
@@ -112,9 +148,10 @@ def make_lane_tof_command(
         float(minimum_speed),
         float(transit_speed) * speed_scale,
     )
-    # Facing left, positive base velocity decreases world-frame x. Reverse if
-    # the robot crossed the requested lane center.
-    linear_x = math.copysign(speed, x_error)
+    # Positive base velocity points toward the selected wall. Reverse if the
+    # robot crossed the requested lane center.
+    error_in_forward_direction = x_error if wall_side == "left" else -x_error
+    linear_x = math.copysign(speed, error_in_forward_direction)
     return LaneTofCommand(
         linear_x=linear_x,
         angular_z=angular_z,
