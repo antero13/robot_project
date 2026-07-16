@@ -36,9 +36,10 @@ from rl_model_policy.observation import (
     validate_observation,
 )
 from rl_model_policy.pickup_trigger import pickup_is_ready
+from rl_model_policy.leave_start import make_leave_start_command
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
-from rl_model_policy.target_activation import target_is_close_enough
+from rl_model_policy.target_activation import target_is_eligible
 
 try:
     import torch
@@ -79,6 +80,7 @@ class RLModelPolicyNode(Node):
     """Run the trained Isaac Lab/skrl policy from YOLO-derived observations."""
 
     MODE_IDLE = "IDLE"
+    MODE_LEAVE_START = "LEAVE_START"
     MODE_TRACK_TARGET = "TRACK_TARGET"
     MODE_LOCAL_REACQUIRE = "LOCAL_REACQUIRE"
     MODE_COVERAGE_SEARCH = "COVERAGE_SEARCH"
@@ -121,6 +123,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("target_confirmation_window", 5)
         self.declare_parameter("target_confirmation_min_detections", 3)
         self.declare_parameter("target_activation_center_y_min", 0.30)
+        self.declare_parameter("target_tracking_center_y_min", 0.22)
         self.declare_parameter("target_bearing_prediction_enabled", True)
         self.declare_parameter("avoid_timeout_s", 0.25)
         self.declare_parameter("episode_length_s", 18.0)
@@ -129,6 +132,12 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("arena_half_extent_m", 2.0)
         self.declare_parameter("pose_bounds_tolerance_m", 0.25)
         self.declare_parameter("camera_horizontal_fov_deg", 80.0)
+
+        self.declare_parameter("leave_start_enabled", True)
+        self.declare_parameter("leave_start_distance_m", 0.55)
+        self.declare_parameter("leave_start_speed", 0.25)
+        self.declare_parameter("leave_start_heading_gain", 1.5)
+        self.declare_parameter("leave_start_max_angular_speed", 0.40)
 
         self.declare_parameter("coverage_enabled", True)
         self.declare_parameter("coverage_min_x", -0.75)
@@ -249,6 +258,14 @@ class RLModelPolicyNode(Node):
         self.motion_paused = False
         self.pickup_label = None
         self.control_mode = self.MODE_IDLE
+        self.leave_start_active = (
+            self.active and bool(self.get_parameter("leave_start_enabled").value)
+        )
+        self.leave_start_origin = None
+        self.leave_start_yaw = None
+        self.leave_start_traveled_m = 0.0
+        if self.leave_start_active:
+            self.control_mode = self.MODE_LEAVE_START
         self.had_visible_target = False
         self.target_lost_started_at = None
         self.coverage_command = None
@@ -536,10 +553,10 @@ class RLModelPolicyNode(Node):
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
             self.motion_paused = False
-            self.set_control_mode(self.MODE_COVERAGE_SEARCH)
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
             self.active = True
+            self.begin_leave_start()
             self.get_logger().info("RL model policy started")
         elif command in ("pause", "pause_motion"):
             self.set_motion_paused(True)
@@ -552,6 +569,7 @@ class RLModelPolicyNode(Node):
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
+            self.cancel_leave_start()
             self.set_control_mode(self.MODE_IDLE)
             self.publish_cmd(0.0, 0.0)
             self.get_logger().info("RL model policy stopped")
@@ -575,6 +593,7 @@ class RLModelPolicyNode(Node):
             self.motion_paused = False
             self.pickup_label = None
             self.mission_waypoint = None
+            self.cancel_leave_start()
             self.set_control_mode(self.MODE_IDLE)
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
@@ -615,13 +634,14 @@ class RLModelPolicyNode(Node):
             not self.full_mission_is_enabled()
             or self.mission.phase == MissionPhase.COLLECTING
         )
-        if collecting:
+        if collecting and not self.leave_start_active:
             self.update_target_history(target)
+        tracking_target = self.control_mode == self.MODE_TRACK_TARGET
         target_control_ready = (
             target is not None
-            and self.target_activation_is_met()
+            and self.target_activation_is_met(tracking_active=tracking_target)
             and (
-                self.control_mode == self.MODE_TRACK_TARGET
+                tracking_target
                 or self.target_confirmation_is_met()
             )
         )
@@ -633,6 +653,7 @@ class RLModelPolicyNode(Node):
                 and collecting
                 and not self.motion_paused
                 and not self.coverage_controller.rejoin_active
+                and not self.leave_start_active
             )
             else None
         )
@@ -645,6 +666,11 @@ class RLModelPolicyNode(Node):
             self.coverage_command = None
         elif self.active and self.mission.is_storage_phase():
             linear_x, angular_z = self.storage_mission_command(bins, now_s)
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+            self.coverage_command = None
+        elif self.active and self.leave_start_active:
+            linear_x, angular_z = self.leave_start_command()
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
@@ -743,6 +769,7 @@ class RLModelPolicyNode(Node):
         self.get_logger().info("Base motion resumed")
 
     def prepare_storage_return(self):
+        self.cancel_leave_start()
         self.coverage_controller.cancel_rejoin()
         return_min_x = min(
             self.get_float("coverage_min_x"),
@@ -1027,14 +1054,73 @@ class RLModelPolicyNode(Node):
             self.target_confirmation_min_detections,
         )
 
-    def target_activation_is_met(self):
+    def current_target_center_y(self):
         center_y = None
         if self.is_fresh(self.latest_target_center_y_time, "target_timeout_s"):
             center_y = self.latest_target_center_y
-        return target_is_close_enough(
-            center_y,
+        return center_y
+
+    def target_activation_is_met(self, tracking_active=None):
+        if tracking_active is None:
+            tracking_active = self.control_mode == self.MODE_TRACK_TARGET
+        return target_is_eligible(
+            self.current_target_center_y(),
             self.get_float("target_activation_center_y_min"),
+            self.get_float("target_tracking_center_y_min"),
+            tracking_active,
         )
+
+    def begin_leave_start(self):
+        self.leave_start_origin = None
+        self.leave_start_yaw = None
+        self.leave_start_traveled_m = 0.0
+        self.leave_start_active = bool(
+            self.get_parameter("leave_start_enabled").value
+        )
+        self.set_control_mode(
+            self.MODE_LEAVE_START
+            if self.leave_start_active
+            else self.MODE_COVERAGE_SEARCH
+        )
+
+    def cancel_leave_start(self):
+        self.leave_start_active = False
+        self.leave_start_origin = None
+        self.leave_start_yaw = None
+        self.leave_start_traveled_m = 0.0
+
+    def leave_start_command(self):
+        if not self.storage_pose_is_valid():
+            self.set_control_mode(self.MODE_WAITING_FOR_POSE)
+            return (0.0, 0.0)
+
+        if self.leave_start_origin is None:
+            self.leave_start_origin = (self.robot_x, self.robot_y)
+            self.leave_start_yaw = self.robot_yaw
+            self.get_logger().info(
+                "Leaving start zone by driving straight from the current heading"
+            )
+
+        command = make_leave_start_command(
+            origin_x=self.leave_start_origin[0],
+            origin_y=self.leave_start_origin[1],
+            desired_yaw=self.leave_start_yaw,
+            robot_x=self.robot_x,
+            robot_y=self.robot_y,
+            robot_yaw=self.robot_yaw,
+            distance_m=self.get_float("leave_start_distance_m"),
+            linear_speed=self.get_float("leave_start_speed"),
+            heading_gain=self.get_float("leave_start_heading_gain"),
+            max_angular_speed=self.get_float("leave_start_max_angular_speed"),
+        )
+        self.leave_start_traveled_m = command.traveled_m
+        if command.complete:
+            self.leave_start_active = False
+            self.set_control_mode(self.MODE_COVERAGE_SEARCH)
+            self.get_logger().info("Start zone exit complete; beginning coverage search")
+        else:
+            self.set_control_mode(self.MODE_LEAVE_START)
+        return (command.linear_x, command.angular_z)
 
     def target_lost_age_s(self):
         if self.target_lost_started_at is None:
@@ -1427,11 +1513,27 @@ class RLModelPolicyNode(Node):
                     "confirmed": self.target_confirmation_is_met(),
                 },
                 "target_activation": {
-                    "center_y": self.latest_target_center_y,
+                    "center_y": self.current_target_center_y(),
                     "minimum_center_y": self.get_float(
-                        "target_activation_center_y_min"
+                        "target_tracking_center_y_min"
+                        if self.control_mode == self.MODE_TRACK_TARGET
+                        else "target_activation_center_y_min"
                     ),
                     "eligible": self.target_activation_is_met(),
+                    "entry_minimum_center_y": self.get_float(
+                        "target_activation_center_y_min"
+                    ),
+                    "tracking_minimum_center_y": self.get_float(
+                        "target_tracking_center_y_min"
+                    ),
+                    "tracking_hysteresis_active": (
+                        self.control_mode == self.MODE_TRACK_TARGET
+                    ),
+                },
+                "leave_start": {
+                    "active": self.leave_start_active,
+                    "distance_m": self.get_float("leave_start_distance_m"),
+                    "traveled_m": round(self.leave_start_traveled_m, 3),
                 },
                 "pickup_label": self.pickup_label,
                 "stored_objects": list(self.mission.onboard_objects),

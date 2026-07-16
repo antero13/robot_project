@@ -20,6 +20,9 @@ def generate_launch_description():
     target_activation_center_y_min = LaunchConfiguration(
         'target_activation_center_y_min'
     )
+    target_tracking_center_y_min = LaunchConfiguration(
+        'target_tracking_center_y_min'
+    )
     target_bearing_prediction_enabled = LaunchConfiguration(
         'target_bearing_prediction_enabled'
     )
@@ -29,6 +32,13 @@ def generate_launch_description():
     arena_half_extent_m = LaunchConfiguration('arena_half_extent_m')
     pose_bounds_tolerance_m = LaunchConfiguration('pose_bounds_tolerance_m')
     camera_horizontal_fov_deg = LaunchConfiguration('camera_horizontal_fov_deg')
+    leave_start_enabled = LaunchConfiguration('leave_start_enabled')
+    leave_start_distance_m = LaunchConfiguration('leave_start_distance_m')
+    leave_start_speed = LaunchConfiguration('leave_start_speed')
+    leave_start_heading_gain = LaunchConfiguration('leave_start_heading_gain')
+    leave_start_max_angular_speed = LaunchConfiguration(
+        'leave_start_max_angular_speed'
+    )
     coverage_enabled = LaunchConfiguration('coverage_enabled')
     coverage_min_x = LaunchConfiguration('coverage_min_x')
     coverage_max_x = LaunchConfiguration('coverage_max_x')
@@ -160,6 +170,10 @@ def generate_launch_description():
             default_value='0.30',
         ),
         DeclareLaunchArgument(
+            'target_tracking_center_y_min',
+            default_value='0.22',
+        ),
+        DeclareLaunchArgument(
             'target_confirmation_window',
             default_value='5',
         ),
@@ -177,6 +191,14 @@ def generate_launch_description():
             default_value='0.75',
         ),
         DeclareLaunchArgument('coverage_reacquire_angular_z', default_value='0.35'),
+        DeclareLaunchArgument('leave_start_enabled', default_value='true'),
+        DeclareLaunchArgument('leave_start_distance_m', default_value='0.55'),
+        DeclareLaunchArgument('leave_start_speed', default_value='0.25'),
+        DeclareLaunchArgument('leave_start_heading_gain', default_value='1.5'),
+        DeclareLaunchArgument(
+            'leave_start_max_angular_speed',
+            default_value='0.40',
+        ),
         DeclareLaunchArgument('full_mission_enabled', default_value='true'),
         DeclareLaunchArgument('mission_duration_s', default_value='180.0'),
         DeclareLaunchArgument('force_return_remaining_s', default_value='30.0'),
@@ -239,6 +261,10 @@ def generate_launch_description():
                     target_activation_center_y_min,
                     value_type=float,
                 ),
+                'target_tracking_center_y_min': ParameterValue(
+                    target_tracking_center_y_min,
+                    value_type=float,
+                ),
                 'target_bearing_prediction_enabled': ParameterValue(
                     target_bearing_prediction_enabled,
                     value_type=bool,
@@ -257,6 +283,26 @@ def generate_launch_description():
                 ),
                 'camera_horizontal_fov_deg': ParameterValue(
                     camera_horizontal_fov_deg,
+                    value_type=float,
+                ),
+                'leave_start_enabled': ParameterValue(
+                    leave_start_enabled,
+                    value_type=bool,
+                ),
+                'leave_start_distance_m': ParameterValue(
+                    leave_start_distance_m,
+                    value_type=float,
+                ),
+                'leave_start_speed': ParameterValue(
+                    leave_start_speed,
+                    value_type=float,
+                ),
+                'leave_start_heading_gain': ParameterValue(
+                    leave_start_heading_gain,
+                    value_type=float,
+                ),
+                'leave_start_max_angular_speed': ParameterValue(
+                    leave_start_max_angular_speed,
                     value_type=float,
                 ),
                 'coverage_enabled': ParameterValue(coverage_enabled, value_type=bool),

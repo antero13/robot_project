@@ -40,6 +40,9 @@ def generate_launch_description():
     target_activation_center_y_min = LaunchConfiguration(
         "target_activation_center_y_min"
     )
+    target_tracking_center_y_min = LaunchConfiguration(
+        "target_tracking_center_y_min"
+    )
     target_bearing_prediction_enabled = LaunchConfiguration(
         "target_bearing_prediction_enabled"
     )
@@ -50,6 +53,13 @@ def generate_launch_description():
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
     pose_bounds_tolerance_m = LaunchConfiguration("pose_bounds_tolerance_m")
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
+    leave_start_enabled = LaunchConfiguration("leave_start_enabled")
+    leave_start_distance_m = LaunchConfiguration("leave_start_distance_m")
+    leave_start_speed = LaunchConfiguration("leave_start_speed")
+    leave_start_heading_gain = LaunchConfiguration("leave_start_heading_gain")
+    leave_start_max_angular_speed = LaunchConfiguration(
+        "leave_start_max_angular_speed"
+    )
     launch_object_mapper = LaunchConfiguration("launch_object_mapper")
     launch_status_gui = LaunchConfiguration("launch_status_gui")
     object_calibration_path = LaunchConfiguration("object_calibration_path")
@@ -199,6 +209,7 @@ def generate_launch_description():
                 target_confirmation_min_detections
             ),
             "target_activation_center_y_min": target_activation_center_y_min,
+            "target_tracking_center_y_min": target_tracking_center_y_min,
             "target_bearing_prediction_enabled": target_bearing_prediction_enabled,
             "dry_run": dry_run,
             "odometry_topic": odometry_topic,
@@ -207,6 +218,11 @@ def generate_launch_description():
             "arena_half_extent_m": arena_half_extent_m,
             "pose_bounds_tolerance_m": pose_bounds_tolerance_m,
             "camera_horizontal_fov_deg": camera_horizontal_fov_deg,
+            "leave_start_enabled": leave_start_enabled,
+            "leave_start_distance_m": leave_start_distance_m,
+            "leave_start_speed": leave_start_speed,
+            "leave_start_heading_gain": leave_start_heading_gain,
+            "leave_start_max_angular_speed": leave_start_max_angular_speed,
             "coverage_enabled": coverage_enabled,
             "coverage_min_x": coverage_min_x,
             "coverage_max_x": coverage_max_x,
@@ -405,6 +421,14 @@ def generate_launch_description():
             ),
         ),
         DeclareLaunchArgument(
+            "target_tracking_center_y_min",
+            default_value="0.22",
+            description=(
+                "Lower bbox-center y threshold retained while RL target tracking "
+                "is already active."
+            ),
+        ),
+        DeclareLaunchArgument(
             "target_bearing_prediction_enabled",
             default_value="true",
             description="Project target image x from odometry during short detection gaps.",
@@ -477,6 +501,14 @@ def generate_launch_description():
             default_value="0.75",
         ),
         DeclareLaunchArgument("coverage_reacquire_angular_z", default_value="0.35"),
+        DeclareLaunchArgument("leave_start_enabled", default_value="true"),
+        DeclareLaunchArgument("leave_start_distance_m", default_value="0.55"),
+        DeclareLaunchArgument("leave_start_speed", default_value="0.25"),
+        DeclareLaunchArgument("leave_start_heading_gain", default_value="1.5"),
+        DeclareLaunchArgument(
+            "leave_start_max_angular_speed",
+            default_value="0.40",
+        ),
         DeclareLaunchArgument(
             "initial_x",
             default_value="1.8",

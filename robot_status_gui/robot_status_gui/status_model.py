@@ -4,6 +4,7 @@ import math
 
 MODE_LABELS = {
     "IDLE": "정지",
+    "LEAVE_START": "출발 구역 이탈 중",
     "TRACK_TARGET": "목표 물체 접근 중",
     "LOCAL_REACQUIRE": "목표 물체 재탐색 중",
     "COVERAGE_SEARCH": "경기장 탐색 중",
