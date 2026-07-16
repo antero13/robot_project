@@ -60,6 +60,8 @@ def generate_launch_description():
     wall_driver_backend = LaunchConfiguration("wall_driver_backend")
     wall_left_i2c_bus = LaunchConfiguration("wall_left_i2c_bus")
     wall_right_i2c_bus = LaunchConfiguration("wall_right_i2c_bus")
+    wall_left_address = LaunchConfiguration("wall_left_address")
+    wall_right_address = LaunchConfiguration("wall_right_address")
     wall_ranging_mode = LaunchConfiguration("wall_ranging_mode")
     wall_distance_angle_topic = LaunchConfiguration("wall_distance_angle_topic")
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
@@ -234,6 +236,8 @@ def generate_launch_description():
             "driver_backend": wall_driver_backend,
             "left_i2c_bus": wall_left_i2c_bus,
             "right_i2c_bus": wall_right_i2c_bus,
+            "left_address": wall_left_address,
+            "right_address": wall_right_address,
             "ranging_mode": wall_ranging_mode,
             "update_rate_hz": "20.0",
             "distance_angle_topic": wall_distance_angle_topic,
@@ -532,8 +536,18 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("wall_driver_backend", default_value="vl53l1x"),
         DeclareLaunchArgument("wall_left_i2c_bus", default_value="1"),
-        DeclareLaunchArgument("wall_right_i2c_bus", default_value="0"),
-        DeclareLaunchArgument("wall_ranging_mode", default_value="2"),
+        DeclareLaunchArgument("wall_right_i2c_bus", default_value="7"),
+        DeclareLaunchArgument(
+            "wall_left_address",
+            default_value="41",
+            description="Integer I2C address; 41 decimal is 0x29.",
+        ),
+        DeclareLaunchArgument(
+            "wall_right_address",
+            default_value="41",
+            description="Integer I2C address; 41 decimal is 0x29.",
+        ),
+        DeclareLaunchArgument("wall_ranging_mode", default_value="3"),
         DeclareLaunchArgument(
             "wall_distance_angle_topic",
             default_value="/wall/distance_angle",

@@ -1,6 +1,15 @@
 # wall_distance_sensor
 
-ROS 2 Python node for two front-facing VL53L1X ToF sensors.
+ROS 2 package for two front-facing VL53L1X ToF sensors.
+
+The launch starts three OS processes:
+
+- `left_wall_tof`: reads exactly one VL53L1X on I2C bus 1
+- `right_wall_tof`: reads exactly one VL53L1X on I2C bus 7
+- `wall_distance_aggregator`: combines the two `Range` topics
+
+Keeping each native `VL53L1X` driver in its own process avoids the driver's
+global I2C callback state being shared between two Linux I2C buses.
 
 It publishes the left/right range readings and a combined wall measurement:
 
@@ -53,7 +62,7 @@ SDA -> Pin 3, I2C1_SDA
 SCL -> Pin 5, I2C1_SCL
 ```
 
-Right sensor:
+Right sensor (exposed as Linux I2C bus 7 on the target Jetson):
 
 ```text
 VCC -> Pin 1 or Pin 17, 3.3V
@@ -67,26 +76,30 @@ Default launch for this wiring:
 ```bash
 ros2 launch wall_distance_sensor wall_distance_angle.launch.py \
   left_i2c_bus:=1 \
-  right_i2c_bus:=0 \
-  left_address:=0x29 \
-  right_address:=0x29 \
+  right_i2c_bus:=7 \
+  left_address:=41 \
+  right_address:=41 \
+  ranging_mode:=3 \
   sensor_separation_m:=0.29 \
   safe_distance_m:=0.15
 ```
 
+I2C addresses are ROS integer parameters. `41` decimal is `0x29`. Ranging
+modes are `1=short`, `2=medium`, and `3=long`; long mode is the default.
+
 Check which Linux I2C bus numbers are exposed on your board:
 
 ```bash
-ls /dev/i2c-*
-sudo i2cdetect -y 1
-sudo i2cdetect -y 0
+ls /dev/i2c-1 /dev/i2c-7
+sudo i2cdetect -r -y 1
+sudo i2cdetect -r -y 7
 ```
 
 Each bus should show one sensor at `0x29`. If your board exposes different bus
 numbers, pass those values as `left_i2c_bus` and `right_i2c_bus`.
 
-The package is intentionally standalone. Existing mission, YOLO, and motor
-launch files do not start this node automatically.
+The integrated `rl_autonomous_drive.launch.py` starts this three-process launch
+automatically unless `launch_wall_distance_sensor:=false` is passed.
 
 ## Test without hardware
 
@@ -105,6 +118,6 @@ ros2 topic echo /wall/measurement_json
 
 ## Runtime dependency
 
-The node imports the `VL53L1X` Python driver only at runtime. On Jetson, install a
-VL53L1X Python driver compatible with your board. If you use XSHUT pins, install
-`Jetson.GPIO` as well.
+Each sensor process imports one `VL53L1X` Python driver only at runtime. On
+Jetson, install a VL53L1X Python driver compatible with the board. Separate
+buses allow both sensors to retain integer address `41` (`0x29`) without XSHUT.

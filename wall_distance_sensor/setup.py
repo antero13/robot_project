@@ -18,12 +18,13 @@ setup(
     zip_safe=True,
     maintainer="AI ROBOT",
     maintainer_email="user@example.com",
-    description="Read two front VL53L1X ToF sensors and publish wall distance and angle.",
+    description="Read two VL53L1X sensors in isolated processes and combine their ranges.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "wall_distance_angle_node = wall_distance_sensor.wall_distance_angle_node:main",
+            "vl53l1x_range_node = wall_distance_sensor.vl53l1x_range_node:main",
+            "wall_distance_aggregator_node = wall_distance_sensor.wall_distance_aggregator_node:main",
         ],
     },
 )
