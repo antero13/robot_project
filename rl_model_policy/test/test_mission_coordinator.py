@@ -11,6 +11,33 @@ from rl_model_policy.mission_coordinator import (
 )
 
 
+def simulate_waypoint(start, target, speed, tolerance=0.04):
+    x, y, yaw = (float(value) for value in start)
+    dt = 0.05
+    for _ in range(2000):
+        command = waypoint_command(
+            robot_x=x,
+            robot_y=y,
+            robot_yaw=yaw,
+            target_x=target[0],
+            target_y=target[1],
+            speed=speed,
+            waypoint_tolerance=tolerance,
+            heading_tolerance=0.14,
+            heading_gain=1.5,
+            max_angular_speed=0.60,
+        )
+        if command.reached:
+            return (x, y, yaw)
+        x += command.linear_x * math.cos(yaw) * dt
+        y += command.linear_x * math.sin(yaw) * dt
+        yaw = math.atan2(
+            math.sin(yaw + command.angular_z * dt),
+            math.cos(yaw + command.angular_z * dt),
+        )
+    raise AssertionError("waypoint simulation did not converge")
+
+
 class MissionCoordinatorTest(unittest.TestCase):
     def setUp(self):
         self.mission = MissionCoordinator(
@@ -34,10 +61,10 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(self.mission.phase, MissionPhase.COLLECTING)
 
-    def test_storage_return_starts_with_y_waypoint(self):
+    def test_storage_return_starts_with_main_road_waypoint(self):
         self.assertEqual(
             storage_return_start_phase(),
-            MissionPhase.MOVE_TO_STORAGE_Y,
+            MissionPhase.RETURN_MAIN_ROAD,
         )
 
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
@@ -50,6 +77,9 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertTrue(self.mission.is_storage_phase())
 
         self.mission.set_phase(MissionPhase.CORRECT_STORAGE_X, 20.0)
+        self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.CORRECT_STORAGE_STAGING_X, 20.5)
         self.assertTrue(self.mission.is_storage_phase())
 
         self.mission.set_phase(MissionPhase.CORRECT_STORAGE_Y, 21.0)
@@ -129,6 +159,44 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertLess(moving.linear_x, 0.0)
         self.assertAlmostEqual(moving.angular_z, 0.0)
         self.assertTrue(stopped.reached)
+
+    def test_negative_waypoint_speed_reverses_along_the_entry_path(self):
+        entry_heading = math.atan2(-1.75 + 1.3343, -1.75 + 1.25)
+        command = waypoint_command(
+            robot_x=-1.75,
+            robot_y=-1.75,
+            robot_yaw=entry_heading,
+            target_x=-1.25,
+            target_y=-1.3343,
+            speed=-0.25,
+        )
+
+        self.assertLess(command.linear_x, 0.0)
+        self.assertAlmostEqual(command.angular_z, 0.0)
+        self.assertFalse(command.reached)
+
+    def test_fast_diagonal_entry_and_reverse_return_to_main_road_staging(self):
+        staging = (-1.25, -1.3343)
+        center = (-1.75, -1.75)
+        entered = simulate_waypoint(
+            (staging[0], staging[1], math.pi),
+            center,
+            speed=0.40,
+        )
+        returned = simulate_waypoint(
+            entered,
+            staging,
+            speed=-0.25,
+        )
+
+        self.assertLess(
+            math.hypot(entered[0] - center[0], entered[1] - center[1]),
+            0.04,
+        )
+        self.assertLess(
+            math.hypot(returned[0] - staging[0], returned[1] - staging[1]),
+            0.04,
+        )
 
 
 if __name__ == "__main__":

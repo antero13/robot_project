@@ -729,7 +729,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "storage_tof_correction_enabled",
                 default_value="true",
-                description="Correct storage staging x and y from ToF before entry.",
+                description="Correct storage entrance x with ToF before and after entry.",
             ),
             DeclareLaunchArgument("storage_tof_left_wall_x_m", default_value="-2.0"),
             DeclareLaunchArgument("storage_tof_bottom_wall_y_m", default_value="-2.0"),

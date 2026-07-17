@@ -21,7 +21,6 @@ from rl_model_policy.mission_coordinator import (
     MissionPhase,
     ReturnReason,
     storage_return_start_phase,
-    reverse_storage_x_exit_command,
     waypoint_command,
 )
 from rl_model_policy.observation import (
@@ -883,10 +882,10 @@ class RLModelPolicyNode(Node):
                 self.now_s(),
             )
             self.mission_waypoint = (self.return_lane_x, self.robot_y)
-            return_route = "rejoin lane, then descend with bottom-wall ToF"
+            return_route = "rejoin lane, then return to the southern main road"
         else:
             self.coverage_controller.cancel_rejoin()
-            return_phase = self.start_storage_y_descent(self.now_s())
+            return_phase = self.start_storage_main_road_return(self.now_s())
             return_route = f"direct {return_phase}"
         self.latest_target = None
         self.latest_target_time = None
@@ -903,12 +902,12 @@ class RLModelPolicyNode(Node):
             f"delivered={self.mission.delivered_count}, route={return_route}"
         )
 
-    def start_storage_y_descent(self, now_s):
+    def start_storage_main_road_return(self, now_s):
         phase = storage_return_start_phase()
         self.mission.set_phase(phase, now_s)
         self.mission_waypoint = (
             self.return_lane_x,
-            self.get_float("storage_staging_y"),
+            self.get_float("storage_main_road_y"),
         )
         return phase
 
@@ -922,7 +921,7 @@ class RLModelPolicyNode(Node):
             if self.waiting_for_pose_x_correction():
                 self.mission_waypoint = (
                     self.pending_pose_x_correction,
-                    self.get_float("storage_center_y"),
+                    self.get_float("storage_main_road_y"),
                 )
             else:
                 self.mission_waypoint = (
@@ -939,7 +938,7 @@ class RLModelPolicyNode(Node):
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
             target_y = self.coverage_controller.rejoin_target_y
             if target_y is None:
-                self.start_storage_y_descent(now_s)
+                self.start_storage_main_road_return(now_s)
                 return (0.0, 0.0)
             self.mission_waypoint = (self.return_lane_x, target_y)
             command = self.coverage_controller.command(
@@ -951,7 +950,7 @@ class RLModelPolicyNode(Node):
                 avoid_right=bins[2],
             )
             if not self.coverage_controller.rejoin_active:
-                self.start_storage_y_descent(now_s)
+                self.start_storage_main_road_return(now_s)
                 return (0.0, 0.0)
             return (command.linear_x, command.angular_z)
 
@@ -967,7 +966,7 @@ class RLModelPolicyNode(Node):
                 self.mission.set_phase(MissionPhase.RETURN_STAGING, now_s)
                 self.mission_waypoint = (
                     self.get_float("storage_staging_x"),
-                    self.get_float("storage_staging_y"),
+                    self.get_float("storage_main_road_y"),
                 )
                 return (0.0, 0.0)
             return (command.linear_x, command.angular_z)
@@ -979,26 +978,25 @@ class RLModelPolicyNode(Node):
                 self.get_float("storage_staging_x"),
                 self.get_float("storage_main_road_y"),
                 self.get_float("storage_return_speed"),
-                final_yaw=entry_yaw,
+                final_yaw=math.pi,
             )
             if command.reached:
                 if bool(self.get_parameter("storage_tof_correction_enabled").value):
                     self.mission.set_phase(
-                        MissionPhase.CORRECT_STORAGE_Y,
+                        MissionPhase.CORRECT_STORAGE_STAGING_X,
                         now_s,
                     )
                     self.mission_waypoint = (
                         self.get_float("storage_staging_x"),
-                        self.get_float("storage_staging_y"),
+                        self.get_float("storage_main_road_y"),
                     )
                 else:
-                    self.mission.set_phase(MissionPhase.MOVE_TO_STORAGE_Y, now_s)
-                    self.mission_waypoint = (
-                        self.get_float("storage_staging_x"),
-                        self.get_float("storage_staging_y"),
-                    )
+                    return self.begin_storage_entry_open(now_s)
                 return (0.0, 0.0)
             return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.CORRECT_STORAGE_STAGING_X:
+            return self.storage_tof_axis_command("x", now_s)
 
         if phase == MissionPhase.MOVE_TO_STORAGE_Y:
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
@@ -1064,10 +1062,7 @@ class RLModelPolicyNode(Node):
                 "gripper_move_duration_s"
             ):
                 return (0.0, 0.0)
-            if bool(self.get_parameter("storage_tof_correction_enabled").value):
-                self.mission.set_phase(MissionPhase.CORRECT_STORAGE_X, now_s)
-            else:
-                self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
+            self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
             return (0.0, 0.0)
 
         if phase == MissionPhase.ENTER_STORAGE:
@@ -1077,7 +1072,6 @@ class RLModelPolicyNode(Node):
                 self.get_float("storage_center_x"),
                 self.get_float("storage_center_y"),
                 self.get_float("storage_x_entry_speed"),
-                final_yaw=math.pi,
                 waypoint_tolerance=self.get_float("storage_entry_tolerance"),
             )
             if command.reached:
@@ -1087,28 +1081,18 @@ class RLModelPolicyNode(Node):
         if phase == MissionPhase.EXIT_STORAGE:
             self.set_control_mode(self.MODE_EXIT_STORAGE)
             self.mission_waypoint = (
-                self.get_float("storage_exit_x"),
-                self.get_float("storage_center_y"),
+                self.get_float("storage_staging_x"),
+                self.get_float("storage_main_road_y"),
             )
-            command = reverse_storage_x_exit_command(
-                robot_x=self.robot_x,
-                robot_yaw=self.robot_yaw,
-                exit_x=self.get_float("storage_exit_x"),
-                desired_yaw=math.pi,
-                reverse_speed=self.get_float("storage_exit_reverse_speed"),
-                x_tolerance=self.get_float("storage_entry_tolerance"),
-                heading_gain=self.get_float("storage_heading_gain"),
-                max_angular_speed=self.get_float("storage_max_angular_speed"),
+            command = self.storage_waypoint_command(
+                (0.0, 0.0, 0.0),
+                self.get_float("storage_staging_x"),
+                self.get_float("storage_main_road_y"),
+                -abs(self.get_float("storage_exit_reverse_speed")),
+                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
             )
             if command.reached:
-                if bool(self.get_parameter("storage_tof_correction_enabled").value):
-                    self.storage_exit_tof_missing_started_at = None
-                    self.mission.set_phase(
-                        MissionPhase.CORRECT_STORAGE_EXIT_X,
-                        now_s,
-                    )
-                    return (0.0, 0.0)
-                return self.complete_storage_exit(now_s)
+                return self.begin_storage_exit_close(now_s)
             return (command.linear_x, command.angular_z)
 
         if phase == MissionPhase.CORRECT_STORAGE_EXIT_X:
@@ -1118,13 +1102,17 @@ class RLModelPolicyNode(Node):
             self.set_control_mode(self.MODE_EXIT_STORAGE)
             self.mission_waypoint = (
                 self.get_float("storage_exit_x"),
-                self.get_float("storage_center_y"),
+                self.get_float("storage_main_road_y"),
             )
             if self.mission.phase_age_s(now_s) < self.get_float(
                 "gripper_move_duration_s"
             ):
                 return (0.0, 0.0)
-            self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
+            if bool(self.get_parameter("storage_tof_correction_enabled").value):
+                self.storage_exit_tof_missing_started_at = None
+                self.mission.set_phase(MissionPhase.CORRECT_STORAGE_EXIT_X, now_s)
+            else:
+                self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
             self.mission_waypoint = (
                 self.get_float("storage_exit_x"),
                 self.get_float("storage_main_road_y"),
@@ -1159,7 +1147,7 @@ class RLModelPolicyNode(Node):
     def storage_tof_axis_command(self, axis, now_s):
         axis = str(axis).strip().lower()
         target_coordinate = self.get_float(
-            "storage_center_x" if axis == "x" else "storage_staging_y"
+            "storage_staging_x" if axis == "x" else "storage_staging_y"
         )
         wall_coordinate = self.get_float(
             "storage_tof_left_wall_x_m"
@@ -1177,28 +1165,22 @@ class RLModelPolicyNode(Node):
                 "storage_tof_sensor_forward_offset_m"
             ),
             transit_speed=self.get_float(
-                "storage_x_entry_speed" if axis == "x" else "storage_entry_speed"
+                "storage_return_speed" if axis == "x" else "storage_entry_speed"
             ),
-            minimum_speed=(
-                self.get_float("storage_x_entry_speed")
-                if axis == "x"
-                else self.get_float("storage_tof_min_speed")
-            ),
-            slowdown_distance_m=(
-                self.get_float("storage_tof_xy_tolerance_m")
-                if axis == "x"
-                else self.get_float("storage_tof_slowdown_distance_m")
-            ),
+            minimum_speed=self.get_float("storage_tof_min_speed"),
+            slowdown_distance_m=self.get_float("storage_tof_slowdown_distance_m"),
             coordinate_tolerance_m=self.get_float("storage_tof_xy_tolerance_m"),
             measurement_timeout_s=self.get_float("storage_tof_measurement_timeout_s"),
             heading_gain=self.get_float("storage_heading_gain"),
             max_angular_speed=self.get_float("storage_max_angular_speed"),
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
-            advance_without_measurement=(axis == "x"),
+            advance_without_measurement=False,
         )
         self.mission_waypoint = (
-            (self.get_float("storage_center_x") if axis == "x" else self.return_lane_x),
-            self.get_float("storage_center_y" if axis == "x" else "storage_staging_y"),
+            (self.get_float("storage_staging_x") if axis == "x" else self.return_lane_x),
+            self.get_float(
+                "storage_main_road_y" if axis == "x" else "storage_staging_y"
+            ),
         )
         self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
         if not command.reached:
@@ -1224,7 +1206,7 @@ class RLModelPolicyNode(Node):
             f"pose_{axis}->{correction.data:.3f}"
         )
         if axis == "x":
-            return self.complete_storage_entry(now_s)
+            return self.begin_storage_entry_open(now_s)
         return (0.0, 0.0)
 
     def storage_exit_tof_command(self, now_s):
@@ -1251,7 +1233,7 @@ class RLModelPolicyNode(Node):
         )
         self.mission_waypoint = (
             target_coordinate,
-            self.get_float("storage_center_y"),
+            self.get_float("storage_main_road_y"),
         )
         self.set_control_mode(self.MODE_EXIT_STORAGE)
         if command.phase == "WAITING_FOR_STORAGE_TOF_X":
@@ -1303,15 +1285,30 @@ class RLModelPolicyNode(Node):
                 f"pose_x->{correction.data:.3f}"
             )
         self.storage_exit_tof_missing_started_at = None
-        return self.complete_storage_exit(now_s)
+        self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
+        self.mission_waypoint = (
+            self.get_float("storage_exit_x"),
+            self.get_float("storage_main_road_y"),
+        )
+        return (0.0, 0.0)
 
-    def complete_storage_exit(self, now_s):
+    def begin_storage_entry_open(self, now_s):
+        self.publish_cmd(0.0, 0.0)
+        self.command_gripper(open_gripper=True)
+        self.mission.set_phase(MissionPhase.OPEN_STORAGE_ENTRY, now_s)
+        self.mission_waypoint = (
+            self.get_float("storage_center_x"),
+            self.get_float("storage_center_y"),
+        )
+        return (0.0, 0.0)
+
+    def begin_storage_exit_close(self, now_s):
         self.publish_cmd(0.0, 0.0)
         self.command_gripper(open_gripper=False)
         self.mission.set_phase(MissionPhase.CLOSE_STORAGE_EXIT, now_s)
         self.mission_waypoint = (
             self.get_float("storage_exit_x"),
-            self.get_float("storage_center_y"),
+            self.get_float("storage_main_road_y"),
         )
         return (0.0, 0.0)
 
@@ -1320,8 +1317,8 @@ class RLModelPolicyNode(Node):
         deposited_count = self.mission.onboard_count
         self.mission.record_deposit(now_s)
         self.mission_waypoint = (
-            self.get_float("storage_exit_x"),
-            self.get_float("storage_center_y"),
+            self.get_float("storage_staging_x"),
+            self.get_float("storage_main_road_y"),
         )
         self.get_logger().info(
             f"Deposited {deposited_count} object(s); "
@@ -2166,6 +2163,7 @@ class RLModelPolicyNode(Node):
                         "x"
                         if self.mission.phase
                         in (
+                            MissionPhase.CORRECT_STORAGE_STAGING_X,
                             MissionPhase.CORRECT_STORAGE_X,
                             MissionPhase.CORRECT_STORAGE_EXIT_X,
                         )

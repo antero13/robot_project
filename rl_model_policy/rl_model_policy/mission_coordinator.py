@@ -8,6 +8,7 @@ class MissionPhase:
     RETURN_MAIN_ROAD = "RETURN_MAIN_ROAD"
     REJOIN_STORAGE_LANE = "REJOIN_STORAGE_LANE"
     RETURN_STAGING = "RETURN_STAGING"
+    CORRECT_STORAGE_STAGING_X = "CORRECT_STORAGE_STAGING_X"
     MOVE_TO_STORAGE_Y = "MOVE_TO_STORAGE_Y"
     CORRECT_STORAGE_X = "CORRECT_STORAGE_X"
     CORRECT_STORAGE_Y = "CORRECT_STORAGE_Y"
@@ -27,6 +28,7 @@ class MissionPhase:
             REJOIN_STORAGE_LANE,
             RETURN_MAIN_ROAD,
             RETURN_STAGING,
+            CORRECT_STORAGE_STAGING_X,
             MOVE_TO_STORAGE_Y,
             CORRECT_STORAGE_X,
             CORRECT_STORAGE_Y,
@@ -49,8 +51,8 @@ class ReturnReason:
 
 
 def storage_return_start_phase():
-    """Start storage descent with odometry before the ToF fine check."""
-    return MissionPhase.MOVE_TO_STORAGE_Y
+    """Return to the southern main road before approaching storage."""
+    return MissionPhase.RETURN_MAIN_ROAD
 
 
 @dataclass(frozen=True)
@@ -225,7 +227,12 @@ def waypoint_command(
             False,
         )
 
-    desired_yaw = math.atan2(dy, dx)
+    travel_heading = math.atan2(dy, dx)
+    desired_yaw = (
+        travel_heading
+        if float(speed) >= 0.0
+        else normalize_angle(travel_heading + math.pi)
+    )
     heading_error = normalize_angle(desired_yaw - float(robot_yaw))
     angular_z = clamp(
         float(heading_gain) * heading_error,
