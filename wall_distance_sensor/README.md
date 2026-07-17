@@ -11,6 +11,11 @@ The launch starts three OS processes:
 Keeping each native `VL53L1X` driver in its own process avoids the driver's
 global I2C callback state being shared between two Linux I2C buses.
 
+The sensor process also declares the native `ctypes` ABI that is missing from
+Pimoroni VL53L1X 0.0.5. This is required on 64-bit Jetson systems; without it,
+the device pointer returned by the C library can be truncated and the process
+can exit with `-11` (SIGSEGV).
+
 It publishes the left/right range readings and a combined wall measurement:
 
 - `/wall/left_range` (`sensor_msgs/msg/Range`)

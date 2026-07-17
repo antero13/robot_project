@@ -7,6 +7,8 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Range
 
+from .vl53l1x_ctypes import configure_pimoroni_ctypes
+
 
 class MockDistanceSensor:
     def __init__(self, distance_m):
@@ -35,6 +37,7 @@ class Vl53l1xDistanceSensor:
         self.distance_scale_m = float(distance_scale_m)
         self.sensor = None
         self.module = importlib.import_module("VL53L1X")
+        configure_pimoroni_ctypes(self.module)
         self.sensor = self.module.VL53L1X(
             i2c_bus=int(i2c_bus),
             i2c_address=int(address),
