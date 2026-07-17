@@ -280,10 +280,10 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 tracking이 시작된 뒤에는 이 gate를 다시 적용하지 않으므로 검출 흔들림으로
 coverage와 tracking 사이를 반복하지 않는다.
 
-수거가 끝나면 scan leg는 먼저 `ALIGN_REJOIN_LANE`에서
-`(lane_x, current_robot_y)` 방향으로 제자리 회전하고, `REJOIN_LANE`에서
-직진한다. 같은 y의 레인 중심점에 도착한 뒤에만 중단했던 상행/하행 탐색을
-재개한다.
+수거가 끝나면 scan leg는 먼저 `ALIGN_CURVED_REJOIN`에서 진행 중이던 레인을
+45도로 바라본다. 이후 `CURVE_REJOIN_LANE`에서 전진을 유지하면서 횡오차가
+줄어들수록 진행 방향을 레인 방향으로 연속 보정한다. 레인 중심 x에 도착하면
+즉시 중단했던 상행/하행 탐색을 재개한다.
 
 ## 자동 수거
 
@@ -407,8 +407,8 @@ COLLECTING
      회전으로 북쪽을 향한 뒤 다음 레인 탐색을 시작한다.
 
 2. **물체 수거 후 레인 복귀**
-   - 수거 뒤 `REJOIN_LANE`으로 현재 레인의 중심 x에 복귀한다. 복귀 y는
-     최초 RL 인식 좌표가 아니라 수거 완료 시점의 y이다.
+   - 수거 뒤 `CURVE_REJOIN_LANE`으로 현재 레인의 중심 x에 즉시 복귀한다.
+     처음에는 레인을 45도로 바라보고 전진하면서 레인 진행 방향으로 합류한다.
    - 4개 적재, 일곱 번째 물체 수거, 종료 30초 전 또는 수동 복귀도 먼저
      `REJOIN_STORAGE_LANE`을 끝낸 뒤 보관소 이동을 시작한다.
 
@@ -422,7 +422,7 @@ COLLECTING
 
 4. **보관소 x 진입: ToF 연속 주행**
    - 우측으로 선회해 서쪽을 보고 서보를 연다.
-   - x waypoint 없이 `0.40 m/s`로 계속 진입하며 ToF로 `x=-1.75 m`를
+   - x waypoint 없이 `0.30 m/s`로 계속 진입하며 ToF로 `x=-1.75 m`를
      판단한다. 감속하지 않으며, ToF 값이 아직 없어도 계속 진입한다.
 
 5. **보관소 후진: waypoint 후 ToF**
@@ -475,7 +475,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_staging_y:=-1.75 \
   storage_center_x:=-1.75 storage_center_y:=-1.75 \
   storage_exit_x:=-1.25 \
-  storage_x_entry_speed:=0.40 \
+  storage_x_entry_speed:=0.30 \
   storage_entry_yaw_deg:=-90.0 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_bottom_wall_y_m:=-2.0 \

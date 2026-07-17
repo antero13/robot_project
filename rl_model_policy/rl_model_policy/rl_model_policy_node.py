@@ -152,8 +152,10 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("leave_start_enabled", True)
         self.declare_parameter("leave_start_distance_m", 0.55)
         self.declare_parameter("leave_start_speed", 0.25)
+        self.declare_parameter("leave_start_target_yaw_deg", 90.0)
         self.declare_parameter("leave_start_heading_gain", 1.5)
-        self.declare_parameter("leave_start_max_angular_speed", 0.40)
+        self.declare_parameter("leave_start_max_angular_speed", 0.60)
+        self.declare_parameter("leave_start_heading_tolerance", 0.12)
 
         self.declare_parameter("coverage_enabled", True)
         self.declare_parameter("coverage_min_x", -1.25)
@@ -218,8 +220,8 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_center_y", -1.75)
         self.declare_parameter("storage_entry_yaw_deg", -90.0)
         self.declare_parameter("storage_return_speed", 0.25)
-        self.declare_parameter("storage_entry_speed", 0.25)
-        self.declare_parameter("storage_x_entry_speed", 0.40)
+        self.declare_parameter("storage_entry_speed", 0.30)
+        self.declare_parameter("storage_x_entry_speed", 0.30)
         self.declare_parameter("storage_exit_reverse_speed", 0.25)
         self.declare_parameter("storage_waypoint_tolerance", 0.10)
         self.declare_parameter("storage_entry_tolerance", 0.04)
@@ -1495,9 +1497,11 @@ class RLModelPolicyNode(Node):
 
         if self.leave_start_origin is None:
             self.leave_start_origin = (self.robot_x, self.robot_y)
-            self.leave_start_yaw = self.robot_yaw
+            self.leave_start_yaw = math.radians(
+                self.get_float("leave_start_target_yaw_deg")
+            )
             self.get_logger().info(
-                "Leaving start zone by driving straight from the current heading"
+                "Leaving start zone on a moving right-turn arc toward the first lane"
             )
 
         command = make_leave_start_command(
@@ -1511,6 +1515,7 @@ class RLModelPolicyNode(Node):
             linear_speed=self.get_float("leave_start_speed"),
             heading_gain=self.get_float("leave_start_heading_gain"),
             max_angular_speed=self.get_float("leave_start_max_angular_speed"),
+            heading_tolerance=self.get_float("leave_start_heading_tolerance"),
         )
         self.leave_start_traveled_m = command.traveled_m
         if command.complete:

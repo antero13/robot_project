@@ -34,8 +34,12 @@ def generate_launch_description():
     leave_start_enabled = LaunchConfiguration('leave_start_enabled')
     leave_start_distance_m = LaunchConfiguration('leave_start_distance_m')
     leave_start_speed = LaunchConfiguration('leave_start_speed')
+    leave_start_target_yaw_deg = LaunchConfiguration('leave_start_target_yaw_deg')
     leave_start_heading_gain = LaunchConfiguration('leave_start_heading_gain')
     leave_start_max_angular_speed = LaunchConfiguration('leave_start_max_angular_speed')
+    leave_start_heading_tolerance = LaunchConfiguration(
+        'leave_start_heading_tolerance'
+    )
     coverage_enabled = LaunchConfiguration('coverage_enabled')
     coverage_min_x = LaunchConfiguration('coverage_min_x')
     coverage_max_x = LaunchConfiguration('coverage_max_x')
@@ -258,11 +262,13 @@ def generate_launch_description():
         DeclareLaunchArgument('leave_start_enabled', default_value='true'),
         DeclareLaunchArgument('leave_start_distance_m', default_value='0.55'),
         DeclareLaunchArgument('leave_start_speed', default_value='0.25'),
+        DeclareLaunchArgument('leave_start_target_yaw_deg', default_value='90.0'),
         DeclareLaunchArgument('leave_start_heading_gain', default_value='1.5'),
         DeclareLaunchArgument(
             'leave_start_max_angular_speed',
-            default_value='0.40',
+            default_value='0.60',
         ),
+        DeclareLaunchArgument('leave_start_heading_tolerance', default_value='0.12'),
         DeclareLaunchArgument('full_mission_enabled', default_value='true'),
         DeclareLaunchArgument('mission_duration_s', default_value='180.0'),
         DeclareLaunchArgument('force_return_remaining_s', default_value='30.0'),
@@ -276,8 +282,8 @@ def generate_launch_description():
         DeclareLaunchArgument('storage_center_y', default_value='-1.75'),
         DeclareLaunchArgument('storage_entry_yaw_deg', default_value='-90.0'),
         DeclareLaunchArgument('storage_return_speed', default_value='0.25'),
-            DeclareLaunchArgument('storage_entry_speed', default_value='0.25'),
-            DeclareLaunchArgument('storage_x_entry_speed', default_value='0.40'),
+            DeclareLaunchArgument('storage_entry_speed', default_value='0.30'),
+            DeclareLaunchArgument('storage_x_entry_speed', default_value='0.30'),
             DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.25'),
         DeclareLaunchArgument('storage_entry_tolerance', default_value='0.04'),
             DeclareLaunchArgument(
@@ -393,12 +399,20 @@ def generate_launch_description():
                     leave_start_speed,
                     value_type=float,
                 ),
+                'leave_start_target_yaw_deg': ParameterValue(
+                    leave_start_target_yaw_deg,
+                    value_type=float,
+                ),
                 'leave_start_heading_gain': ParameterValue(
                     leave_start_heading_gain,
                     value_type=float,
                 ),
                 'leave_start_max_angular_speed': ParameterValue(
                     leave_start_max_angular_speed,
+                    value_type=float,
+                ),
+                'leave_start_heading_tolerance': ParameterValue(
+                    leave_start_heading_tolerance,
                     value_type=float,
                 ),
                         'coverage_enabled': ParameterValue(

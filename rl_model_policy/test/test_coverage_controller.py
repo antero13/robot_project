@@ -305,20 +305,38 @@ class CoverageControllerTest(unittest.TestCase):
 
         self.assertEqual(controller.leg_index, 4)
 
-    def test_rejoin_rotates_then_drives_to_current_lane_at_captured_y(self):
+    def test_rejoin_aligns_45_degrees_then_drives_toward_current_lane(self):
         controller = CoverageController(make_legs(), rejoin_speed=0.16)
         controller.leg_index = 1
 
         self.assertTrue(controller.begin_rejoin(robot_y=-0.25))
-        aligning = controller.command(0.75, -0.25, math.pi / 2.0)
-        driving = controller.command(0.75, -0.25, 0.0)
+        aligning = controller.command(1.75, -0.25, math.pi / 2.0)
+        driving = controller.command(1.75, -0.25, 3.0 * math.pi / 4.0)
 
-        self.assertEqual(aligning.phase, "ALIGN_REJOIN_LANE")
+        self.assertEqual(aligning.phase, "ALIGN_CURVED_REJOIN")
         self.assertEqual(aligning.linear_x, 0.0)
-        self.assertEqual(driving.phase, "REJOIN_LANE")
+        self.assertGreater(aligning.angular_z, 0.0)
+        self.assertEqual(driving.phase, "CURVE_REJOIN_LANE")
         self.assertAlmostEqual(driving.linear_x, 0.16)
+        self.assertAlmostEqual(driving.angular_z, 0.0)
         self.assertAlmostEqual(driving.waypoint_x, 1.25)
         self.assertAlmostEqual(driving.waypoint_y, -0.25)
+
+    def test_rejoin_keeps_moving_while_blending_back_to_lane_heading(self):
+        controller = CoverageController(
+            make_legs(),
+            rejoin_speed=0.16,
+            rejoin_blend_distance=0.45,
+        )
+        controller.leg_index = 1
+        controller.begin_rejoin(robot_y=-0.25)
+        controller.command(1.75, -0.25, 3.0 * math.pi / 4.0)
+
+        command = controller.command(1.45, -0.05, 3.0 * math.pi / 4.0)
+
+        self.assertEqual(command.phase, "CURVE_REJOIN_LANE")
+        self.assertGreater(command.linear_x, 0.0)
+        self.assertLess(command.angular_z, 0.0)
 
     def test_rejoin_completion_resumes_existing_scan_leg(self):
         controller = CoverageController(make_legs())

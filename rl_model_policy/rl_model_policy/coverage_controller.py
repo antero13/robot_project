@@ -128,6 +128,9 @@ class CoverageController:
         avoid_angular_speed=0.35,
         avoid_linear_scale=0.65,
         rejoin_speed=0.20,
+        rejoin_approach_angle=math.pi / 4.0,
+        rejoin_blend_distance=0.45,
+        rejoin_align_tolerance=0.12,
     ):
         self.legs = list(legs)
         if not self.legs:
@@ -141,6 +144,9 @@ class CoverageController:
         self.avoid_angular_speed = float(avoid_angular_speed)
         self.avoid_linear_scale = float(avoid_linear_scale)
         self.rejoin_speed = float(rejoin_speed)
+        self.rejoin_approach_angle = float(rejoin_approach_angle)
+        self.rejoin_blend_distance = float(rejoin_blend_distance)
+        self.rejoin_align_tolerance = float(rejoin_align_tolerance)
         if self.waypoint_tolerance <= 0.0:
             raise ValueError("waypoint_tolerance must be positive")
         if self.heading_tolerance <= 0.0:
@@ -155,17 +161,25 @@ class CoverageController:
             raise ValueError("avoid_linear_scale must be in (0, 1]")
         if self.rejoin_speed <= 0.0:
             raise ValueError("rejoin_speed must be positive")
+        if not 0.0 < self.rejoin_approach_angle <= math.pi / 2.0:
+            raise ValueError("rejoin_approach_angle must be in (0, pi/2]")
+        if self.rejoin_blend_distance <= self.waypoint_tolerance:
+            raise ValueError("rejoin_blend_distance must exceed waypoint_tolerance")
+        if self.rejoin_align_tolerance <= 0.0:
+            raise ValueError("rejoin_align_tolerance must be positive")
 
         self.leg_index = 0
         self.cycle_count = 0
         self.last_avoid_direction = 1.0
         self.rejoin_target_y = None
+        self.rejoin_entry_aligned = False
 
     def reset(self):
         self.leg_index = 0
         self.cycle_count = 0
         self.last_avoid_direction = 1.0
         self.rejoin_target_y = None
+        self.rejoin_entry_aligned = False
 
     def cancel_avoidance(self):
         # Continuous steering has no persistent avoidance state to reset.
@@ -178,12 +192,15 @@ class CoverageController:
     def begin_rejoin(self, robot_y):
         if not self.current_leg.phase.startswith("SCAN_LANE"):
             self.rejoin_target_y = None
+            self.rejoin_entry_aligned = False
             return False
         self.rejoin_target_y = float(robot_y)
+        self.rejoin_entry_aligned = False
         return True
 
     def cancel_rejoin(self):
         self.rejoin_target_y = None
+        self.rejoin_entry_aligned = False
 
     @property
     def current_leg(self):
@@ -296,32 +313,52 @@ class CoverageController:
     def _rejoin_command(self, robot_x, robot_y, robot_yaw):
         target_x = self.current_leg.target_x
         target_y = self.rejoin_target_y
-        dx = target_x - robot_x
-        dy = target_y - robot_y
-        distance = math.hypot(dx, dy)
-        if distance <= self.waypoint_tolerance:
+        x_error = target_x - robot_x
+        if abs(x_error) <= self.waypoint_tolerance:
             self.rejoin_target_y = None
+            self.rejoin_entry_aligned = False
             return self.command(robot_x, robot_y, robot_yaw)
 
-        desired_yaw = math.atan2(dy, dx)
+        scan_direction = 1.0 if self.current_leg.phase == "SCAN_LANE_UP" else -1.0
+        scan_yaw = scan_direction * math.pi / 2.0
+        robot_side = 1.0 if robot_x > target_x else -1.0
+        approach_offset = (
+            scan_direction * robot_side * self.rejoin_approach_angle
+        )
+        approach_yaw = normalize_angle(scan_yaw + approach_offset)
+
+        if self.rejoin_entry_aligned:
+            blend = clamp(
+                abs(x_error) / self.rejoin_blend_distance,
+                0.0,
+                1.0,
+            )
+            desired_yaw = normalize_angle(scan_yaw + approach_offset * blend)
+        else:
+            desired_yaw = approach_yaw
+
         heading_error = normalize_angle(desired_yaw - robot_yaw)
         angular_z = clamp(
             self.heading_gain * heading_error,
             -self.max_angular_speed,
             self.max_angular_speed,
         )
-        if abs(heading_error) > self.heading_tolerance:
+        if (
+            not self.rejoin_entry_aligned
+            and abs(heading_error) > self.rejoin_align_tolerance
+        ):
             return self._make_rejoin_command(
                 0.0,
                 angular_z,
-                "ALIGN_REJOIN_LANE",
+                "ALIGN_CURVED_REJOIN",
                 target_x,
                 target_y,
             )
+        self.rejoin_entry_aligned = True
         return self._make_rejoin_command(
             self.rejoin_speed,
             angular_z,
-            "REJOIN_LANE",
+            "CURVE_REJOIN_LANE",
             target_x,
             target_y,
         )

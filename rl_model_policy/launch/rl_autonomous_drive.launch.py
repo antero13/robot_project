@@ -67,8 +67,12 @@ def generate_launch_description():
     leave_start_enabled = LaunchConfiguration("leave_start_enabled")
     leave_start_distance_m = LaunchConfiguration("leave_start_distance_m")
     leave_start_speed = LaunchConfiguration("leave_start_speed")
+    leave_start_target_yaw_deg = LaunchConfiguration("leave_start_target_yaw_deg")
     leave_start_heading_gain = LaunchConfiguration("leave_start_heading_gain")
     leave_start_max_angular_speed = LaunchConfiguration("leave_start_max_angular_speed")
+    leave_start_heading_tolerance = LaunchConfiguration(
+        "leave_start_heading_tolerance"
+    )
     launch_object_mapper = LaunchConfiguration("launch_object_mapper")
     launch_status_gui = LaunchConfiguration("launch_status_gui")
     object_calibration_path = LaunchConfiguration("object_calibration_path")
@@ -286,8 +290,10 @@ def generate_launch_description():
             "leave_start_enabled": leave_start_enabled,
             "leave_start_distance_m": leave_start_distance_m,
             "leave_start_speed": leave_start_speed,
+            "leave_start_target_yaw_deg": leave_start_target_yaw_deg,
             "leave_start_heading_gain": leave_start_heading_gain,
             "leave_start_max_angular_speed": leave_start_max_angular_speed,
+            "leave_start_heading_tolerance": leave_start_heading_tolerance,
             "coverage_enabled": coverage_enabled,
             "coverage_min_x": coverage_min_x,
             "coverage_max_x": coverage_max_x,
@@ -678,11 +684,13 @@ def generate_launch_description():
         DeclareLaunchArgument("leave_start_enabled", default_value="true"),
         DeclareLaunchArgument("leave_start_distance_m", default_value="0.55"),
         DeclareLaunchArgument("leave_start_speed", default_value="0.25"),
+        DeclareLaunchArgument("leave_start_target_yaw_deg", default_value="90.0"),
         DeclareLaunchArgument("leave_start_heading_gain", default_value="1.5"),
         DeclareLaunchArgument(
             "leave_start_max_angular_speed",
-            default_value="0.40",
+            default_value="0.60",
         ),
+        DeclareLaunchArgument("leave_start_heading_tolerance", default_value="0.12"),
         DeclareLaunchArgument(
             "initial_x",
             default_value="1.8",
@@ -693,7 +701,7 @@ def generate_launch_description():
             default_value="-1.8",
             description="Start y in the arena-center coordinate frame used by training.",
         ),
-        DeclareLaunchArgument("initial_yaw_deg", default_value="90.0"),
+        DeclareLaunchArgument("initial_yaw_deg", default_value="180.0"),
         DeclareLaunchArgument("pose_linear_scale", default_value="1.0"),
         DeclareLaunchArgument("imu_yaw_sign", default_value="1.0"),
         DeclareLaunchArgument("gyro_calibration_duration_s", default_value="2.0"),
@@ -711,8 +719,8 @@ def generate_launch_description():
         DeclareLaunchArgument("storage_center_y", default_value="-1.75"),
         DeclareLaunchArgument("storage_entry_yaw_deg", default_value="-90.0"),
         DeclareLaunchArgument("storage_return_speed", default_value="0.25"),
-            DeclareLaunchArgument("storage_entry_speed", default_value="0.25"),
-            DeclareLaunchArgument("storage_x_entry_speed", default_value="0.40"),
+            DeclareLaunchArgument("storage_entry_speed", default_value="0.30"),
+            DeclareLaunchArgument("storage_x_entry_speed", default_value="0.30"),
         DeclareLaunchArgument(
             "storage_exit_reverse_speed",
                 default_value="0.25",
