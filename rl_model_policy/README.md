@@ -422,7 +422,7 @@ COLLECTING
 
 4. **보관소 x 진입: ToF 연속 주행**
    - 우측으로 선회해 서쪽을 보고 서보를 연다.
-   - x waypoint 없이 `0.25 m/s`로 계속 진입하며 ToF로 `x=-1.75 m`를
+   - x waypoint 없이 `0.40 m/s`로 계속 진입하며 ToF로 `x=-1.75 m`를
      판단한다. 감속하지 않으며, ToF 값이 아직 없어도 계속 진입한다.
 
 5. **보관소 후진: waypoint 후 ToF**
@@ -475,6 +475,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_staging_y:=-1.75 \
   storage_center_x:=-1.75 storage_center_y:=-1.75 \
   storage_exit_x:=-1.25 \
+  storage_x_entry_speed:=0.40 \
   storage_entry_yaw_deg:=-90.0 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_bottom_wall_y_m:=-2.0 \

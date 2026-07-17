@@ -219,6 +219,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_entry_yaw_deg", -90.0)
         self.declare_parameter("storage_return_speed", 0.25)
         self.declare_parameter("storage_entry_speed", 0.25)
+        self.declare_parameter("storage_x_entry_speed", 0.40)
         self.declare_parameter("storage_exit_reverse_speed", 0.25)
         self.declare_parameter("storage_waypoint_tolerance", 0.10)
         self.declare_parameter("storage_entry_tolerance", 0.04)
@@ -1073,7 +1074,7 @@ class RLModelPolicyNode(Node):
                 (0.0, 0.0, 0.0),
                 self.get_float("storage_center_x"),
                 self.get_float("storage_center_y"),
-                self.get_float("storage_entry_speed"),
+                self.get_float("storage_x_entry_speed"),
                 final_yaw=math.pi,
                 waypoint_tolerance=self.get_float("storage_entry_tolerance"),
             )
@@ -1173,9 +1174,11 @@ class RLModelPolicyNode(Node):
             sensor_forward_offset_m=self.get_float(
                 "storage_tof_sensor_forward_offset_m"
             ),
-            transit_speed=self.get_float("storage_entry_speed"),
+            transit_speed=self.get_float(
+                "storage_x_entry_speed" if axis == "x" else "storage_entry_speed"
+            ),
             minimum_speed=(
-                self.get_float("storage_entry_speed")
+                self.get_float("storage_x_entry_speed")
                 if axis == "x"
                 else self.get_float("storage_tof_min_speed")
             ),

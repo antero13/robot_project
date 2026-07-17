@@ -100,6 +100,7 @@ def generate_launch_description():
     storage_entry_yaw_deg = LaunchConfiguration('storage_entry_yaw_deg')
     storage_return_speed = LaunchConfiguration('storage_return_speed')
     storage_entry_speed = LaunchConfiguration('storage_entry_speed')
+    storage_x_entry_speed = LaunchConfiguration('storage_x_entry_speed')
     storage_exit_reverse_speed = LaunchConfiguration('storage_exit_reverse_speed')
     storage_entry_tolerance = LaunchConfiguration('storage_entry_tolerance')
     storage_tof_correction_enabled = LaunchConfiguration(
@@ -276,6 +277,7 @@ def generate_launch_description():
         DeclareLaunchArgument('storage_entry_yaw_deg', default_value='-90.0'),
         DeclareLaunchArgument('storage_return_speed', default_value='0.25'),
             DeclareLaunchArgument('storage_entry_speed', default_value='0.25'),
+            DeclareLaunchArgument('storage_x_entry_speed', default_value='0.40'),
             DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.25'),
         DeclareLaunchArgument('storage_entry_tolerance', default_value='0.04'),
             DeclareLaunchArgument(
@@ -571,6 +573,10 @@ def generate_launch_description():
                 ),
                 'storage_entry_speed': ParameterValue(
                     storage_entry_speed,
+                    value_type=float,
+                ),
+                'storage_x_entry_speed': ParameterValue(
+                    storage_x_entry_speed,
                     value_type=float,
                 ),
                 'storage_exit_reverse_speed': ParameterValue(

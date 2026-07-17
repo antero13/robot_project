@@ -82,11 +82,12 @@ class StorageTofCorrectionTest(unittest.TestCase):
         command = make_command(
             distance_m=None,
             measurement_age_s=None,
+            transit_speed=0.40,
             advance_without_measurement=True,
         )
 
         self.assertEqual(command.phase, "APPROACH_STORAGE_TOF_X")
-        self.assertAlmostEqual(command.linear_x, 0.25)
+        self.assertAlmostEqual(command.linear_x, 0.40)
         self.assertIsNone(command.measured_coordinate)
         self.assertFalse(command.reached)
 
@@ -100,12 +101,13 @@ class StorageTofCorrectionTest(unittest.TestCase):
     def test_x_entry_can_hold_full_speed_until_tolerance(self):
         command = make_command(
             distance_m=0.20,
-            minimum_speed=0.25,
+            transit_speed=0.40,
+            minimum_speed=0.40,
             slowdown_distance_m=0.03,
         )
 
         self.assertFalse(command.reached)
-        self.assertAlmostEqual(command.linear_x, 0.25)
+        self.assertAlmostEqual(command.linear_x, 0.40)
 
     def test_reverses_after_crossing_target_coordinate(self):
         command = make_command(distance_m=0.10)
