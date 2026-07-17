@@ -5,6 +5,8 @@ from rl_model_policy.coverage_controller import (
     CoverageController,
     generate_coverage_legs,
     normalize_angle,
+    signed_lane_shift_speed,
+    wall_side_for_lane_number,
 )
 
 
@@ -36,7 +38,11 @@ class CoverageControllerTest(unittest.TestCase):
                 (0.25, 1.0, "SCAN_LANE_UP"),
             ],
         )
-        self.assertTrue(all(leg.speed > 0.0 for leg in legs))
+        shift_legs = [leg for leg in legs if leg.phase == "SHIFT_TO_NEXT_LANE"]
+        self.assertEqual([leg.lane_number for leg in shift_legs], [2, 3])
+        self.assertEqual([leg.wall_side for leg in shift_legs], ["right", "left"])
+        self.assertLess(shift_legs[0].speed, 0.0)
+        self.assertGreater(shift_legs[1].speed, 0.0)
 
     def test_generates_four_lanes_in_reverse_order(self):
         legs = generate_coverage_legs(
@@ -58,13 +64,28 @@ class CoverageControllerTest(unittest.TestCase):
         self.assertEqual(len(legs), 12)
         self.assertEqual(scan_lane_x_positions, [-1.25, -0.75, 0.25, 1.25])
 
-    def test_normal_route_lane_shift_faces_left_wall(self):
+    def test_normal_route_lane_1_to_2_faces_east_wall_and_reverses(self):
         controller = CoverageController(make_legs())
         controller.leg_index = 3
 
-        self.assertEqual(controller.current_shift_wall_side(), "left")
+        command = controller.command(0.75, -1.33, 0.0)
 
-    def test_reverse_route_lane_shift_faces_right_wall(self):
+        self.assertEqual(controller.current_leg.lane_number, 2)
+        self.assertEqual(controller.current_shift_wall_side(), "right")
+        self.assertEqual(command.phase, "SHIFT_TO_NEXT_LANE")
+        self.assertLess(command.linear_x, 0.0)
+
+    def test_normal_route_lane_2_to_3_faces_west_wall_and_drives_forward(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 6
+
+        command = controller.command(-0.25, -1.33, math.pi)
+
+        self.assertEqual(controller.current_leg.lane_number, 3)
+        self.assertEqual(controller.current_shift_wall_side(), "left")
+        self.assertGreater(command.linear_x, 0.0)
+
+    def test_reverse_route_lane_4_to_3_faces_west_wall_and_reverses(self):
         legs = generate_coverage_legs(
             min_x=-1.25,
             max_x=1.25,
@@ -79,17 +100,97 @@ class CoverageControllerTest(unittest.TestCase):
         controller = CoverageController(legs)
         controller.leg_index = 3
 
+        command = controller.command(-1.0, -1.3343, math.pi)
+
+        self.assertEqual(controller.current_leg.lane_number, 3)
+        self.assertEqual(controller.current_shift_wall_side(), "left")
+        self.assertLess(command.linear_x, 0.0)
+
+    def test_reverse_route_lane_3_to_2_faces_east_wall_and_drives_forward(self):
+        legs = generate_coverage_legs(
+            min_x=-1.25,
+            max_x=1.25,
+            main_road_y=-1.3343,
+            scan_end_y=1.0,
+            lane_spacing=1.0,
+            scan_speed=0.24,
+            transit_speed=0.30,
+            return_speed=0.24,
+            reverse_order=True,
+        )
+        controller = CoverageController(legs)
+        controller.leg_index = 6
+
+        command = controller.command(-0.25, -1.3343, 0.0)
+
+        self.assertEqual(controller.current_leg.lane_number, 2)
         self.assertEqual(controller.current_shift_wall_side(), "right")
+        self.assertGreater(command.linear_x, 0.0)
 
     def test_lane_shift_uses_waypoint_motion_before_tof_fine_alignment(self):
         controller = CoverageController(make_legs())
         controller.leg_index = 3
 
-        command = controller.command(0.75, -1.33, math.pi)
+        command = controller.command(0.75, -1.33, 0.0)
 
         self.assertEqual(command.phase, "SHIFT_TO_NEXT_LANE")
         self.assertEqual(controller.leg_index, 3)
-        self.assertGreater(command.linear_x, 0.0)
+        self.assertLess(command.linear_x, 0.0)
+
+    def test_lane_1_to_2_turns_left_to_face_north_after_tof_completion(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 3
+
+        self.assertTrue(controller.complete_current_leg("SHIFT_TO_NEXT_LANE"))
+        command = controller.command(0.25, -1.33, 0.0)
+
+        self.assertEqual(command.phase, "ALIGN_SCAN_LANE_UP")
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertGreater(command.angular_z, 0.0)
+
+    def test_lane_wall_assignment_uses_east_for_1_2_and_west_for_3_4(self):
+        self.assertEqual(
+            [wall_side_for_lane_number(number) for number in range(1, 5)],
+            ["right", "right", "left", "left"],
+        )
+
+    def test_signed_shift_speed_matches_requested_examples(self):
+        self.assertLess(
+            signed_lane_shift_speed(
+                current_x=1.25,
+                target_x=0.25,
+                wall_side="right",
+                transit_speed=0.30,
+            ),
+            0.0,
+        )
+        self.assertGreater(
+            signed_lane_shift_speed(
+                current_x=0.25,
+                target_x=-0.75,
+                wall_side="left",
+                transit_speed=0.30,
+            ),
+            0.0,
+        )
+        self.assertLess(
+            signed_lane_shift_speed(
+                current_x=-1.25,
+                target_x=-0.75,
+                wall_side="left",
+                transit_speed=0.30,
+            ),
+            0.0,
+        )
+        self.assertGreater(
+            signed_lane_shift_speed(
+                current_x=-0.75,
+                target_x=0.25,
+                wall_side="right",
+                transit_speed=0.30,
+            ),
+            0.0,
+        )
 
     def test_current_leg_reached_checks_waypoint_without_advancing(self):
         controller = CoverageController(make_legs())

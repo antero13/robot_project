@@ -8,6 +8,8 @@ class CoverageLeg:
     target_y: float
     speed: float
     phase: str
+    lane_number: int = 0
+    wall_side: str = ""
 
 
 @dataclass(frozen=True)
@@ -57,27 +59,30 @@ def generate_coverage_legs(
         lane_x -= lane_spacing
     if lane_x_positions[-1] > min_x + 1e-9:
         lane_x_positions.append(min_x)
+    numbered_lane_positions = list(enumerate(lane_x_positions, start=1))
     if bool(reverse_order):
-        lane_x_positions.reverse()
+        numbered_lane_positions.reverse()
 
     # Each lane is centered between two object columns. The robot scans north,
     # turns around, scans south with its front camera, then shifts to the next
     # pair of columns along the obstacle-free lower road.
     legs = [
         CoverageLeg(
-            lane_x_positions[0],
+            numbered_lane_positions[0][1],
             main_road_y,
             transit_speed,
             "ENTER_FIRST_LANE",
+            lane_number=numbered_lane_positions[0][0],
         )
     ]
-    for index, lane_x in enumerate(lane_x_positions):
+    for index, (lane_number, lane_x) in enumerate(numbered_lane_positions):
         legs.append(
             CoverageLeg(
                 lane_x,
                 scan_end_y,
                 scan_speed,
                 "SCAN_LANE_UP",
+                lane_number=lane_number,
             )
         )
         legs.append(
@@ -86,15 +91,25 @@ def generate_coverage_legs(
                 main_road_y,
                 return_speed,
                 "SCAN_LANE_DOWN",
+                lane_number=lane_number,
             )
         )
-        if index + 1 < len(lane_x_positions):
+        if index + 1 < len(numbered_lane_positions):
+            next_lane_number, next_lane_x = numbered_lane_positions[index + 1]
+            wall_side = wall_side_for_lane_number(next_lane_number)
             legs.append(
                 CoverageLeg(
-                    lane_x_positions[index + 1],
+                    next_lane_x,
                     main_road_y,
-                    transit_speed,
+                    signed_lane_shift_speed(
+                        current_x=lane_x,
+                        target_x=next_lane_x,
+                        wall_side=wall_side,
+                        transit_speed=transit_speed,
+                    ),
                     "SHIFT_TO_NEXT_LANE",
+                    lane_number=next_lane_number,
+                    wall_side=wall_side,
                 )
             )
     return legs
@@ -183,13 +198,16 @@ class CoverageController:
         )
 
     def current_shift_wall_side(self):
-        """Return the wall faced while moving toward the current lane center."""
+        """Return the wall assigned to the destination lane.
+
+        Lanes are numbered from east to west. Lanes 1 and 2 use the east
+        (right, +x) wall; lanes 3 and 4 use the west (left, -x) wall.
+        """
         if self.current_leg.phase != "SHIFT_TO_NEXT_LANE":
             raise RuntimeError("current leg is not a lane shift")
-        previous_leg = self.legs[(self.leg_index - 1) % len(self.legs)]
-        if self.current_leg.target_x > previous_leg.target_x:
-            return "right"
-        return "left"
+        if self.current_leg.wall_side not in ("left", "right"):
+            raise RuntimeError("current lane shift has no assigned wall")
+        return self.current_leg.wall_side
 
     def complete_current_leg(self, expected_phase=None):
         """Advance one leg after an external position reference reaches it."""
@@ -362,6 +380,40 @@ class CoverageController:
 
 def normalize_angle(angle):
     return math.atan2(math.sin(float(angle)), math.cos(float(angle)))
+
+
+def wall_side_for_lane_number(lane_number):
+    """Assign east wall to lanes 1-2 and west wall to lanes 3 onward."""
+    lane_number = int(lane_number)
+    if lane_number <= 0:
+        raise ValueError("lane_number must be positive")
+    return "right" if lane_number <= 2 else "left"
+
+
+def signed_lane_shift_speed(
+    *,
+    current_x,
+    target_x,
+    wall_side,
+    transit_speed,
+):
+    """Choose forward/reverse while keeping the assigned wall in front."""
+    current_x = float(current_x)
+    target_x = float(target_x)
+    transit_speed = abs(float(transit_speed))
+    wall_side = str(wall_side).strip().lower()
+    if transit_speed <= 0.0:
+        raise ValueError("transit_speed must be positive")
+    if wall_side == "right":
+        facing_x = 1.0  # East wall, yaw 0.
+    elif wall_side == "left":
+        facing_x = -1.0  # West wall, yaw pi.
+    else:
+        raise ValueError("wall_side must be 'left' or 'right'")
+    shift_x = target_x - current_x
+    if abs(shift_x) <= 1e-9:
+        raise ValueError("lane shift requires different x coordinates")
+    return math.copysign(transit_speed, shift_x * facing_x)
 
 
 def clamp(value, minimum, maximum):

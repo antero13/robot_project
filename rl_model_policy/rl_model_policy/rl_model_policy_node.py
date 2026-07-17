@@ -1563,8 +1563,12 @@ class RLModelPolicyNode(Node):
         )
         if run_lane_tof:
             if not self.lane_tof_alignment_active:
+                shift_leg = self.coverage_controller.current_leg
+                wall_side = self.coverage_controller.current_shift_wall_side()
+                wall_name = "east" if wall_side == "right" else "west"
                 self.get_logger().info(
-                    "Lane waypoint reached; starting ToF x fine alignment"
+                    f"Lane {shift_leg.lane_number} waypoint reached; "
+                    f"starting {wall_name}-wall ToF x fine alignment"
                 )
             self.lane_tof_alignment_active = True
             return self.lane_tof_shift_command()
@@ -1628,8 +1632,9 @@ class RLModelPolicyNode(Node):
         )
         self.get_logger().info(
             "ToF lane alignment complete: "
+            f"lane={leg.lane_number}, "
             f"measured_x={command.measured_robot_x:.3f}, "
-            f"wall={wall_side}, "
+            f"wall={'east' if wall_side == 'right' else 'west'}, "
             f"pose_x->{correction.data:.3f}"
         )
         return (0.0, 0.0)
