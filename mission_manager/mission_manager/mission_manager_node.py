@@ -40,7 +40,7 @@ class MissionManager(Node):
         self.declare_parameter('pwm_servo_topic', '/ros_robot_controller/pwm_servo/set_state')
         self.declare_parameter('bus_servo_topic', '/ros_robot_controller/bus_servo/set_state')
 
-        self.declare_parameter('timer_rate_hz', 20.0)
+        self.declare_parameter('timer_rate_hz', 10.0)
         self.declare_parameter('leave_start_linear_x', 0.08)
         self.declare_parameter('leave_start_angular_z', 0.0)
         self.declare_parameter('leave_start_duration_s', 1.5)
@@ -56,6 +56,8 @@ class MissionManager(Node):
         self.declare_parameter('approach_max_linear_x', 0.10)
         self.declare_parameter('approach_min_linear_x', 0.03)
         self.declare_parameter('approach_angular_gain', 0.8)
+        self.declare_parameter('approach_near_center_gain', 0.5)
+        self.declare_parameter('approach_near_center_band', 0.25)
         self.declare_parameter('approach_max_angular_z', 0.45)
         self.declare_parameter('center_tolerance', 0.12)
         self.declare_parameter('grab_area_ratio', 0.50)
@@ -598,7 +600,10 @@ class MissionManager(Node):
         return self.get_float('avoid_vfh_switch_penalty')
 
     def target_turn_command(self, x_error):
-        angular_z = -self.get_float('approach_angular_gain') * x_error
+        gain = self.get_float('approach_angular_gain')
+        if abs(x_error) <= self.get_float('approach_near_center_band'):
+            gain = self.get_float('approach_near_center_gain')
+        angular_z = -gain * x_error
         return self.clamp(
             angular_z,
             -self.get_float('approach_max_angular_z'),
