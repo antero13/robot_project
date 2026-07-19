@@ -72,6 +72,8 @@ def make_storage_tof_command(
     max_angular_speed,
     heading_tolerance,
     advance_without_measurement=False,
+    wall_angle_rad=None,
+    wall_angle_tolerance_rad=0.05,
 ):
     """Align one storage-staging axis using the left or bottom arena wall."""
     axis = str(axis).strip().lower()
@@ -90,7 +92,25 @@ def make_storage_tof_command(
         -float(max_angular_speed),
         float(max_angular_speed),
     )
-    if abs(heading_error) > float(heading_tolerance):
+    measurement_is_fresh = (
+        distance_m is not None
+        and measurement_age_s is not None
+        and math.isfinite(float(distance_m))
+        and math.isfinite(float(measurement_age_s))
+        and float(distance_m) > 0.0
+        and 0.0 <= float(measurement_age_s) <= float(measurement_timeout_s)
+        and (
+            wall_angle_rad is None
+            or math.isfinite(float(wall_angle_rad))
+        )
+    )
+    wall_angle_is_authoritative = (
+        measurement_is_fresh and wall_angle_rad is not None
+    )
+    if (
+        not wall_angle_is_authoritative
+        and abs(heading_error) > float(heading_tolerance)
+    ):
         return StorageTofCommand(
             linear_x=0.0,
             angular_z=angular_z,
@@ -100,14 +120,6 @@ def make_storage_tof_command(
             reached=False,
         )
 
-    measurement_is_fresh = (
-        distance_m is not None
-        and measurement_age_s is not None
-        and math.isfinite(float(distance_m))
-        and math.isfinite(float(measurement_age_s))
-        and float(distance_m) > 0.0
-        and 0.0 <= float(measurement_age_s) <= float(measurement_timeout_s)
-    )
     if not measurement_is_fresh:
         if bool(advance_without_measurement):
             return StorageTofCommand(
@@ -126,6 +138,33 @@ def make_storage_tof_command(
             coordinate_error=None,
             reached=False,
         )
+
+    if (
+        wall_angle_rad is not None
+        and abs(float(wall_angle_rad)) > float(wall_angle_tolerance_rad)
+    ):
+        return StorageTofCommand(
+            linear_x=0.0,
+            angular_z=clamp(
+                float(heading_gain) * float(wall_angle_rad),
+                -float(max_angular_speed),
+                float(max_angular_speed),
+            ),
+            phase=f"ALIGN_STORAGE_WALL_ANGLE_{axis_name}",
+            measured_coordinate=None,
+            coordinate_error=None,
+            reached=False,
+        )
+
+    wall_angular_z = (
+        angular_z
+        if wall_angle_rad is None
+        else clamp(
+            float(heading_gain) * float(wall_angle_rad),
+            -float(max_angular_speed),
+            float(max_angular_speed),
+        )
+    )
 
     measured_coordinate = robot_coordinate_from_min_wall_distance(
         distance_m,
@@ -154,7 +193,7 @@ def make_storage_tof_command(
     linear_x = math.copysign(speed, coordinate_error)
     return StorageTofCommand(
         linear_x=linear_x,
-        angular_z=angular_z,
+        angular_z=wall_angular_z,
         phase=f"TOF_CORRECT_STORAGE_{axis_name}",
         measured_coordinate=measured_coordinate,
         coordinate_error=coordinate_error,

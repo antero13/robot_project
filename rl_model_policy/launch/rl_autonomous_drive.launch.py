@@ -62,6 +62,7 @@ def generate_launch_description():
     launch_pose_tracker = LaunchConfiguration("launch_pose_tracker")
     pose_x_correction_topic = LaunchConfiguration("pose_x_correction_topic")
     pose_y_correction_topic = LaunchConfiguration("pose_y_correction_topic")
+    pose_yaw_correction_topic = LaunchConfiguration("pose_yaw_correction_topic")
     launch_wall_distance_sensor = LaunchConfiguration("launch_wall_distance_sensor")
     wall_driver_backend = LaunchConfiguration("wall_driver_backend")
     wall_left_i2c_bus = LaunchConfiguration("wall_left_i2c_bus")
@@ -124,6 +125,9 @@ def generate_launch_description():
     lane_tof_x_tolerance_m = LaunchConfiguration("lane_tof_x_tolerance_m")
     lane_tof_min_speed = LaunchConfiguration("lane_tof_min_speed")
     lane_tof_slowdown_distance_m = LaunchConfiguration("lane_tof_slowdown_distance_m")
+    lane_tof_wall_angle_tolerance_rad = LaunchConfiguration(
+        "lane_tof_wall_angle_tolerance_rad"
+    )
     initial_x = LaunchConfiguration("initial_x")
     initial_y = LaunchConfiguration("initial_y")
     initial_yaw_deg = LaunchConfiguration("initial_yaw_deg")
@@ -196,6 +200,9 @@ def generate_launch_description():
     storage_tof_slowdown_distance_m = LaunchConfiguration(
         "storage_tof_slowdown_distance_m"
     )
+    storage_tof_wall_angle_tolerance_rad = LaunchConfiguration(
+        "storage_tof_wall_angle_tolerance_rad"
+    )
 
     controller_launch = IncludeLaunchDescription(
         PathJoinSubstitution(
@@ -254,6 +261,7 @@ def generate_launch_description():
             "cmd_vel_topic": "/cmd_vel",
             "x_correction_topic": pose_x_correction_topic,
             "y_correction_topic": pose_y_correction_topic,
+            "yaw_correction_topic": pose_yaw_correction_topic,
             "initial_x": initial_x,
             "initial_y": initial_y,
             "initial_yaw_deg": initial_yaw_deg,
@@ -347,6 +355,7 @@ def generate_launch_description():
             "wall_distance_angle_topic": wall_distance_angle_topic,
             "pose_x_correction_topic": pose_x_correction_topic,
             "pose_y_correction_topic": pose_y_correction_topic,
+            "pose_yaw_correction_topic": pose_yaw_correction_topic,
             "lane_tof_left_wall_x_m": lane_tof_left_wall_x_m,
             "lane_tof_right_wall_x_m": lane_tof_right_wall_x_m,
             "lane_tof_sensor_forward_offset_m": (lane_tof_sensor_forward_offset_m),
@@ -354,6 +363,9 @@ def generate_launch_description():
             "lane_tof_x_tolerance_m": lane_tof_x_tolerance_m,
             "lane_tof_min_speed": lane_tof_min_speed,
             "lane_tof_slowdown_distance_m": lane_tof_slowdown_distance_m,
+            "lane_tof_wall_angle_tolerance_rad": (
+                lane_tof_wall_angle_tolerance_rad
+            ),
             "gripper_enabled": gripper_enabled,
             "gripper_type": gripper_type,
             "gripper_servo_id": gripper_servo_id,
@@ -404,6 +416,9 @@ def generate_launch_description():
             "storage_tof_xy_tolerance_m": storage_tof_xy_tolerance_m,
             "storage_tof_min_speed": storage_tof_min_speed,
             "storage_tof_slowdown_distance_m": (storage_tof_slowdown_distance_m),
+            "storage_tof_wall_angle_tolerance_rad": (
+                storage_tof_wall_angle_tolerance_rad
+            ),
         }.items(),
     )
 
@@ -625,6 +640,10 @@ def generate_launch_description():
                 default_value="/robot_pose/correct_y",
             ),
         DeclareLaunchArgument(
+            "pose_yaw_correction_topic",
+            default_value="/robot_pose/correct_yaw",
+        ),
+        DeclareLaunchArgument(
             "launch_wall_distance_sensor",
             default_value="true",
             description="Start the two-VL53L1X wall distance node.",
@@ -732,6 +751,11 @@ def generate_launch_description():
             "lane_tof_slowdown_distance_m",
             default_value="0.20",
         ),
+        DeclareLaunchArgument(
+            "lane_tof_wall_angle_tolerance_rad",
+            default_value="0.05",
+            description="Maximum ToF wall angle before x/yaw landmark correction.",
+        ),
         DeclareLaunchArgument("leave_start_enabled", default_value="true"),
         DeclareLaunchArgument("leave_start_distance_m", default_value="0.55"),
         DeclareLaunchArgument("leave_start_speed", default_value="0.25"),
@@ -816,6 +840,11 @@ def generate_launch_description():
                 "storage_tof_slowdown_distance_m",
                 default_value="0.20",
             ),
+        DeclareLaunchArgument(
+            "storage_tof_wall_angle_tolerance_rad",
+            default_value="0.05",
+            description="Maximum ToF wall angle before storage pose correction.",
+        ),
         DeclareLaunchArgument("gripper_enabled", default_value="true"),
         DeclareLaunchArgument("gripper_type", default_value="bus"),
         DeclareLaunchArgument("gripper_servo_id", default_value="1"),

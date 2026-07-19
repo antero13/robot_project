@@ -27,6 +27,8 @@ def make_command(**overrides):
         "heading_gain": 2.4,
         "max_angular_speed": 1.0,
         "heading_tolerance": 0.08,
+        "wall_angle_rad": 0.0,
+        "wall_angle_tolerance_rad": 0.05,
     }
     values.update(overrides)
     return make_lane_tof_command(**values)
@@ -87,7 +89,7 @@ class LaneTofCorrectionTest(unittest.TestCase):
         self.assertAlmostEqual(robot_x, -0.75)
 
     def test_rotates_before_using_wall_distance(self):
-        command = make_command(robot_yaw=math.pi / 2.0)
+        command = make_command(robot_yaw=math.pi / 2.0, wall_angle_rad=None)
 
         self.assertEqual(command.phase, "ALIGN_TOF_NEXT_LANE")
         self.assertEqual(command.linear_x, 0.0)
@@ -100,6 +102,20 @@ class LaneTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.phase, "WAITING_FOR_LANE_TOF")
         self.assertEqual(command.linear_x, 0.0)
         self.assertFalse(command.reached)
+
+    def test_wall_angle_is_aligned_before_distance_correction(self):
+        command = make_command(wall_angle_rad=0.10)
+
+        self.assertEqual(command.phase, "ALIGN_LANE_WALL_ANGLE")
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertGreater(command.angular_z, 0.0)
+        self.assertFalse(command.reached)
+
+    def test_fresh_wall_angle_overrides_drifted_pose_yaw(self):
+        command = make_command(robot_yaw=math.pi / 2.0, wall_angle_rad=0.10)
+
+        self.assertEqual(command.phase, "ALIGN_LANE_WALL_ANGLE")
+        self.assertGreater(command.angular_z, 0.0)
 
     def test_drives_left_until_next_lane_is_reached(self):
         command = make_command(distance_m=2.40)
@@ -147,7 +163,11 @@ class LaneTofCorrectionTest(unittest.TestCase):
         self.assertLess(command.linear_x, 0.0)
 
     def test_reverse_route_rotates_to_face_right_wall_first(self):
-        command = make_command(wall_side="right", robot_yaw=math.pi)
+        command = make_command(
+            wall_side="right",
+            robot_yaw=math.pi,
+            wall_angle_rad=None,
+        )
 
         self.assertEqual(command.phase, "ALIGN_TOF_NEXT_LANE")
         self.assertEqual(command.linear_x, 0.0)

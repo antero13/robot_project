@@ -61,6 +61,17 @@ ros2 service call /robot_pose/reset std_srvs/srv/Trigger "{}"
 ros2 service call /robot_pose/recalibrate_gyro std_srvs/srv/Trigger "{}"
 ```
 
+ToF 같은 외부 기준으로 pose 일부를 절대 보정할 수 있습니다.
+
+```bash
+ros2 topic pub --once /robot_pose/correct_x std_msgs/msg/Float64 "{data: -1.25}"
+ros2 topic pub --once /robot_pose/correct_y std_msgs/msg/Float64 "{data: -1.3343}"
+ros2 topic pub --once /robot_pose/correct_yaw std_msgs/msg/Float64 "{data: 3.14159265}"
+```
+
+Yaw 보정값은 rad 단위이며 `3.14159265`는 서쪽 180도, `0.0`은 동쪽 0도다.
+보정 후에도 IMU gyro 적분은 새 yaw 기준에서 계속된다.
+
 ## Calibration
 
 로봇을 실제로 1m 직진시킨 뒤 `/robot_pose`의 이동량이 다르면

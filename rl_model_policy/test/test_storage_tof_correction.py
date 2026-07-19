@@ -25,6 +25,8 @@ def make_command(**overrides):
         "heading_gain": 1.5,
         "max_angular_speed": 0.60,
         "heading_tolerance": 0.12,
+        "wall_angle_rad": 0.0,
+        "wall_angle_tolerance_rad": 0.05,
     }
     values.update(overrides)
     return make_storage_tof_command(**values)
@@ -42,7 +44,7 @@ class StorageTofCorrectionTest(unittest.TestCase):
         self.assertAlmostEqual(coordinate, -1.75)
 
     def test_x_correction_faces_left_before_reading_tof(self):
-        command = make_command(robot_yaw=-math.pi / 2.0)
+        command = make_command(robot_yaw=-math.pi / 2.0, wall_angle_rad=None)
 
         self.assertEqual(command.phase, "ALIGN_STORAGE_TOF_X")
         self.assertEqual(command.linear_x, 0.0)
@@ -77,6 +79,20 @@ class StorageTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.phase, "WAITING_FOR_STORAGE_TOF_X")
         self.assertEqual(command.linear_x, 0.0)
         self.assertFalse(command.reached)
+
+    def test_wall_angle_is_aligned_before_distance_correction(self):
+        command = make_command(wall_angle_rad=-0.10)
+
+        self.assertEqual(command.phase, "ALIGN_STORAGE_WALL_ANGLE_X")
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertLess(command.angular_z, 0.0)
+        self.assertFalse(command.reached)
+
+    def test_fresh_wall_angle_overrides_drifted_pose_yaw(self):
+        command = make_command(robot_yaw=-math.pi / 2.0, wall_angle_rad=-0.10)
+
+        self.assertEqual(command.phase, "ALIGN_STORAGE_WALL_ANGLE_X")
+        self.assertLess(command.angular_z, 0.0)
 
     def test_x_entry_advances_until_tof_becomes_available(self):
         command = make_command(

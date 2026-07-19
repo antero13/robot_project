@@ -75,6 +75,7 @@ def generate_launch_description():
     wall_distance_angle_topic = LaunchConfiguration('wall_distance_angle_topic')
     pose_x_correction_topic = LaunchConfiguration('pose_x_correction_topic')
     pose_y_correction_topic = LaunchConfiguration('pose_y_correction_topic')
+    pose_yaw_correction_topic = LaunchConfiguration('pose_yaw_correction_topic')
     lane_tof_left_wall_x_m = LaunchConfiguration('lane_tof_left_wall_x_m')
     lane_tof_right_wall_x_m = LaunchConfiguration('lane_tof_right_wall_x_m')
     lane_tof_sensor_forward_offset_m = LaunchConfiguration(
@@ -86,6 +87,9 @@ def generate_launch_description():
     lane_tof_x_tolerance_m = LaunchConfiguration('lane_tof_x_tolerance_m')
     lane_tof_min_speed = LaunchConfiguration('lane_tof_min_speed')
     lane_tof_slowdown_distance_m = LaunchConfiguration('lane_tof_slowdown_distance_m')
+    lane_tof_wall_angle_tolerance_rad = LaunchConfiguration(
+        'lane_tof_wall_angle_tolerance_rad'
+    )
     gripper_enabled = LaunchConfiguration('gripper_enabled')
     gripper_type = LaunchConfiguration('gripper_type')
     gripper_servo_id = LaunchConfiguration('gripper_servo_id')
@@ -146,6 +150,9 @@ def generate_launch_description():
     storage_tof_min_speed = LaunchConfiguration('storage_tof_min_speed')
     storage_tof_slowdown_distance_m = LaunchConfiguration(
         'storage_tof_slowdown_distance_m'
+    )
+    storage_tof_wall_angle_tolerance_rad = LaunchConfiguration(
+        'storage_tof_wall_angle_tolerance_rad'
     )
 
     return LaunchDescription(
@@ -278,6 +285,10 @@ def generate_launch_description():
                 'pose_y_correction_topic',
                 default_value='/robot_pose/correct_y',
             ),
+        DeclareLaunchArgument(
+            'pose_yaw_correction_topic',
+            default_value='/robot_pose/correct_yaw',
+        ),
         DeclareLaunchArgument('lane_tof_left_wall_x_m', default_value='-2.0'),
             DeclareLaunchArgument('lane_tof_right_wall_x_m', default_value='2.0'),
         DeclareLaunchArgument(
@@ -293,6 +304,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'lane_tof_slowdown_distance_m',
             default_value='0.20',
+        ),
+        DeclareLaunchArgument(
+            'lane_tof_wall_angle_tolerance_rad',
+            default_value='0.05',
         ),
         DeclareLaunchArgument('leave_start_enabled', default_value='true'),
         DeclareLaunchArgument('leave_start_distance_m', default_value='0.55'),
@@ -356,6 +371,10 @@ def generate_launch_description():
                 'storage_tof_slowdown_distance_m',
                 default_value='0.20',
             ),
+        DeclareLaunchArgument(
+            'storage_tof_wall_angle_tolerance_rad',
+            default_value='0.05',
+        ),
         DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),
         DeclareLaunchArgument('gripper_servo_id', default_value='1'),
@@ -540,6 +559,7 @@ def generate_launch_description():
                 'wall_distance_angle_topic': wall_distance_angle_topic,
                 'pose_x_correction_topic': pose_x_correction_topic,
                         'pose_y_correction_topic': pose_y_correction_topic,
+                'pose_yaw_correction_topic': pose_yaw_correction_topic,
                 'lane_tof_left_wall_x_m': ParameterValue(
                     lane_tof_left_wall_x_m,
                     value_type=float,
@@ -566,6 +586,10 @@ def generate_launch_description():
                 ),
                 'lane_tof_slowdown_distance_m': ParameterValue(
                     lane_tof_slowdown_distance_m,
+                    value_type=float,
+                ),
+                'lane_tof_wall_angle_tolerance_rad': ParameterValue(
+                    lane_tof_wall_angle_tolerance_rad,
                     value_type=float,
                 ),
                 'avoid_area_ratio': 0.42,
@@ -718,6 +742,10 @@ def generate_launch_description():
                         ),
                         'storage_tof_slowdown_distance_m': ParameterValue(
                             storage_tof_slowdown_distance_m,
+                            value_type=float,
+                        ),
+                        'storage_tof_wall_angle_tolerance_rad': ParameterValue(
+                            storage_tof_wall_angle_tolerance_rad,
                             value_type=float,
                         ),
                         'gripper_enabled': ParameterValue(

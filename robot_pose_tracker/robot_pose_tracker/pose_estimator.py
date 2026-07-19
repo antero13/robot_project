@@ -33,6 +33,13 @@ class PoseEstimator:
             raise ValueError('corrected y must be finite')
         self.y = y
 
+    def correct_yaw(self, yaw):
+        """Apply an absolute yaw landmark without changing position or counters."""
+        yaw = float(yaw)
+        if not math.isfinite(yaw):
+            raise ValueError('corrected yaw must be finite')
+        self.yaw = normalize_angle(yaw)
+
     def step(self, dt, linear_velocity, angular_velocity):
         if dt <= 0.0:
             return

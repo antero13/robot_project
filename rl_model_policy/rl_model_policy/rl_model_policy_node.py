@@ -15,6 +15,7 @@ from std_msgs.msg import Bool, Float32, Float64, String
 from rl_model_policy.coverage_controller import (
     CoverageController,
     generate_coverage_legs,
+    normalize_angle,
 )
 from rl_model_policy.mission_coordinator import (
     fixed_heading_dash_command,
@@ -184,6 +185,9 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("wall_distance_angle_topic", "/wall/distance_angle")
         self.declare_parameter("pose_x_correction_topic", "/robot_pose/correct_x")
         self.declare_parameter("pose_y_correction_topic", "/robot_pose/correct_y")
+        self.declare_parameter(
+            "pose_yaw_correction_topic", "/robot_pose/correct_yaw"
+        )
         self.declare_parameter("lane_tof_left_wall_x_m", -2.0)
         self.declare_parameter("lane_tof_right_wall_x_m", 2.0)
         self.declare_parameter("lane_tof_sensor_forward_offset_m", 0.09)
@@ -191,6 +195,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("lane_tof_x_tolerance_m", 0.03)
         self.declare_parameter("lane_tof_min_speed", 0.08)
         self.declare_parameter("lane_tof_slowdown_distance_m", 0.20)
+        self.declare_parameter("lane_tof_wall_angle_tolerance_rad", 0.05)
 
         self.declare_parameter("avoid_area_ratio", 0.42)
         self.declare_parameter("avoid_center_band", 0.75)
@@ -252,6 +257,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_tof_xy_tolerance_m", 0.03)
         self.declare_parameter("storage_tof_min_speed", 0.05)
         self.declare_parameter("storage_tof_slowdown_distance_m", 0.20)
+        self.declare_parameter("storage_tof_wall_angle_tolerance_rad", 0.05)
 
         self.declare_parameter("gripper_enabled", True)
         self.declare_parameter("gripper_type", "bus")
@@ -335,6 +341,8 @@ class RLModelPolicyNode(Node):
         self.pending_pose_x_correction_time = None
         self.pending_pose_y_correction = None
         self.pending_pose_y_correction_time = None
+        self.pending_pose_yaw_correction = None
+        self.pending_pose_yaw_correction_time = None
         self.storage_exit_tof_missing_started_at = None
         self.storage_dash_timer_phase = None
         self.storage_dash_elapsed_s = 0.0
@@ -374,6 +382,11 @@ class RLModelPolicyNode(Node):
         self.pose_y_correction_pub = self.create_publisher(
             Float64,
             self.get_parameter("pose_y_correction_topic").value,
+            10,
+        )
+        self.pose_yaw_correction_pub = self.create_publisher(
+            Float64,
+            self.get_parameter("pose_yaw_correction_topic").value,
             10,
         )
         self.pwm_servo_pub = self.create_publisher(
@@ -662,6 +675,8 @@ class RLModelPolicyNode(Node):
             self.pending_pose_x_correction_time = None
             self.pending_pose_y_correction = None
             self.pending_pose_y_correction_time = None
+            self.pending_pose_yaw_correction = None
+            self.pending_pose_yaw_correction_time = None
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
@@ -708,6 +723,8 @@ class RLModelPolicyNode(Node):
             self.pending_pose_x_correction_time = None
             self.pending_pose_y_correction = None
             self.pending_pose_y_correction_time = None
+            self.pending_pose_yaw_correction = None
+            self.pending_pose_yaw_correction_time = None
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
@@ -896,6 +913,8 @@ class RLModelPolicyNode(Node):
         self.pending_pose_x_correction_time = None
         self.pending_pose_y_correction = None
         self.pending_pose_y_correction_time = None
+        self.pending_pose_yaw_correction = None
+        self.pending_pose_yaw_correction_time = None
         return_min_x = min(
             self.get_float("coverage_min_x"),
             self.get_float("storage_staging_x"),
@@ -955,7 +974,8 @@ class RLModelPolicyNode(Node):
 
         waiting_for_x = self.waiting_for_pose_x_correction()
         waiting_for_y = self.waiting_for_pose_y_correction()
-        if waiting_for_x or waiting_for_y:
+        waiting_for_yaw = self.waiting_for_pose_yaw_correction()
+        if waiting_for_x or waiting_for_y or waiting_for_yaw:
             self.pause_storage_dash_timer()
             if self.mission.phase == MissionPhase.EXIT_STORAGE:
                 self.mission_waypoint = (
@@ -1263,6 +1283,10 @@ class RLModelPolicyNode(Node):
             max_angular_speed=self.get_float("storage_max_angular_speed"),
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
             advance_without_measurement=False,
+            wall_angle_rad=self.latest_wall_angle_rad,
+            wall_angle_tolerance_rad=self.get_float(
+                "storage_tof_wall_angle_tolerance_rad"
+            ),
         )
         self.mission_waypoint = (
             (self.get_float("storage_staging_x") if axis == "x" else self.return_lane_x),
@@ -1288,10 +1312,14 @@ class RLModelPolicyNode(Node):
 
         if axis == "y":
             self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
+        corrected_yaw = math.pi if axis == "x" else -math.pi / 2.0
+        self.publish_pose_yaw_correction(corrected_yaw)
         self.get_logger().info(
             f"Storage ToF {axis} alignment complete: "
             f"measured_{axis}={command.measured_coordinate:.3f}, "
-            f"pose_{axis}->{correction.data:.3f}"
+            f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
+            f"pose_{axis}->{correction.data:.3f}, "
+            f"pose_yaw->{math.degrees(corrected_yaw):.1f} deg"
         )
         if axis == "x":
             return self.begin_storage_entry_open(now_s)
@@ -1318,6 +1346,10 @@ class RLModelPolicyNode(Node):
             max_angular_speed=self.get_float("storage_max_angular_speed"),
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
             advance_without_measurement=False,
+            wall_angle_rad=self.latest_wall_angle_rad,
+            wall_angle_tolerance_rad=self.get_float(
+                "storage_tof_wall_angle_tolerance_rad"
+            ),
         )
         self.mission_waypoint = (
             target_coordinate,
@@ -1367,10 +1399,12 @@ class RLModelPolicyNode(Node):
                 f"assuming pose_x={correction.data:.3f}"
             )
         else:
+            self.publish_pose_yaw_correction(math.pi)
             self.get_logger().info(
                 "Storage exit ToF x alignment complete: "
                 f"measured_x={measured_coordinate:.3f}, "
-                f"pose_x->{correction.data:.3f}"
+                f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
+                f"pose_x->{correction.data:.3f}, pose_yaw->180.0 deg"
             )
         self.storage_exit_tof_missing_started_at = None
         self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
@@ -1413,6 +1447,16 @@ class RLModelPolicyNode(Node):
         )
         self.storage_dash_last_update_s = now_s
         return self.storage_dash_elapsed_s
+
+    def publish_pose_yaw_correction(self, corrected_yaw):
+        corrected_yaw = normalize_angle(float(corrected_yaw))
+        if self.dry_run:
+            return
+        correction = Float64()
+        correction.data = corrected_yaw
+        self.pose_yaw_correction_pub.publish(correction)
+        self.pending_pose_yaw_correction = corrected_yaw
+        self.pending_pose_yaw_correction_time = self.get_clock().now()
 
     def correct_pose_at_storage_contact(self):
         corrected_x = self.get_float("storage_center_x")
@@ -1689,9 +1733,11 @@ class RLModelPolicyNode(Node):
             self.set_control_mode(self.MODE_WAITING_FOR_POSE)
             return (0.0, 0.0)
 
-        if self.waiting_for_pose_x_correction():
+        waiting_for_x = self.waiting_for_pose_x_correction()
+        waiting_for_yaw = self.waiting_for_pose_yaw_correction()
+        if waiting_for_x or waiting_for_yaw:
             self.coverage_command = self.coverage_controller.hold_command(
-                "WAITING_FOR_POSE_X_CORRECTION"
+                "WAITING_FOR_POSE_LANDMARK_CORRECTION"
             )
             self.set_control_mode(self.MODE_COVERAGE_SEARCH)
             return (0.0, 0.0)
@@ -1759,6 +1805,10 @@ class RLModelPolicyNode(Node):
             heading_gain=self.get_float("coverage_heading_gain"),
             max_angular_speed=self.get_float("coverage_max_angular_speed"),
             heading_tolerance=self.get_float("coverage_heading_tolerance"),
+            wall_angle_rad=self.latest_wall_angle_rad,
+            wall_angle_tolerance_rad=self.get_float(
+                "lane_tof_wall_angle_tolerance_rad"
+            ),
         )
         self.coverage_command = self.coverage_controller.external_command(
             command.linear_x,
@@ -1775,6 +1825,8 @@ class RLModelPolicyNode(Node):
             self.pose_x_correction_pub.publish(correction)
             self.pending_pose_x_correction = correction.data
             self.pending_pose_x_correction_time = self.get_clock().now()
+        corrected_yaw = 0.0 if wall_side == "right" else math.pi
+        self.publish_pose_yaw_correction(corrected_yaw)
         self.lane_tof_alignment_active = False
         self.coverage_controller.complete_current_leg("SHIFT_TO_NEXT_LANE")
         self.coverage_command = self.coverage_controller.hold_command(
@@ -1784,8 +1836,10 @@ class RLModelPolicyNode(Node):
             "ToF lane alignment complete: "
             f"lane={leg.lane_number}, "
             f"measured_x={command.measured_robot_x:.3f}, "
+            f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
             f"wall={'east' if wall_side == 'right' else 'west'}, "
-            f"pose_x->{correction.data:.3f}"
+            f"pose_x->{correction.data:.3f}, "
+            f"pose_yaw->{math.degrees(corrected_yaw):.1f} deg"
         )
         return (0.0, 0.0)
 
@@ -1834,6 +1888,32 @@ class RLModelPolicyNode(Node):
         )
         self.pending_pose_y_correction = None
         self.pending_pose_y_correction_time = None
+        return False
+
+    def waiting_for_pose_yaw_correction(self):
+        if self.pending_pose_yaw_correction is None:
+            return False
+        tolerance_parameter = (
+            "storage_tof_wall_angle_tolerance_rad"
+            if self.mission.is_storage_phase()
+            else "lane_tof_wall_angle_tolerance_rad"
+        )
+        tolerance = min(0.01, self.get_float(tolerance_parameter))
+        yaw_error = normalize_angle(
+            self.robot_yaw - self.pending_pose_yaw_correction
+        )
+        if abs(yaw_error) <= tolerance:
+            self.pending_pose_yaw_correction = None
+            self.pending_pose_yaw_correction_time = None
+            return False
+        age = self.get_clock().now() - self.pending_pose_yaw_correction_time
+        if age.nanoseconds / 1_000_000_000.0 <= self.get_float("pose_timeout_s"):
+            return True
+        self.get_logger().warning(
+            "Timed out waiting for pose tracker to publish the yaw correction"
+        )
+        self.pending_pose_yaw_correction = None
+        self.pending_pose_yaw_correction_time = None
         return False
 
     def set_control_mode(self, mode):
@@ -2353,6 +2433,7 @@ class RLModelPolicyNode(Node):
                         else round(self.wall_measurement_age_s(), 4)
                     ),
                     "pending_pose_x": self.pending_pose_x_correction,
+                    "pending_pose_yaw": self.pending_pose_yaw_correction,
                 },
                 "storage_tof": {
                     "enabled": bool(
@@ -2384,6 +2465,7 @@ class RLModelPolicyNode(Node):
                     ),
                     "pending_pose_x": self.pending_pose_x_correction,
                     "pending_pose_y": self.pending_pose_y_correction,
+                    "pending_pose_yaw": self.pending_pose_yaw_correction,
                 },
                 "coverage": {
                     "enabled": self.coverage_is_enabled(),
