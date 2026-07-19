@@ -48,6 +48,7 @@ from rl_model_policy.storage_tof_correction import (
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
 from rl_model_policy.target_activation import target_is_eligible
+from rl_model_policy.target_alignment_pd import TargetAlignmentPD
 
 try:
     import torch
@@ -132,7 +133,7 @@ class RLModelPolicyNode(Node):
 
         self.declare_parameter("active_on_start", False)
         self.declare_parameter("dry_run", False)
-        self.declare_parameter("timer_rate_hz", 20.0)
+        self.declare_parameter("timer_rate_hz", 10.0)
         self.declare_parameter("target_timeout_s", 1.0)
         self.declare_parameter("target_tracking_timeout_s", 1.5)
         self.declare_parameter("target_confirmation_window", 5)
@@ -205,6 +206,12 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("action_filter_alpha", 0.55)
         self.declare_parameter("publish_stop_when_inactive", True)
         self.declare_parameter("state_preprocessor_epsilon", 1e-8)
+        self.declare_parameter("target_pd_enabled", True)
+        self.declare_parameter("target_pd_proportional_gain", 0.8)
+        self.declare_parameter("target_pd_derivative_gain", 0.12)
+        self.declare_parameter("target_pd_derivative_limit", 0.25)
+        self.declare_parameter("target_pd_center_deadband", 0.06)
+        self.declare_parameter("target_pd_max_angular_z", 0.45)
 
         self.declare_parameter("full_mission_enabled", True)
         self.declare_parameter("mission_duration_s", 180.0)
@@ -287,6 +294,14 @@ class RLModelPolicyNode(Node):
         self.last_target_direction = 1.0
         self.raw_action = [0.0, 0.0]
         self.filtered_action = [0.0, 0.0]
+        self.target_alignment_pd = TargetAlignmentPD(
+            proportional_gain=self.get_float("target_pd_proportional_gain"),
+            derivative_gain=self.get_float("target_pd_derivative_gain"),
+            derivative_limit=self.get_float("target_pd_derivative_limit"),
+            center_deadband=self.get_float("target_pd_center_deadband"),
+            max_angular_z=self.get_float("target_pd_max_angular_z"),
+        )
+        self.target_pd_last_command = None
         self.last_cmd = (0.0, 0.0)
         self.grab_state = self.GRAB_TRACKING
         self.grab_state_started_at = self.get_clock().now()
@@ -641,6 +656,7 @@ class RLModelPolicyNode(Node):
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
+            self.reset_target_alignment_pd()
             self.motion_paused = False
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
@@ -657,6 +673,7 @@ class RLModelPolicyNode(Node):
             self.motion_paused = False
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
+            self.reset_target_alignment_pd()
             self.coverage_command = None
             self.cancel_leave_start()
             self.set_control_mode(self.MODE_IDLE)
@@ -674,6 +691,7 @@ class RLModelPolicyNode(Node):
             self.time_since_target_seen = self.get_float("episode_length_s")
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
+            self.reset_target_alignment_pd()
             self.coverage_controller.reset()
             self.coverage_command = None
             self.pending_pose_x_correction = None
@@ -781,6 +799,11 @@ class RLModelPolicyNode(Node):
                 self.filtered_action, self.raw_action
             )
             linear_x, angular_z = self.action_to_cmd(self.filtered_action)
+            angular_z = self.target_alignment_angular_z(
+                confirmed_target.x,
+                now_s,
+                fallback_angular_z=angular_z,
+            )
             self.coverage_command = None
         elif self.active and self.should_locally_reacquire():
             self.set_control_mode(self.MODE_LOCAL_REACQUIRE)
@@ -1695,10 +1718,33 @@ class RLModelPolicyNode(Node):
         if mode == self.control_mode:
             return
         previous_mode = self.control_mode
+        if mode == self.MODE_TRACK_TARGET or previous_mode == self.MODE_TRACK_TARGET:
+            self.reset_target_alignment_pd()
         self.control_mode = mode
         if mode == self.MODE_TRACK_TARGET:
             self.filtered_action = [0.0, 0.0]
         self.get_logger().info(f"Control mode: {previous_mode} -> {mode}")
+
+    def reset_target_alignment_pd(self):
+        self.target_alignment_pd.reset()
+        self.target_pd_last_command = None
+
+    def target_alignment_angular_z(
+        self,
+        target_x_error,
+        now_s,
+        fallback_angular_z,
+    ):
+        if not bool(self.get_parameter("target_pd_enabled").value):
+            self.reset_target_alignment_pd()
+            return float(fallback_angular_z)
+        command = self.target_alignment_pd.command(
+            error=target_x_error,
+            now_s=now_s,
+            maximum_dt_s=self.get_float("target_tracking_timeout_s"),
+        )
+        self.target_pd_last_command = command
+        return command.angular_z
 
     def current_target(self):
         if not self.target_data_is_fresh(self.latest_target_time):
@@ -2041,6 +2087,7 @@ class RLModelPolicyNode(Node):
                 "dry_run": self.dry_run,
                 "model_loaded": self.policy is not None,
                 "control_mode": self.control_mode,
+                "timer_rate_hz": self.get_float("timer_rate_hz"),
                 "observation_dim": self.model_observation_dim,
                 "observation_names": OBSERVATION_NAMES[: self.model_observation_dim],
                 "pose_observation_enabled": self.pose_observation_is_active(),
@@ -2078,6 +2125,36 @@ class RLModelPolicyNode(Node):
                         "target_tracking_timeout_s"
                         if self.control_mode == self.MODE_TRACK_TARGET
                         else "target_timeout_s"
+                    ),
+                },
+                "target_alignment_pd": {
+                    "enabled": bool(
+                        self.get_parameter("target_pd_enabled").value
+                    ),
+                    "active": self.target_pd_last_command is not None,
+                    "proportional_gain": self.get_float(
+                        "target_pd_proportional_gain"
+                    ),
+                    "derivative_gain": self.get_float(
+                        "target_pd_derivative_gain"
+                    ),
+                    "center_deadband": self.get_float(
+                        "target_pd_center_deadband"
+                    ),
+                    "error": (
+                        None
+                        if self.target_pd_last_command is None
+                        else round(self.target_pd_last_command.error, 4)
+                    ),
+                    "derivative": (
+                        None
+                        if self.target_pd_last_command is None
+                        else round(self.target_pd_last_command.derivative, 4)
+                    ),
+                    "angular_z": (
+                        None
+                        if self.target_pd_last_command is None
+                        else round(self.target_pd_last_command.angular_z, 4)
                     ),
                 },
                 "leave_start": {

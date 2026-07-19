@@ -9,6 +9,15 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     model_path = LaunchConfiguration('model_path')
     speed_scale = LaunchConfiguration('speed_scale')
+    timer_rate_hz = LaunchConfiguration('timer_rate_hz')
+    target_pd_enabled = LaunchConfiguration('target_pd_enabled')
+    target_pd_proportional_gain = LaunchConfiguration(
+        'target_pd_proportional_gain'
+    )
+    target_pd_derivative_gain = LaunchConfiguration('target_pd_derivative_gain')
+    target_pd_derivative_limit = LaunchConfiguration('target_pd_derivative_limit')
+    target_pd_center_deadband = LaunchConfiguration('target_pd_center_deadband')
+    target_pd_max_angular_z = LaunchConfiguration('target_pd_max_angular_z')
     dry_run = LaunchConfiguration('dry_run')
     target_timeout_s = LaunchConfiguration('target_timeout_s')
     target_tracking_timeout_s = LaunchConfiguration('target_tracking_timeout_s')
@@ -142,6 +151,17 @@ def generate_launch_description():
             default_value='0.75',
             description='Scale applied to learned linear/angular velocity commands.',
         ),
+        DeclareLaunchArgument(
+            'timer_rate_hz',
+            default_value='10.0',
+            description='RL policy inference and cmd_vel publication rate.',
+        ),
+        DeclareLaunchArgument('target_pd_enabled', default_value='true'),
+        DeclareLaunchArgument('target_pd_proportional_gain', default_value='0.8'),
+        DeclareLaunchArgument('target_pd_derivative_gain', default_value='0.12'),
+        DeclareLaunchArgument('target_pd_derivative_limit', default_value='0.25'),
+        DeclareLaunchArgument('target_pd_center_deadband', default_value='0.06'),
+        DeclareLaunchArgument('target_pd_max_angular_z', default_value='0.45'),
         DeclareLaunchArgument(
             'dry_run',
             default_value='false',
@@ -339,7 +359,7 @@ def generate_launch_description():
                 'odometry_topic': odometry_topic,
                 'active_on_start': False,
                 'dry_run': dry_run,
-                'timer_rate_hz': 20.0,
+                'timer_rate_hz': ParameterValue(timer_rate_hz, value_type=float),
                         'target_timeout_s': ParameterValue(
                             target_timeout_s, value_type=float
                         ),
@@ -534,6 +554,24 @@ def generate_launch_description():
                 'max_angular_action_delta': 0.08,
                 'action_filter_alpha': 0.55,
                 'publish_stop_when_inactive': True,
+                'target_pd_enabled': ParameterValue(
+                    target_pd_enabled, value_type=bool
+                ),
+                'target_pd_proportional_gain': ParameterValue(
+                    target_pd_proportional_gain, value_type=float
+                ),
+                'target_pd_derivative_gain': ParameterValue(
+                    target_pd_derivative_gain, value_type=float
+                ),
+                'target_pd_derivative_limit': ParameterValue(
+                    target_pd_derivative_limit, value_type=float
+                ),
+                'target_pd_center_deadband': ParameterValue(
+                    target_pd_center_deadband, value_type=float
+                ),
+                'target_pd_max_angular_z': ParameterValue(
+                    target_pd_max_angular_z, value_type=float
+                ),
                 'full_mission_enabled': ParameterValue(
                     full_mission_enabled,
                     value_type=bool,

@@ -165,6 +165,40 @@ yaw로 마지막 목표 위치를 image x에 다시 투영한다. 이 기능은 
 `grab_detection_timeout_s` 기본값 `0.25`초보다 최신인 원시 YOLO 검출이
 필요하다.
 
+## RL 주기와 목표 정렬 PD 제어
+
+RL 정책 추론과 `/cmd_vel` 발행 주기는 기본 `10.0 Hz`이다. 목표가 확인되면
+RL 출력 중 선속도는 그대로 사용하고, 각속도는 화면 중심에 대한 목표의
+정규화된 x 오차로 계산한 PD 출력으로 교체한다. 양의 x 오차는 화면 오른쪽을
+뜻하므로 음의 `angular.z`를 내보내고, 음의 x 오차는 반대로 회전한다.
+
+기본 PD 값은 다음과 같다.
+
+```text
+Kp: 0.8
+Kd: 0.12
+미분 제한: 0.25
+중앙 deadband: 0.06
+최대 각속도: 0.45 rad/s
+```
+
+통합 launch에서 값을 바꿀 수 있다.
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  timer_rate_hz:=10.0 \
+  target_pd_enabled:=true \
+  target_pd_proportional_gain:=0.8 \
+  target_pd_derivative_gain:=0.12 \
+  target_pd_derivative_limit:=0.25 \
+  target_pd_center_deadband:=0.06 \
+  target_pd_max_angular_z:=0.45
+```
+
+`target_pd_enabled:=false`이면 목표 추적 각속도도 기존 RL 출력으로 되돌아간다.
+실행 중 `/rl_model_policy_state`의 `timer_rate_hz`와
+`target_alignment_pd`에서 현재 오차, 미분값과 PD 각속도를 확인할 수 있다.
+
 ## 목표가 없을 때의 레인 탐색
 
 실행기는 RL과 규칙 기반 제어를 함께 사용한다. 목표가 보이면 학습 정책이

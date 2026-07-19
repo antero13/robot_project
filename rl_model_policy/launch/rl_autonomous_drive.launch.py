@@ -34,6 +34,15 @@ def generate_launch_description():
         "yolo_performance_log_interval_s"
     )
     speed_scale = LaunchConfiguration("speed_scale")
+    timer_rate_hz = LaunchConfiguration("timer_rate_hz")
+    target_pd_enabled = LaunchConfiguration("target_pd_enabled")
+    target_pd_proportional_gain = LaunchConfiguration(
+        "target_pd_proportional_gain"
+    )
+    target_pd_derivative_gain = LaunchConfiguration("target_pd_derivative_gain")
+    target_pd_derivative_limit = LaunchConfiguration("target_pd_derivative_limit")
+    target_pd_center_deadband = LaunchConfiguration("target_pd_center_deadband")
+    target_pd_max_angular_z = LaunchConfiguration("target_pd_max_angular_z")
     target_timeout_s = LaunchConfiguration("target_timeout_s")
     target_tracking_timeout_s = LaunchConfiguration("target_tracking_timeout_s")
     target_confirmation_window = LaunchConfiguration("target_confirmation_window")
@@ -273,6 +282,13 @@ def generate_launch_description():
         launch_arguments={
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
+            "timer_rate_hz": timer_rate_hz,
+            "target_pd_enabled": target_pd_enabled,
+            "target_pd_proportional_gain": target_pd_proportional_gain,
+            "target_pd_derivative_gain": target_pd_derivative_gain,
+            "target_pd_derivative_limit": target_pd_derivative_limit,
+            "target_pd_center_deadband": target_pd_center_deadband,
+            "target_pd_max_angular_z": target_pd_max_angular_z,
             "target_timeout_s": target_timeout_s,
             "target_tracking_timeout_s": target_tracking_timeout_s,
             "target_confirmation_window": target_confirmation_window,
@@ -510,6 +526,19 @@ def generate_launch_description():
                 "yolo_performance_log_interval_s", default_value="5.0"
             ),
         DeclareLaunchArgument("speed_scale", default_value="0.75"),
+        DeclareLaunchArgument(
+            "timer_rate_hz",
+            default_value="10.0",
+            description="RL policy inference and cmd_vel publication rate.",
+        ),
+        DeclareLaunchArgument("target_pd_enabled", default_value="true"),
+        DeclareLaunchArgument(
+            "target_pd_proportional_gain", default_value="0.8"
+        ),
+        DeclareLaunchArgument("target_pd_derivative_gain", default_value="0.12"),
+        DeclareLaunchArgument("target_pd_derivative_limit", default_value="0.25"),
+        DeclareLaunchArgument("target_pd_center_deadband", default_value="0.06"),
+        DeclareLaunchArgument("target_pd_max_angular_z", default_value="0.45"),
         DeclareLaunchArgument(
             "target_timeout_s",
             default_value="1.0",
