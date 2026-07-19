@@ -189,7 +189,7 @@ Kd: 0.12
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   timer_rate_hz:=10.0 \
-  target_pd_enabled:=true \
+  target_pd_enabled:=false \
   target_pd_proportional_gain:=0.8 \
   target_pd_derivative_gain:=0.12 \
   target_pd_derivative_limit:=0.25 \
@@ -197,7 +197,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   target_pd_max_angular_z:=0.45
 ```
 
-`target_pd_enabled:=false`이면 목표 추적 각속도도 기존 RL 출력으로 되돌아간다.
+기본값인 `target_pd_enabled:=false`에서는 목표 추적의 선속도와 각속도를 모두 RL 출력으로 제어한다.
+PD 정렬을 다시 시험할 때만 `target_pd_enabled:=true`로 지정한다.
 실행 중 `/rl_model_policy_state`의 `timer_rate_hz`와
 `target_alignment_pd`에서 현재 오차, 미분값과 PD 각속도를 확인할 수 있다.
 

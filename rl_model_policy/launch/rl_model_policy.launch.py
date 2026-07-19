@@ -209,7 +209,7 @@ def generate_launch_description():
             default_value='10.0',
             description='RL policy inference and cmd_vel publication rate.',
         ),
-        DeclareLaunchArgument('target_pd_enabled', default_value='true'),
+        DeclareLaunchArgument('target_pd_enabled', default_value='false'),
         DeclareLaunchArgument('target_pd_proportional_gain', default_value='0.8'),
         DeclareLaunchArgument('target_pd_derivative_gain', default_value='0.12'),
         DeclareLaunchArgument('target_pd_derivative_limit', default_value='0.25'),

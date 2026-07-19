@@ -230,7 +230,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("action_filter_alpha", 0.55)
         self.declare_parameter("publish_stop_when_inactive", True)
         self.declare_parameter("state_preprocessor_epsilon", 1e-8)
-        self.declare_parameter("target_pd_enabled", True)
+        self.declare_parameter("target_pd_enabled", False)
         self.declare_parameter("target_pd_proportional_gain", 0.8)
         self.declare_parameter("target_pd_derivative_gain", 0.12)
         self.declare_parameter("target_pd_derivative_limit", 0.25)
