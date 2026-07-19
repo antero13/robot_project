@@ -44,6 +44,7 @@ from rl_model_policy.lane_tof_correction import (
     make_lane_tof_command,
     should_run_lane_tof_fine_alignment,
 )
+from rl_model_policy.main_road_tof_correction import make_main_road_tof_command
 from rl_model_policy.storage_tof_correction import (
     make_storage_tof_command,
     measurement_gap_timed_out,
@@ -196,6 +197,19 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("lane_tof_min_speed", 0.08)
         self.declare_parameter("lane_tof_slowdown_distance_m", 0.20)
         self.declare_parameter("lane_tof_wall_angle_tolerance_rad", 0.05)
+        self.declare_parameter("main_road_tof_correction_enabled", True)
+        self.declare_parameter("main_road_tof_south_wall_y_m", -2.0)
+        self.declare_parameter("main_road_tof_sensor_forward_offset_m", 0.09)
+        self.declare_parameter("main_road_tof_measurement_timeout_s", 0.25)
+        self.declare_parameter("main_road_tof_y_tolerance_m", 0.03)
+        self.declare_parameter("main_road_tof_min_speed", 0.05)
+        self.declare_parameter("main_road_tof_slowdown_distance_m", 0.20)
+        self.declare_parameter(
+            "main_road_tof_angle_trigger_rad", math.radians(10.0)
+        )
+        self.declare_parameter(
+            "main_road_tof_angle_release_rad", math.radians(5.0)
+        )
 
         self.declare_parameter("avoid_area_ratio", 0.42)
         self.declare_parameter("avoid_center_band", 0.75)
@@ -367,6 +381,8 @@ class RLModelPolicyNode(Node):
         self.load_model()
         self.coverage_controller = self.create_coverage_controller()
         self.lane_tof_alignment_active = False
+        self.main_road_tof_alignment_active = False
+        self.main_road_tof_angle_alignment_active = False
 
         self.cmd_vel_pub = self.create_publisher(
             Twist, self.get_parameter("cmd_vel_topic").value, 10
@@ -677,6 +693,7 @@ class RLModelPolicyNode(Node):
             self.pending_pose_y_correction_time = None
             self.pending_pose_yaw_correction = None
             self.pending_pose_yaw_correction_time = None
+            self.reset_main_road_tof_alignment()
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
@@ -725,6 +742,7 @@ class RLModelPolicyNode(Node):
             self.pending_pose_y_correction_time = None
             self.pending_pose_yaw_correction = None
             self.pending_pose_yaw_correction_time = None
+            self.reset_main_road_tof_alignment()
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
@@ -817,6 +835,10 @@ class RLModelPolicyNode(Node):
             self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
         elif self.active and collecting and self.coverage_controller.rejoin_active:
+            linear_x, angular_z = self.coverage_search_command(bins)
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+        elif self.active and collecting and self.main_road_tof_alignment_active:
             linear_x, angular_z = self.coverage_search_command(bins)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
@@ -915,6 +937,7 @@ class RLModelPolicyNode(Node):
         self.pending_pose_y_correction_time = None
         self.pending_pose_yaw_correction = None
         self.pending_pose_yaw_correction_time = None
+        self.reset_main_road_tof_alignment()
         return_min_x = min(
             self.get_float("coverage_min_x"),
             self.get_float("storage_staging_x"),
@@ -965,6 +988,89 @@ class RLModelPolicyNode(Node):
         )
         return phase
 
+    def begin_storage_staging_return(self, now_s):
+        self.mission.set_phase(MissionPhase.RETURN_STAGING, now_s)
+        self.mission_waypoint = (
+            self.get_float("storage_staging_x"),
+            self.get_float("storage_main_road_y"),
+        )
+
+    def reset_main_road_tof_alignment(self):
+        self.main_road_tof_alignment_active = False
+        self.main_road_tof_angle_alignment_active = False
+
+    def main_road_tof_command(
+        self,
+        *,
+        target_y,
+        transit_speed,
+        storage_return,
+        now_s=None,
+    ):
+        command = make_main_road_tof_command(
+            distance_m=self.latest_wall_distance_m,
+            wall_angle_rad=self.latest_wall_angle_rad,
+            measurement_age_s=self.wall_measurement_age_s(),
+            target_y=target_y,
+            south_wall_y_m=self.get_float("main_road_tof_south_wall_y_m"),
+            sensor_forward_offset_m=self.get_float(
+                "main_road_tof_sensor_forward_offset_m"
+            ),
+            transit_speed=transit_speed,
+            minimum_speed=self.get_float("main_road_tof_min_speed"),
+            slowdown_distance_m=self.get_float(
+                "main_road_tof_slowdown_distance_m"
+            ),
+            y_tolerance_m=self.get_float("main_road_tof_y_tolerance_m"),
+            measurement_timeout_s=self.get_float(
+                "main_road_tof_measurement_timeout_s"
+            ),
+            angle_alignment_active=self.main_road_tof_angle_alignment_active,
+            angle_trigger_rad=self.get_float("main_road_tof_angle_trigger_rad"),
+            angle_release_rad=self.get_float("main_road_tof_angle_release_rad"),
+            angle_gain=self.get_float("coverage_heading_gain"),
+            max_angular_speed=self.get_float("coverage_max_angular_speed"),
+        )
+        self.main_road_tof_alignment_active = True
+        self.main_road_tof_angle_alignment_active = (
+            command.angle_alignment_active
+        )
+        self.mission_waypoint = (self.robot_x, float(target_y))
+        self.set_control_mode(
+            self.MODE_RETURN_TO_STORAGE
+            if storage_return
+            else self.MODE_COVERAGE_SEARCH
+        )
+        if not command.reached:
+            if not storage_return:
+                self.coverage_command = self.coverage_controller.external_command(
+                    command.linear_x,
+                    command.angular_z,
+                    command.phase,
+                )
+            return (command.linear_x, command.angular_z)
+
+        self.publish_pose_y_correction(float(target_y))
+        self.publish_pose_yaw_correction(-math.pi / 2.0)
+        measured_y = command.measured_robot_y
+        wall_angle = self.latest_wall_angle_rad
+        self.reset_main_road_tof_alignment()
+        self.get_logger().info(
+            "South-wall main-road correction complete: "
+            f"measured_y={measured_y:.3f}, "
+            f"wall_angle={math.degrees(wall_angle):.2f} deg, "
+            f"pose_y->{float(target_y):.3f}, pose_yaw->-90.0 deg"
+        )
+
+        if storage_return:
+            self.begin_storage_staging_return(now_s)
+        else:
+            self.coverage_controller.complete_current_leg("SCAN_LANE_DOWN")
+            self.coverage_command = self.coverage_controller.hold_command(
+                "MAIN_ROAD_SOUTH_TOF_ALIGNED"
+            )
+        return (0.0, 0.0)
+
     def storage_mission_command(self, bins, now_s):
         if not self.storage_pose_is_valid():
             self.pause_storage_dash_timer()
@@ -985,6 +1091,19 @@ class RLModelPolicyNode(Node):
             elif waiting_for_x:
                 self.mission_waypoint = (
                     self.pending_pose_x_correction,
+                    self.get_float("storage_main_road_y"),
+                )
+            elif waiting_for_y:
+                self.mission_waypoint = (
+                    self.robot_x,
+                    self.pending_pose_y_correction,
+                )
+            elif (
+                waiting_for_yaw
+                and self.mission.phase == MissionPhase.RETURN_STAGING
+            ):
+                self.mission_waypoint = (
+                    self.robot_x,
                     self.get_float("storage_main_road_y"),
                 )
             else:
@@ -1027,13 +1146,31 @@ class RLModelPolicyNode(Node):
                 self.get_float("storage_return_speed"),
             )
             if command.reached:
-                self.mission.set_phase(MissionPhase.RETURN_STAGING, now_s)
-                self.mission_waypoint = (
-                    self.get_float("storage_staging_x"),
-                    self.get_float("storage_main_road_y"),
-                )
+                if bool(
+                    self.get_parameter("main_road_tof_correction_enabled").value
+                ):
+                    self.main_road_tof_alignment_active = True
+                    self.main_road_tof_angle_alignment_active = False
+                    self.mission.set_phase(
+                        MissionPhase.CORRECT_MAIN_ROAD_SOUTH,
+                        now_s,
+                    )
+                    self.get_logger().info(
+                        "Storage return reached the main road; starting "
+                        "south-wall ToF distance correction"
+                    )
+                else:
+                    self.begin_storage_staging_return(now_s)
                 return (0.0, 0.0)
             return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.CORRECT_MAIN_ROAD_SOUTH:
+            return self.main_road_tof_command(
+                target_y=self.get_float("storage_main_road_y"),
+                transit_speed=self.get_float("storage_return_speed"),
+                storage_return=True,
+                now_s=now_s,
+            )
 
         if phase == MissionPhase.RETURN_STAGING:
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
@@ -1312,14 +1449,11 @@ class RLModelPolicyNode(Node):
 
         if axis == "y":
             self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
-        corrected_yaw = math.pi if axis == "x" else -math.pi / 2.0
-        self.publish_pose_yaw_correction(corrected_yaw)
         self.get_logger().info(
             f"Storage ToF {axis} alignment complete: "
             f"measured_{axis}={command.measured_coordinate:.3f}, "
             f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
-            f"pose_{axis}->{correction.data:.3f}, "
-            f"pose_yaw->{math.degrees(corrected_yaw):.1f} deg"
+            f"pose_{axis}->{correction.data:.3f}"
         )
         if axis == "x":
             return self.begin_storage_entry_open(now_s)
@@ -1399,12 +1533,11 @@ class RLModelPolicyNode(Node):
                 f"assuming pose_x={correction.data:.3f}"
             )
         else:
-            self.publish_pose_yaw_correction(math.pi)
             self.get_logger().info(
                 "Storage exit ToF x alignment complete: "
                 f"measured_x={measured_coordinate:.3f}, "
                 f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
-                f"pose_x->{correction.data:.3f}, pose_yaw->180.0 deg"
+                f"pose_x->{correction.data:.3f}"
             )
         self.storage_exit_tof_missing_started_at = None
         self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
@@ -1457,6 +1590,16 @@ class RLModelPolicyNode(Node):
         self.pose_yaw_correction_pub.publish(correction)
         self.pending_pose_yaw_correction = corrected_yaw
         self.pending_pose_yaw_correction_time = self.get_clock().now()
+
+    def publish_pose_y_correction(self, corrected_y):
+        corrected_y = float(corrected_y)
+        if self.dry_run:
+            return
+        correction = Float64()
+        correction.data = corrected_y
+        self.pose_y_correction_pub.publish(correction)
+        self.pending_pose_y_correction = corrected_y
+        self.pending_pose_y_correction_time = self.get_clock().now()
 
     def correct_pose_at_storage_contact(self):
         corrected_x = self.get_float("storage_center_x")
@@ -1565,6 +1708,7 @@ class RLModelPolicyNode(Node):
     def resume_collection_after_storage(self):
         self.coverage_controller = self.create_coverage_controller(reverse_order=True)
         self.lane_tof_alignment_active = False
+        self.reset_main_road_tof_alignment()
         self.coverage_command = None
         self.latest_target = None
         self.latest_target_time = None
@@ -1734,8 +1878,9 @@ class RLModelPolicyNode(Node):
             return (0.0, 0.0)
 
         waiting_for_x = self.waiting_for_pose_x_correction()
+        waiting_for_y = self.waiting_for_pose_y_correction()
         waiting_for_yaw = self.waiting_for_pose_yaw_correction()
-        if waiting_for_x or waiting_for_yaw:
+        if waiting_for_x or waiting_for_y or waiting_for_yaw:
             self.coverage_command = self.coverage_controller.hold_command(
                 "WAITING_FOR_POSE_LANDMARK_CORRECTION"
             )
@@ -1743,6 +1888,33 @@ class RLModelPolicyNode(Node):
             return (0.0, 0.0)
 
         leg_phase = self.coverage_controller.current_leg.phase
+        main_road_tof_enabled = bool(
+            self.get_parameter("main_road_tof_correction_enabled").value
+        )
+        main_road_waypoint_reached = (
+            leg_phase == "SCAN_LANE_DOWN"
+            and self.coverage_controller.current_leg_reached(
+                self.robot_x,
+                self.robot_y,
+            )
+        )
+        run_main_road_tof = main_road_tof_enabled and (
+            main_road_waypoint_reached or self.main_road_tof_alignment_active
+        )
+        if run_main_road_tof:
+            if not self.main_road_tof_alignment_active:
+                self.main_road_tof_alignment_active = True
+                self.main_road_tof_angle_alignment_active = False
+                self.get_logger().info(
+                    "Lane-down waypoint reached; starting south-wall ToF "
+                    "distance correction"
+                )
+            return self.main_road_tof_command(
+                target_y=self.get_float("coverage_main_road_y"),
+                transit_speed=self.get_float("coverage_return_speed"),
+                storage_return=False,
+            )
+
         lane_tof_enabled = bool(self.get_parameter("lane_tof_correction_enabled").value)
         waypoint_reached = (
             leg_phase == "SHIFT_TO_NEXT_LANE"
@@ -1825,8 +1997,6 @@ class RLModelPolicyNode(Node):
             self.pose_x_correction_pub.publish(correction)
             self.pending_pose_x_correction = correction.data
             self.pending_pose_x_correction_time = self.get_clock().now()
-        corrected_yaw = 0.0 if wall_side == "right" else math.pi
-        self.publish_pose_yaw_correction(corrected_yaw)
         self.lane_tof_alignment_active = False
         self.coverage_controller.complete_current_leg("SHIFT_TO_NEXT_LANE")
         self.coverage_command = self.coverage_controller.hold_command(
@@ -1838,8 +2008,7 @@ class RLModelPolicyNode(Node):
             f"measured_x={command.measured_robot_x:.3f}, "
             f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
             f"wall={'east' if wall_side == 'right' else 'west'}, "
-            f"pose_x->{correction.data:.3f}, "
-            f"pose_yaw->{math.degrees(corrected_yaw):.1f} deg"
+            f"pose_x->{correction.data:.3f}"
         )
         return (0.0, 0.0)
 
@@ -1875,7 +2044,12 @@ class RLModelPolicyNode(Node):
     def waiting_for_pose_y_correction(self):
         if self.pending_pose_y_correction is None:
             return False
-        tolerance = min(0.01, self.get_float("storage_tof_xy_tolerance_m"))
+        tolerance_parameter = (
+            "storage_tof_xy_tolerance_m"
+            if self.mission.is_storage_phase()
+            else "main_road_tof_y_tolerance_m"
+        )
+        tolerance = min(0.01, self.get_float(tolerance_parameter))
         if abs(self.robot_y - self.pending_pose_y_correction) <= tolerance:
             self.pending_pose_y_correction = None
             self.pending_pose_y_correction_time = None
@@ -2433,6 +2607,26 @@ class RLModelPolicyNode(Node):
                         else round(self.wall_measurement_age_s(), 4)
                     ),
                     "pending_pose_x": self.pending_pose_x_correction,
+                },
+                "main_road_tof": {
+                    "enabled": bool(
+                        self.get_parameter("main_road_tof_correction_enabled").value
+                    ),
+                    "active": self.main_road_tof_alignment_active,
+                    "angle_alignment_active": (
+                        self.main_road_tof_angle_alignment_active
+                    ),
+                    "distance_m": (
+                        None
+                        if self.latest_wall_distance_m is None
+                        else round(self.latest_wall_distance_m, 4)
+                    ),
+                    "angle_rad": (
+                        None
+                        if self.latest_wall_angle_rad is None
+                        else round(self.latest_wall_angle_rad, 4)
+                    ),
+                    "pending_pose_y": self.pending_pose_y_correction,
                     "pending_pose_yaw": self.pending_pose_yaw_correction,
                 },
                 "storage_tof": {
@@ -2465,7 +2659,6 @@ class RLModelPolicyNode(Node):
                     ),
                     "pending_pose_x": self.pending_pose_x_correction,
                     "pending_pose_y": self.pending_pose_y_correction,
-                    "pending_pose_yaw": self.pending_pose_yaw_correction,
                 },
                 "coverage": {
                     "enabled": self.coverage_is_enabled(),

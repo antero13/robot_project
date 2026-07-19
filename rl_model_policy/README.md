@@ -61,7 +61,7 @@ state_preprocessor.running_variance: (10,)
 - `/rl_estimated_objects` (`std_msgs/String`): GUI 지도 물체 마커
 - `/robot_pose/correct_x` (`std_msgs/Float64`): 레인 또는 보관소 x 보정
 - `/robot_pose/correct_y` (`std_msgs/Float64`): 보관소 y 보정
-- `/robot_pose/correct_yaw` (`std_msgs/Float64`): ToF 벽 각도 정렬 후 yaw 보정(rad)
+- `/robot_pose/correct_yaw` (`std_msgs/Float64`): 남쪽 주도로 ToF 보정 후 yaw `-90도` 재설정(rad)
 
 ## 기본 실행
 
@@ -259,12 +259,16 @@ left/right wall은 경기장의 서쪽/동쪽 벽 좌표이며, 차체에 달린
 보관소 진입 전과 후진 완료 후의 x 보정에서는 서쪽 벽만 사용한다.
 
 Coverage와 보관소 waypoint, `robot_x/y`, pose correction 토픽은 모두 차체의
-기하학적 중심을 좌표 원점으로 사용한다. 보정 중에는 `vector.y` 벽 각도를
-기본 `0.05 rad` 이내로 먼저 맞춘다. 거리 보정까지 끝나면 목표 차체 중심 x와
-기대 yaw를 `/robot_pose/correct_x`, `/robot_pose/correct_yaw`로 발행한다.
-서쪽 벽이면 yaw `180도`, 동쪽 벽이면 yaw `0도`로 설정하며 이후 IMU gyro
-적분은 이 기준에서 계속된다. Waypoint 도착 뒤 ToF가 오래되면
-`WAITING_FOR_LANE_TOF` 상태로 정지한다.
+기하학적 중심을 좌표 원점으로 사용한다. 동·서쪽 벽 보정은 `vector.y` 벽
+각도를 기본 `0.05 rad` 이내로 맞춘 뒤 목표 차체 중심 x만
+`/robot_pose/correct_x`로 발행하며 yaw는 변경하지 않는다.
+
+각 레인에서 남쪽 주도로로 내려온 직후에는 남쪽 벽 ToF 거리로 y를 먼저
+3 cm 이내로 보정한다. 거리 보정이 끝난 뒤 벽 각도가 10도 이상일 때만 각도
+보정을 시작하고, 시작된 보정은 5도 이하까지 계속한다. 완료 시
+`/robot_pose/correct_y`, `/robot_pose/correct_yaw`로 주도로 y와 yaw `-90도`를
+설정한다. 이후 IMU gyro 적분은 이 기준에서 계속된다. ToF가 오래되면 정지해서
+새 측정값을 기다린다.
 
 벽 좌표와 센서 오프셋은 다음과 같이 바꿀 수 있다.
 
@@ -273,6 +277,15 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   lane_tof_left_wall_x_m:=-2.0 \
   lane_tof_right_wall_x_m:=2.0 \
   lane_tof_sensor_forward_offset_m:=0.09
+```
+
+남쪽 주도로 보정의 기본 시작/종료 각도는 각각 10도와 5도이며 rad 단위 launch
+인자로 조정할 수 있다.
+
+```bash
+ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
+  main_road_tof_angle_trigger_rad:=0.1745329252 \
+  main_road_tof_angle_release_rad:=0.0872664626
 ```
 
 `lane_tof_sensor_forward_offset_m`은 차체 중심에서 ToF 센서 평면까지의
@@ -438,11 +451,13 @@ COLLECTING
      `0.25`, `-0.75`, `-1.25 m`이다.
    - 각 레인을 북쪽으로 탐색한 뒤 제자리로 180도 선회하고 남쪽으로
      내려오면서 같은 레인을 다시 탐색한다.
+   - 주도로 도착 직후 남쪽 벽을 본 상태에서 ToF 거리로 `y=-1.3343 m`를
+     먼저 보정한다. 거리 보정 후 벽 각도가 10도 이상이면 회전을 시작하고
+     5도 이하가 되면 멈춘 뒤 pose yaw를 `-90도`로 재설정한다.
    - 다음 레인 이동은 도착 레인이 1·2번이면 동쪽 벽, 3·4번이면 서쪽 벽을
      바라본 상태로 odometry waypoint까지 먼저 수행한다. 10 cm 허용 오차에
      들어온 뒤 같은 벽의 ToF 각도를 0도 근처로 맞추고 남은 x 오차를
-     3 cm 이내로 보정한다. 완료 시 동쪽은 yaw 0도, 서쪽은 yaw 180도로
-     pose tracker를 갱신한다.
+     3 cm 이내로 보정한다. 이 동·서쪽 벽 단계에서는 pose yaw를 변경하지 않는다.
    - ToF 보정이 끝나면 1→2에서는 좌측 회전, 서쪽을 보던 이동에서는 우측
      회전으로 북쪽을 향한 뒤 다음 레인 탐색을 시작한다.
 
@@ -455,10 +470,12 @@ COLLECTING
 3. **주도로 복귀와 보관소 입구 x 보정**
    - 현재 레인 x를 유지한 채 남쪽으로 내려가 `y=-1.3343 m` 주도로에
      복귀한다.
+   - 남쪽 벽 ToF 거리로 주도로 y를 먼저 보정한다. 그다음 벽 각도가 10도
+     이상이면 5도 이하까지 정렬하고 yaw를 `-90도`로 재설정한다.
    - 주도로에서 서쪽을 바라보고 `(-1.25, -1.3343) m`까지 이동한다.
    - 도착 뒤 서쪽 벽 ToF 각도를 0도 근처로 정렬하고 `x=-1.25 m`를
-     3 cm 이내로 보정한다. 완료 시 yaw를 180도로 갱신한다. 예상 ToF 거리는
-     66 cm이며, 값이 없거나 오래되면 정지해서 기다린다.
+     3 cm 이내로 보정한다. yaw는 변경하지 않는다. 예상 ToF 거리는 66 cm이며,
+     값이 없거나 오래되면 정지해서 기다린다.
 
 4. **서보 개방과 보관소 진입**
    - 입구 x 보정이 끝난 뒤 서보를 열고 기본 0.5초 기다린다.
@@ -471,20 +488,19 @@ COLLECTING
    - pose 보정 반영을 확인한 뒤 서보를 연 상태로 같은 IMU yaw를 유지하며
      기본 2.60초 후진한다.
    - 입구에 도착하면 서보를 닫고 기본 0.5초 기다린 뒤 서쪽을 바라본다.
-   - 서쪽 벽 ToF 각도를 0도 근처로 정렬하고 `x=-1.25 m`, yaw 180도로
-     다시 보정한다. 신선한 ToF 값이 연속 1초 동안 없으면 x만 `-1.25 m`로
-     간주하고 yaw는 바꾸지 않는 fallback을 사용한다.
+   - 서쪽 벽 ToF 각도를 0도 근처로 정렬하고 `x=-1.25 m`를 다시 보정한다.
+     이 단계에서는 yaw를 바꾸지 않는다. 신선한 ToF 값이 연속 1초 동안
+     없으면 x를 `-1.25 m`로 간주하는 fallback을 사용한다.
 
 6. **역순 탐색 재개**
    - 이미 주도로에 있으므로 북쪽으로 회전한 뒤 바로 역순 탐색을 시작한다.
    - Coverage를 4→3→2→1번 역순으로 다시 시작한다. 4→3은 서쪽을 보고
      후진하며, 3→2와 2→1은 동쪽을 보고 전진한다. 각 이동은 waypoint 도착
-     뒤 현재 바라보는 벽의 ToF로 벽 각도를 0도 근처로 정렬하고 x와 yaw를
-     함께 보정한다.
+     뒤 현재 바라보는 벽의 ToF로 벽 각도를 0도 근처로 정렬하고 x만 보정한다.
 
 7. **pose와 GUI 갱신**
-   - ToF 보정 완료 시 원시 측정값이 아니라 설정된 목표 좌표와 벽 방향을
-     `/robot_pose/correct_x`, `/robot_pose/correct_y`,
+   - 동·서쪽 벽 보정 완료 시 `/robot_pose/correct_x`만 발행한다.
+   - 남쪽 주도로 보정 완료 시 `/robot_pose/correct_y`와 yaw `-90도`를
      `/robot_pose/correct_yaw`로 발행한다.
    - Pose tracker는 해당 위치 축과 yaw 기준값만 바꾸고 누적 이동량을 유지한다.
    - GUI의 `mission.waypoint`는 노란색 `W` 목표 마커이고, 로봇 마커는

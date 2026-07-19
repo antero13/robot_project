@@ -78,6 +78,9 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.mission.set_phase(MissionPhase.REJOIN_STORAGE_LANE, 19.0)
         self.assertTrue(self.mission.is_storage_phase())
 
+        self.mission.set_phase(MissionPhase.CORRECT_MAIN_ROAD_SOUTH, 19.5)
+        self.assertTrue(self.mission.is_storage_phase())
+
         self.mission.set_phase(MissionPhase.CORRECT_STORAGE_X, 20.0)
         self.assertTrue(self.mission.is_storage_phase())
 

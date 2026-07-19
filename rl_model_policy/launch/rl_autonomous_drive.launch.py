@@ -128,6 +128,31 @@ def generate_launch_description():
     lane_tof_wall_angle_tolerance_rad = LaunchConfiguration(
         "lane_tof_wall_angle_tolerance_rad"
     )
+    main_road_tof_correction_enabled = LaunchConfiguration(
+        "main_road_tof_correction_enabled"
+    )
+    main_road_tof_south_wall_y_m = LaunchConfiguration(
+        "main_road_tof_south_wall_y_m"
+    )
+    main_road_tof_sensor_forward_offset_m = LaunchConfiguration(
+        "main_road_tof_sensor_forward_offset_m"
+    )
+    main_road_tof_measurement_timeout_s = LaunchConfiguration(
+        "main_road_tof_measurement_timeout_s"
+    )
+    main_road_tof_y_tolerance_m = LaunchConfiguration(
+        "main_road_tof_y_tolerance_m"
+    )
+    main_road_tof_min_speed = LaunchConfiguration("main_road_tof_min_speed")
+    main_road_tof_slowdown_distance_m = LaunchConfiguration(
+        "main_road_tof_slowdown_distance_m"
+    )
+    main_road_tof_angle_trigger_rad = LaunchConfiguration(
+        "main_road_tof_angle_trigger_rad"
+    )
+    main_road_tof_angle_release_rad = LaunchConfiguration(
+        "main_road_tof_angle_release_rad"
+    )
     initial_x = LaunchConfiguration("initial_x")
     initial_y = LaunchConfiguration("initial_y")
     initial_yaw_deg = LaunchConfiguration("initial_yaw_deg")
@@ -365,6 +390,27 @@ def generate_launch_description():
             "lane_tof_slowdown_distance_m": lane_tof_slowdown_distance_m,
             "lane_tof_wall_angle_tolerance_rad": (
                 lane_tof_wall_angle_tolerance_rad
+            ),
+            "main_road_tof_correction_enabled": (
+                main_road_tof_correction_enabled
+            ),
+            "main_road_tof_south_wall_y_m": main_road_tof_south_wall_y_m,
+            "main_road_tof_sensor_forward_offset_m": (
+                main_road_tof_sensor_forward_offset_m
+            ),
+            "main_road_tof_measurement_timeout_s": (
+                main_road_tof_measurement_timeout_s
+            ),
+            "main_road_tof_y_tolerance_m": main_road_tof_y_tolerance_m,
+            "main_road_tof_min_speed": main_road_tof_min_speed,
+            "main_road_tof_slowdown_distance_m": (
+                main_road_tof_slowdown_distance_m
+            ),
+            "main_road_tof_angle_trigger_rad": (
+                main_road_tof_angle_trigger_rad
+            ),
+            "main_road_tof_angle_release_rad": (
+                main_road_tof_angle_release_rad
             ),
             "gripper_enabled": gripper_enabled,
             "gripper_type": gripper_type,
@@ -754,7 +800,45 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "lane_tof_wall_angle_tolerance_rad",
             default_value="0.05",
-            description="Maximum ToF wall angle before x/yaw landmark correction.",
+            description="Maximum east/west wall angle before x correction.",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_correction_enabled",
+            default_value="true",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_south_wall_y_m",
+            default_value="-2.0",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_sensor_forward_offset_m",
+            default_value="0.09",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_measurement_timeout_s",
+            default_value="0.25",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_y_tolerance_m",
+            default_value="0.03",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_min_speed",
+            default_value="0.05",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_slowdown_distance_m",
+            default_value="0.20",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_angle_trigger_rad",
+            default_value="0.1745329252",
+            description="Start south-wall angle correction at 10 degrees.",
+        ),
+        DeclareLaunchArgument(
+            "main_road_tof_angle_release_rad",
+            default_value="0.0872664626",
+            description="Finish south-wall angle correction at 5 degrees.",
         ),
         DeclareLaunchArgument("leave_start_enabled", default_value="true"),
         DeclareLaunchArgument("leave_start_distance_m", default_value="0.55"),

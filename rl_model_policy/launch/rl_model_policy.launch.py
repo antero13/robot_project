@@ -90,6 +90,31 @@ def generate_launch_description():
     lane_tof_wall_angle_tolerance_rad = LaunchConfiguration(
         'lane_tof_wall_angle_tolerance_rad'
     )
+    main_road_tof_correction_enabled = LaunchConfiguration(
+        'main_road_tof_correction_enabled'
+    )
+    main_road_tof_south_wall_y_m = LaunchConfiguration(
+        'main_road_tof_south_wall_y_m'
+    )
+    main_road_tof_sensor_forward_offset_m = LaunchConfiguration(
+        'main_road_tof_sensor_forward_offset_m'
+    )
+    main_road_tof_measurement_timeout_s = LaunchConfiguration(
+        'main_road_tof_measurement_timeout_s'
+    )
+    main_road_tof_y_tolerance_m = LaunchConfiguration(
+        'main_road_tof_y_tolerance_m'
+    )
+    main_road_tof_min_speed = LaunchConfiguration('main_road_tof_min_speed')
+    main_road_tof_slowdown_distance_m = LaunchConfiguration(
+        'main_road_tof_slowdown_distance_m'
+    )
+    main_road_tof_angle_trigger_rad = LaunchConfiguration(
+        'main_road_tof_angle_trigger_rad'
+    )
+    main_road_tof_angle_release_rad = LaunchConfiguration(
+        'main_road_tof_angle_release_rad'
+    )
     gripper_enabled = LaunchConfiguration('gripper_enabled')
     gripper_type = LaunchConfiguration('gripper_type')
     gripper_servo_id = LaunchConfiguration('gripper_servo_id')
@@ -308,6 +333,30 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'lane_tof_wall_angle_tolerance_rad',
             default_value='0.05',
+        ),
+        DeclareLaunchArgument('main_road_tof_correction_enabled', default_value='true'),
+        DeclareLaunchArgument('main_road_tof_south_wall_y_m', default_value='-2.0'),
+        DeclareLaunchArgument(
+            'main_road_tof_sensor_forward_offset_m',
+            default_value='0.09',
+        ),
+        DeclareLaunchArgument(
+            'main_road_tof_measurement_timeout_s',
+            default_value='0.25',
+        ),
+        DeclareLaunchArgument('main_road_tof_y_tolerance_m', default_value='0.03'),
+        DeclareLaunchArgument('main_road_tof_min_speed', default_value='0.05'),
+        DeclareLaunchArgument(
+            'main_road_tof_slowdown_distance_m',
+            default_value='0.20',
+        ),
+        DeclareLaunchArgument(
+            'main_road_tof_angle_trigger_rad',
+            default_value='0.1745329252',
+        ),
+        DeclareLaunchArgument(
+            'main_road_tof_angle_release_rad',
+            default_value='0.0872664626',
         ),
         DeclareLaunchArgument('leave_start_enabled', default_value='true'),
         DeclareLaunchArgument('leave_start_distance_m', default_value='0.55'),
@@ -590,6 +639,42 @@ def generate_launch_description():
                 ),
                 'lane_tof_wall_angle_tolerance_rad': ParameterValue(
                     lane_tof_wall_angle_tolerance_rad,
+                    value_type=float,
+                ),
+                'main_road_tof_correction_enabled': ParameterValue(
+                    main_road_tof_correction_enabled,
+                    value_type=bool,
+                ),
+                'main_road_tof_south_wall_y_m': ParameterValue(
+                    main_road_tof_south_wall_y_m,
+                    value_type=float,
+                ),
+                'main_road_tof_sensor_forward_offset_m': ParameterValue(
+                    main_road_tof_sensor_forward_offset_m,
+                    value_type=float,
+                ),
+                'main_road_tof_measurement_timeout_s': ParameterValue(
+                    main_road_tof_measurement_timeout_s,
+                    value_type=float,
+                ),
+                'main_road_tof_y_tolerance_m': ParameterValue(
+                    main_road_tof_y_tolerance_m,
+                    value_type=float,
+                ),
+                'main_road_tof_min_speed': ParameterValue(
+                    main_road_tof_min_speed,
+                    value_type=float,
+                ),
+                'main_road_tof_slowdown_distance_m': ParameterValue(
+                    main_road_tof_slowdown_distance_m,
+                    value_type=float,
+                ),
+                'main_road_tof_angle_trigger_rad': ParameterValue(
+                    main_road_tof_angle_trigger_rad,
+                    value_type=float,
+                ),
+                'main_road_tof_angle_release_rad': ParameterValue(
+                    main_road_tof_angle_release_rad,
                     value_type=float,
                 ),
                 'avoid_area_ratio': 0.42,
