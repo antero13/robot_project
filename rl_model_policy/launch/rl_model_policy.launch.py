@@ -179,6 +179,12 @@ def generate_launch_description():
     storage_tof_wall_angle_tolerance_rad = LaunchConfiguration(
         'storage_tof_wall_angle_tolerance_rad'
     )
+    storage_exit_tof_angle_trigger_rad = LaunchConfiguration(
+        'storage_exit_tof_angle_trigger_rad'
+    )
+    storage_exit_tof_angle_release_rad = LaunchConfiguration(
+        'storage_exit_tof_angle_release_rad'
+    )
 
     return LaunchDescription(
         [
@@ -383,9 +389,9 @@ def generate_launch_description():
         DeclareLaunchArgument('storage_return_speed', default_value='0.25'),
             DeclareLaunchArgument('storage_entry_speed', default_value='0.30'),
             DeclareLaunchArgument('storage_x_entry_speed', default_value='0.40'),
-            DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.25'),
-        DeclareLaunchArgument('storage_entry_dash_duration_s', default_value='1.75'),
-        DeclareLaunchArgument('storage_exit_dash_duration_s', default_value='2.60'),
+            DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.40'),
+        DeclareLaunchArgument('storage_entry_dash_duration_s', default_value='2.50'),
+        DeclareLaunchArgument('storage_exit_dash_duration_s', default_value='1.50'),
         DeclareLaunchArgument(
             'storage_contact_settle_duration_s',
             default_value='0.20',
@@ -423,6 +429,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'storage_tof_wall_angle_tolerance_rad',
             default_value='0.05',
+        ),
+        DeclareLaunchArgument(
+            'storage_exit_tof_angle_trigger_rad',
+            default_value='0.1745329252',
+        ),
+        DeclareLaunchArgument(
+            'storage_exit_tof_angle_release_rad',
+            default_value='0.0872664626',
         ),
         DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),
@@ -831,6 +845,14 @@ def generate_launch_description():
                         ),
                         'storage_tof_wall_angle_tolerance_rad': ParameterValue(
                             storage_tof_wall_angle_tolerance_rad,
+                            value_type=float,
+                        ),
+                        'storage_exit_tof_angle_trigger_rad': ParameterValue(
+                            storage_exit_tof_angle_trigger_rad,
+                            value_type=float,
+                        ),
+                        'storage_exit_tof_angle_release_rad': ParameterValue(
+                            storage_exit_tof_angle_release_rad,
                             value_type=float,
                         ),
                         'gripper_enabled': ParameterValue(

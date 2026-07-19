@@ -228,6 +228,12 @@ def generate_launch_description():
     storage_tof_wall_angle_tolerance_rad = LaunchConfiguration(
         "storage_tof_wall_angle_tolerance_rad"
     )
+    storage_exit_tof_angle_trigger_rad = LaunchConfiguration(
+        "storage_exit_tof_angle_trigger_rad"
+    )
+    storage_exit_tof_angle_release_rad = LaunchConfiguration(
+        "storage_exit_tof_angle_release_rad"
+    )
 
     controller_launch = IncludeLaunchDescription(
         PathJoinSubstitution(
@@ -464,6 +470,12 @@ def generate_launch_description():
             "storage_tof_slowdown_distance_m": (storage_tof_slowdown_distance_m),
             "storage_tof_wall_angle_tolerance_rad": (
                 storage_tof_wall_angle_tolerance_rad
+            ),
+            "storage_exit_tof_angle_trigger_rad": (
+                storage_exit_tof_angle_trigger_rad
+            ),
+            "storage_exit_tof_angle_release_rad": (
+                storage_exit_tof_angle_release_rad
             ),
         }.items(),
     )
@@ -882,10 +894,10 @@ def generate_launch_description():
             DeclareLaunchArgument("storage_x_entry_speed", default_value="0.40"),
         DeclareLaunchArgument(
             "storage_exit_reverse_speed",
-                default_value="0.25",
+            default_value="0.40",
         ),
-        DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="1.75"),
-        DeclareLaunchArgument("storage_exit_dash_duration_s", default_value="2.60"),
+        DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="2.50"),
+        DeclareLaunchArgument("storage_exit_dash_duration_s", default_value="1.50"),
         DeclareLaunchArgument(
             "storage_contact_settle_duration_s",
             default_value="0.20",
@@ -928,6 +940,16 @@ def generate_launch_description():
             "storage_tof_wall_angle_tolerance_rad",
             default_value="0.05",
             description="Maximum ToF wall angle before storage pose correction.",
+        ),
+        DeclareLaunchArgument(
+            "storage_exit_tof_angle_trigger_rad",
+            default_value="0.1745329252",
+            description="Start storage-exit west-wall alignment at 10 degrees.",
+        ),
+        DeclareLaunchArgument(
+            "storage_exit_tof_angle_release_rad",
+            default_value="0.0872664626",
+            description="Finish storage-exit west-wall alignment at 5 degrees.",
         ),
         DeclareLaunchArgument("gripper_enabled", default_value="true"),
         DeclareLaunchArgument("gripper_type", default_value="bus"),

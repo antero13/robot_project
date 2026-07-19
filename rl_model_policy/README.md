@@ -480,17 +480,18 @@ COLLECTING
 4. **서보 개방과 보관소 진입**
    - 입구 x 보정이 끝난 뒤 서보를 열고 기본 0.5초 기다린다.
    - 입구 `(-1.25, -1.3343) m`에서 보관소 중심 `(-1.75, -1.75) m`까지
-     향하는 고정 yaw로 먼저 정렬한 뒤 `0.40 m/s`로 1.75초 연속 진입한다.
+     향하는 고정 yaw로 먼저 정렬한 뒤 `0.40 m/s`로 2.50초 연속 진입한다.
      이 구간에서는 pose x/y로 방향을 다시 계산하거나 ToF로 중단하지 않는다.
    - 진입 정지 후 0.20초 안정화하고 pose를 `storage_center_x/y`로 보정한다.
 
 5. **같은 경로 후진과 출구 x 재보정**
    - pose 보정 반영을 확인한 뒤 서보를 연 상태로 같은 IMU yaw를 유지하며
-     기본 2.60초 후진한다.
+     `-0.40 m/s`로 기본 1.50초 후진한다.
    - 입구에 도착하면 서보를 닫고 기본 0.5초 기다린 뒤 서쪽을 바라본다.
-   - 서쪽 벽 ToF 각도를 0도 근처로 정렬하고 `x=-1.25 m`를 다시 보정한다.
-     이 단계에서는 yaw를 바꾸지 않는다. 신선한 ToF 값이 연속 1초 동안
-     없으면 x를 `-1.25 m`로 간주하는 fallback을 사용한다.
+   - 서쪽 벽 ToF 거리로 `x=-1.25 m`를 먼저 보정한다. 거리 완료 후 벽 각도가
+     10도 이상이면 정렬을 시작하고 5도 이하에서 멈춘 뒤 yaw를 180도로
+     재설정한다. 신선한 ToF 값이 연속 1초 동안 없으면 x를 `-1.25 m`로
+     간주하되 yaw는 변경하지 않는 fallback을 사용한다.
 
 6. **역순 탐색 재개**
    - 이미 주도로에 있으므로 북쪽으로 회전한 뒤 바로 역순 탐색을 시작한다.
@@ -520,9 +521,9 @@ COLLECTING
 주도로 y:          -1.3343 m
 보관소 입구:       (-1.25, -1.3343) m
 보관소 중심:       (-1.75, -1.75) m
-입구 ToF yaw:      180도(서쪽)
-고속 진입:         입구 -> 보관소 중심, 0.40 m/s
-후진:              보관소 중심 -> 입구
+출구 ToF yaw:      180도(서쪽)
+고속 진입:         입구 -> 보관소 중심, 0.40 m/s, 2.50초
+후진:              보관소 중심 -> 입구, -0.40 m/s, 1.50초
 역순 탐색 yaw:     90도(북쪽)
 ```
 
@@ -535,13 +536,15 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_center_x:=-1.75 storage_center_y:=-1.75 \
   storage_exit_x:=-1.25 \
   storage_x_entry_speed:=0.40 \
-  storage_entry_dash_duration_s:=1.75 \
-  storage_exit_reverse_speed:=0.25 \
-  storage_exit_dash_duration_s:=2.60 \
+  storage_entry_dash_duration_s:=2.50 \
+  storage_exit_reverse_speed:=0.40 \
+  storage_exit_dash_duration_s:=1.50 \
   storage_contact_settle_duration_s:=0.20 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_sensor_forward_offset_m:=0.09 \
-  storage_exit_tof_fallback_timeout_s:=1.0
+  storage_exit_tof_fallback_timeout_s:=1.0 \
+  storage_exit_tof_angle_trigger_rad:=0.1745329252 \
+  storage_exit_tof_angle_release_rad:=0.0872664626
 ```
 
 보관소 진입 방향은 입구 `(-1.25, -1.3343)`에서 접촉 기준점
@@ -552,6 +555,10 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 발행하며, 보정 반영을 확인한 다음 같은 yaw로
 `storage_exit_dash_duration_s` 동안 후진한다. 실제 로봇 속도에 따라 두 시간은
 현장에서 조정한다.
+
+후진과 서보 닫기가 끝나면 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
+각도가 10도 이상일 때만 회전을 시작하고, 시작된 회전은 5도 이하까지 계속한
+다음 pose yaw를 180도로 재설정한다.
 
 `storage_tof_correction_enabled:=false`를 사용하면 진입 전·후의 입구 x ToF
 보정만 생략한다. 고정 yaw 시간 기반 진입·후진과 보관소 접촉 pose x/y 보정은

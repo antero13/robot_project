@@ -49,6 +49,9 @@ from rl_model_policy.storage_tof_correction import (
     make_storage_tof_command,
     measurement_gap_timed_out,
 )
+from rl_model_policy.storage_exit_tof_correction import (
+    make_storage_exit_tof_command,
+)
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
 from rl_model_policy.target_activation import target_is_eligible
@@ -249,9 +252,9 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_return_speed", 0.25)
         self.declare_parameter("storage_entry_speed", 0.30)
         self.declare_parameter("storage_x_entry_speed", 0.40)
-        self.declare_parameter("storage_exit_reverse_speed", 0.25)
-        self.declare_parameter("storage_entry_dash_duration_s", 1.75)
-        self.declare_parameter("storage_exit_dash_duration_s", 2.60)
+        self.declare_parameter("storage_exit_reverse_speed", 0.40)
+        self.declare_parameter("storage_entry_dash_duration_s", 2.50)
+        self.declare_parameter("storage_exit_dash_duration_s", 1.50)
         self.declare_parameter("storage_contact_settle_duration_s", 0.20)
         self.declare_parameter("storage_dash_heading_tolerance", 0.05)
         self.declare_parameter("storage_dash_max_angular_speed", 0.30)
@@ -272,6 +275,12 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_tof_min_speed", 0.05)
         self.declare_parameter("storage_tof_slowdown_distance_m", 0.20)
         self.declare_parameter("storage_tof_wall_angle_tolerance_rad", 0.05)
+        self.declare_parameter(
+            "storage_exit_tof_angle_trigger_rad", math.radians(10.0)
+        )
+        self.declare_parameter(
+            "storage_exit_tof_angle_release_rad", math.radians(5.0)
+        )
 
         self.declare_parameter("gripper_enabled", True)
         self.declare_parameter("gripper_type", "bus")
@@ -358,6 +367,7 @@ class RLModelPolicyNode(Node):
         self.pending_pose_yaw_correction = None
         self.pending_pose_yaw_correction_time = None
         self.storage_exit_tof_missing_started_at = None
+        self.storage_exit_tof_angle_alignment_active = False
         self.storage_dash_timer_phase = None
         self.storage_dash_elapsed_s = 0.0
         self.storage_dash_last_update_s = None
@@ -694,6 +704,7 @@ class RLModelPolicyNode(Node):
             self.pending_pose_yaw_correction = None
             self.pending_pose_yaw_correction_time = None
             self.reset_main_road_tof_alignment()
+            self.storage_exit_tof_angle_alignment_active = False
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
@@ -743,6 +754,7 @@ class RLModelPolicyNode(Node):
             self.pending_pose_yaw_correction = None
             self.pending_pose_yaw_correction_time = None
             self.reset_main_road_tof_alignment()
+            self.storage_exit_tof_angle_alignment_active = False
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
@@ -938,6 +950,7 @@ class RLModelPolicyNode(Node):
         self.pending_pose_yaw_correction = None
         self.pending_pose_yaw_correction_time = None
         self.reset_main_road_tof_alignment()
+        self.storage_exit_tof_angle_alignment_active = False
         return_min_x = min(
             self.get_float("coverage_min_x"),
             self.get_float("storage_staging_x"),
@@ -1355,6 +1368,7 @@ class RLModelPolicyNode(Node):
                 return (0.0, 0.0)
             if bool(self.get_parameter("storage_tof_correction_enabled").value):
                 self.storage_exit_tof_missing_started_at = None
+                self.storage_exit_tof_angle_alignment_active = False
                 self.mission.set_phase(MissionPhase.CORRECT_STORAGE_EXIT_X, now_s)
             else:
                 self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
@@ -1461,29 +1475,34 @@ class RLModelPolicyNode(Node):
 
     def storage_exit_tof_command(self, now_s):
         target_coordinate = self.get_float("storage_exit_x")
-        command = make_storage_tof_command(
-            axis="x",
+        command = make_storage_exit_tof_command(
             distance_m=self.latest_wall_distance_m,
+            wall_angle_rad=self.latest_wall_angle_rad,
             measurement_age_s=self.wall_measurement_age_s(),
-            robot_yaw=self.robot_yaw,
-            target_coordinate=target_coordinate,
-            wall_coordinate_m=self.get_float("storage_tof_left_wall_x_m"),
+            target_x=target_coordinate,
+            west_wall_x_m=self.get_float("storage_tof_left_wall_x_m"),
             sensor_forward_offset_m=self.get_float(
                 "storage_tof_sensor_forward_offset_m"
             ),
-            transit_speed=self.get_float("storage_exit_reverse_speed"),
+            transit_speed=self.get_float("storage_return_speed"),
             minimum_speed=self.get_float("storage_tof_min_speed"),
             slowdown_distance_m=self.get_float("storage_tof_slowdown_distance_m"),
-            coordinate_tolerance_m=self.get_float("storage_tof_xy_tolerance_m"),
+            x_tolerance_m=self.get_float("storage_tof_xy_tolerance_m"),
             measurement_timeout_s=self.get_float("storage_tof_measurement_timeout_s"),
-            heading_gain=self.get_float("storage_heading_gain"),
-            max_angular_speed=self.get_float("storage_max_angular_speed"),
-            heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
-            advance_without_measurement=False,
-            wall_angle_rad=self.latest_wall_angle_rad,
-            wall_angle_tolerance_rad=self.get_float(
-                "storage_tof_wall_angle_tolerance_rad"
+            angle_alignment_active=(
+                self.storage_exit_tof_angle_alignment_active
             ),
+            angle_trigger_rad=self.get_float(
+                "storage_exit_tof_angle_trigger_rad"
+            ),
+            angle_release_rad=self.get_float(
+                "storage_exit_tof_angle_release_rad"
+            ),
+            angle_gain=self.get_float("storage_heading_gain"),
+            max_angular_speed=self.get_float("storage_max_angular_speed"),
+        )
+        self.storage_exit_tof_angle_alignment_active = (
+            command.angle_alignment_active
         )
         self.mission_waypoint = (
             target_coordinate,
@@ -1511,7 +1530,7 @@ class RLModelPolicyNode(Node):
         return self.complete_storage_exit_tof(
             now_s,
             target_coordinate,
-            measured_coordinate=command.measured_coordinate,
+            measured_coordinate=command.measured_robot_x,
         )
 
     def complete_storage_exit_tof(
@@ -1530,16 +1549,18 @@ class RLModelPolicyNode(Node):
         if measured_coordinate is None:
             self.get_logger().warning(
                 "No valid storage-exit ToF for the fallback timeout; "
-                f"assuming pose_x={correction.data:.3f}"
+                f"assuming pose_x={correction.data:.3f} without changing yaw"
             )
         else:
+            self.publish_pose_yaw_correction(math.pi)
             self.get_logger().info(
-                "Storage exit ToF x alignment complete: "
+                "Storage exit west-wall correction complete: "
                 f"measured_x={measured_coordinate:.3f}, "
                 f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
-                f"pose_x->{correction.data:.3f}"
+                f"pose_x->{correction.data:.3f}, pose_yaw->180.0 deg"
             )
         self.storage_exit_tof_missing_started_at = None
+        self.storage_exit_tof_angle_alignment_active = False
         self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
         self.mission_waypoint = (
             self.get_float("storage_exit_x"),
@@ -1709,6 +1730,7 @@ class RLModelPolicyNode(Node):
         self.coverage_controller = self.create_coverage_controller(reverse_order=True)
         self.lane_tof_alignment_active = False
         self.reset_main_road_tof_alignment()
+        self.storage_exit_tof_angle_alignment_active = False
         self.coverage_command = None
         self.latest_target = None
         self.latest_target_time = None
@@ -2632,6 +2654,9 @@ class RLModelPolicyNode(Node):
                 "storage_tof": {
                     "enabled": bool(
                         self.get_parameter("storage_tof_correction_enabled").value
+                    ),
+                    "exit_angle_alignment_active": (
+                        self.storage_exit_tof_angle_alignment_active
                     ),
                     "active_axis": (
                         "x"
