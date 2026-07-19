@@ -111,10 +111,10 @@ class LaneTofCorrectionTest(unittest.TestCase):
         self.assertGreater(command.angular_z, 0.0)
         self.assertFalse(command.reached)
 
-    def test_fresh_wall_angle_overrides_drifted_pose_yaw(self):
+    def test_fresh_wall_angle_does_not_override_coarse_odometry_alignment(self):
         command = make_command(robot_yaw=math.pi / 2.0, wall_angle_rad=0.10)
 
-        self.assertEqual(command.phase, "ALIGN_LANE_WALL_ANGLE")
+        self.assertEqual(command.phase, "ALIGN_TOF_NEXT_LANE")
         self.assertGreater(command.angular_z, 0.0)
 
     def test_drives_left_until_next_lane_is_reached(self):

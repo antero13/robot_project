@@ -120,13 +120,9 @@ def make_lane_tof_command(
             or math.isfinite(float(wall_angle_rad))
         )
     )
-    wall_angle_is_authoritative = (
-        measurement_is_fresh and wall_angle_rad is not None
-    )
-    if (
-        not wall_angle_is_authoritative
-        and abs(heading_error) > float(heading_tolerance)
-    ):
+    # Odometry provides the coarse cardinal heading.  A two-sensor wall angle
+    # is meaningful only after both sensors are looking at the same wall.
+    if abs(heading_error) > float(heading_tolerance):
         return LaneTofCommand(
             linear_x=0.0,
             angular_z=angular_z,

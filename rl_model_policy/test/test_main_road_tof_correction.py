@@ -12,6 +12,7 @@ def make_command(**overrides):
         "distance_m": 0.5757,
         "wall_angle_rad": 0.0,
         "measurement_age_s": 0.02,
+        "robot_yaw": -math.pi / 2.0,
         "target_y": -1.3343,
         "south_wall_y_m": -2.0,
         "sensor_forward_offset_m": 0.09,
@@ -25,12 +26,20 @@ def make_command(**overrides):
         "angle_release_rad": math.radians(5.0),
         "angle_gain": 2.4,
         "max_angular_speed": 1.0,
+        "heading_tolerance": 0.08,
     }
     values.update(overrides)
     return make_main_road_tof_command(**values)
 
 
 class MainRoadTofCorrectionTest(unittest.TestCase):
+    def test_coarse_odometry_heading_precedes_tof(self):
+        command = make_command(robot_yaw=0.0)
+
+        self.assertEqual(command.phase, "ALIGN_MAIN_ROAD_SOUTH_ODOMETRY")
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertLess(command.angular_z, 0.0)
+
     def test_converts_south_wall_range_to_robot_center_y(self):
         self.assertAlmostEqual(
             robot_y_from_south_wall_distance(0.5757, -2.0, 0.09),

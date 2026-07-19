@@ -88,10 +88,10 @@ class StorageTofCorrectionTest(unittest.TestCase):
         self.assertLess(command.angular_z, 0.0)
         self.assertFalse(command.reached)
 
-    def test_fresh_wall_angle_overrides_drifted_pose_yaw(self):
+    def test_fresh_wall_angle_does_not_override_coarse_odometry_alignment(self):
         command = make_command(robot_yaw=-math.pi / 2.0, wall_angle_rad=-0.10)
 
-        self.assertEqual(command.phase, "ALIGN_STORAGE_WALL_ANGLE_X")
+        self.assertEqual(command.phase, "ALIGN_STORAGE_TOF_X")
         self.assertLess(command.angular_z, 0.0)
 
     def test_x_entry_advances_until_tof_becomes_available(self):

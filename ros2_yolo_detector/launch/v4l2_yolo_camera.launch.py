@@ -49,6 +49,7 @@ def generate_launch_description():
                     [FindPackageShare("ros2_yolo_detector"), "models", "best.pt"]
                 ),
             ),
+            DeclareLaunchArgument("secondary_model_path", default_value=""),
             DeclareLaunchArgument(
                 "video_device",
                 default_value="/dev/v4l/by-path/platform-3610000.usb-usb-0:2.1:1.0-video-index0",
@@ -69,6 +70,9 @@ def generate_launch_description():
             DeclareLaunchArgument("agnostic_nms", default_value="true"),
             DeclareLaunchArgument("device", default_value=""),
             DeclareLaunchArgument("imgsz", default_value="800"),
+            DeclareLaunchArgument("secondary_confidence", default_value="0.25"),
+            DeclareLaunchArgument("secondary_imgsz", default_value="640"),
+            DeclareLaunchArgument("min_bbox_area_ratio", default_value="0.02"),
             DeclareLaunchArgument("correction_enabled", default_value="true"),
             DeclareLaunchArgument("correction_gamma", default_value="0.65"),
             DeclareLaunchArgument("correction_clahe_clip_limit", default_value="1.2"),
@@ -96,6 +100,10 @@ def generate_launch_description():
             DeclareLaunchArgument("avoid_classes", default_value=""),
             DeclareLaunchArgument("target_center_weight", default_value="0.25"),
             DeclareLaunchArgument("avoid_target_iou_threshold", default_value="0.35"),
+            DeclareLaunchArgument("target_lock_enabled", default_value="true"),
+            DeclareLaunchArgument("target_lock_timeout_s", default_value="0.80"),
+            DeclareLaunchArgument("target_lock_iou_threshold", default_value="0.10"),
+            DeclareLaunchArgument("target_lock_center_distance", default_value="0.20"),
             DeclareLaunchArgument("publish_target", default_value="true"),
             OpaqueFunction(function=launch_camera),
             Node(
@@ -106,6 +114,7 @@ def generate_launch_description():
                 parameters=[
                     {
                         "model_path": LaunchConfiguration("model_path"),
+                        "secondary_model_path": LaunchConfiguration("secondary_model_path"),
                         "input_mode": "topic",
                         "image_topic": LaunchConfiguration("image_topic"),
                         "confidence": ParameterValue(LaunchConfiguration("confidence"), value_type=float),
@@ -116,6 +125,9 @@ def generate_launch_description():
                         ),
                         "device": LaunchConfiguration("device"),
                         "imgsz": ParameterValue(LaunchConfiguration("imgsz"), value_type=int),
+                        "secondary_confidence": ParameterValue(LaunchConfiguration("secondary_confidence"), value_type=float),
+                        "secondary_imgsz": ParameterValue(LaunchConfiguration("secondary_imgsz"), value_type=int),
+                        "min_bbox_area_ratio": ParameterValue(LaunchConfiguration("min_bbox_area_ratio"), value_type=float),
                         "correction_enabled": ParameterValue(
                             LaunchConfiguration("correction_enabled"), value_type=bool
                         ),
@@ -183,6 +195,10 @@ def generate_launch_description():
                             LaunchConfiguration("avoid_target_iou_threshold"),
                             value_type=float,
                         ),
+                        "target_lock_enabled": ParameterValue(LaunchConfiguration("target_lock_enabled"), value_type=bool),
+                        "target_lock_timeout_s": ParameterValue(LaunchConfiguration("target_lock_timeout_s"), value_type=float),
+                        "target_lock_iou_threshold": ParameterValue(LaunchConfiguration("target_lock_iou_threshold"), value_type=float),
+                        "target_lock_center_distance": ParameterValue(LaunchConfiguration("target_lock_center_distance"), value_type=float),
                         "min_confidence": ParameterValue(LaunchConfiguration("confidence"), value_type=float),
                         "image_width": ParameterValue(LaunchConfiguration("image_width"), value_type=float),
                         "image_height": ParameterValue(LaunchConfiguration("image_height"), value_type=float),

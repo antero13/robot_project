@@ -148,6 +148,10 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("target_activation_center_y_min", 0.30)
         self.declare_parameter("target_tracking_center_y_min", 0.22)
         self.declare_parameter("target_bearing_prediction_enabled", True)
+        self.declare_parameter("near_target_loss_enabled", True)
+        self.declare_parameter("near_target_loss_margin", 0.10)
+        self.declare_parameter("near_target_loss_timeout_s", 0.60)
+        self.declare_parameter("near_target_loss_min_missing_s", 0.15)
         self.declare_parameter("avoid_timeout_s", 0.25)
         self.declare_parameter("episode_length_s", 18.0)
         self.declare_parameter("pose_timeout_s", 0.5)
@@ -200,6 +204,14 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("lane_tof_min_speed", 0.08)
         self.declare_parameter("lane_tof_slowdown_distance_m", 0.20)
         self.declare_parameter("lane_tof_wall_angle_tolerance_rad", 0.05)
+        self.declare_parameter("tof_wall_angle_sign", -1.0)
+        self.declare_parameter("tof_validation_samples", 3)
+        self.declare_parameter(
+            "tof_max_valid_wall_angle_rad", math.radians(25.0)
+        )
+        self.declare_parameter("tof_max_angle_spread_rad", math.radians(8.0))
+        self.declare_parameter("tof_max_distance_spread_m", 0.12)
+        self.declare_parameter("tof_alignment_watchdog_s", 4.0)
         self.declare_parameter("main_road_tof_correction_enabled", True)
         self.declare_parameter("main_road_tof_south_wall_y_m", -2.0)
         self.declare_parameter("main_road_tof_sensor_forward_offset_m", 0.09)
@@ -304,6 +316,12 @@ class RLModelPolicyNode(Node):
         self.latest_target_label_time = None
         self.latest_target_center_y = None
         self.latest_target_center_y_time = None
+        self.latest_target_visible = False
+        self.latest_target_visibility_time = None
+        self.near_target_candidate = None
+        self.near_target_candidate_time = None
+        self.near_target_candidate_label = None
+        self.near_target_missing_started_at = None
         self.target_confirmation_window = int(
             self.get_parameter("target_confirmation_window").value
         )
@@ -360,6 +378,7 @@ class RLModelPolicyNode(Node):
         self.latest_wall_angle_rad = None
         self.latest_wall_min_distance_m = None
         self.latest_wall_measurement_time = None
+        self.wall_measurement_history = deque(maxlen=10)
         self.pending_pose_x_correction = None
         self.pending_pose_x_correction_time = None
         self.pending_pose_y_correction = None
@@ -368,6 +387,8 @@ class RLModelPolicyNode(Node):
         self.pending_pose_yaw_correction_time = None
         self.storage_exit_tof_missing_started_at = None
         self.storage_exit_tof_angle_alignment_active = False
+        self.lane_tof_started_at_s = None
+        self.main_road_tof_started_at_s = None
         self.storage_dash_timer_phase = None
         self.storage_dash_elapsed_s = 0.0
         self.storage_dash_last_update_s = None
@@ -621,6 +642,13 @@ class RLModelPolicyNode(Node):
 
     def target_visibility_callback(self, msg):
         visible = bool(msg.data)
+        was_visible = self.latest_target_visible
+        self.latest_target_visible = visible
+        self.latest_target_visibility_time = self.get_clock().now()
+        if visible:
+            self.near_target_missing_started_at = None
+        elif was_visible or self.near_target_missing_started_at is None:
+            self.near_target_missing_started_at = self.get_clock().now()
         self.target_visibility_history.append(visible)
 
     def target_center_y_callback(self, msg):
@@ -635,10 +663,21 @@ class RLModelPolicyNode(Node):
         )
         if not all(math.isfinite(value) for value in values):
             return
+        angle_sign = self.get_float("tof_wall_angle_sign")
+        if abs(abs(angle_sign) - 1.0) > 1e-6:
+            self.get_logger().warning(
+                "tof_wall_angle_sign must be -1 or 1; ignoring wall measurement"
+            )
+            return
+        corrected_angle = angle_sign * values[1]
+        now = self.get_clock().now()
         self.latest_wall_distance_m = values[0]
-        self.latest_wall_angle_rad = values[1]
+        self.latest_wall_angle_rad = corrected_angle
         self.latest_wall_min_distance_m = values[2]
-        self.latest_wall_measurement_time = self.get_clock().now()
+        self.latest_wall_measurement_time = now
+        self.wall_measurement_history.append(
+            (self.now_s(), values[0], corrected_angle)
+        )
 
     def odometry_callback(self, msg):
         position = msg.pose.pose.position
@@ -704,11 +743,13 @@ class RLModelPolicyNode(Node):
             self.pending_pose_yaw_correction = None
             self.pending_pose_yaw_correction_time = None
             self.reset_main_road_tof_alignment()
+            self.reset_lane_tof_alignment()
             self.storage_exit_tof_angle_alignment_active = False
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
+            self.clear_near_target_candidate()
             self.reset_target_alignment_pd()
             self.motion_paused = False
             self.change_grab_state(self.GRAB_TRACKING)
@@ -754,10 +795,12 @@ class RLModelPolicyNode(Node):
             self.pending_pose_yaw_correction = None
             self.pending_pose_yaw_correction_time = None
             self.reset_main_road_tof_alignment()
+            self.reset_lane_tof_alignment()
             self.storage_exit_tof_angle_alignment_active = False
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
+            self.clear_near_target_candidate()
             self.motion_paused = False
             self.pickup_label = None
             self.mission_waypoint = None
@@ -811,8 +854,13 @@ class RLModelPolicyNode(Node):
             and (tracking_target or self.target_confirmation_is_met())
         )
         confirmed_target = target if target_control_ready else None
+        self.update_near_target_candidate(confirmed_target)
+        near_target_loss_ready = self.near_target_loss_pickup_ready()
         grab_cmd = (
-            self.update_grab_sequence(confirmed_target)
+            self.update_grab_sequence(
+                confirmed_target,
+                allow_near_target_loss=near_target_loss_ready,
+            )
             if (
                 self.active
                 and collecting
@@ -855,6 +903,7 @@ class RLModelPolicyNode(Node):
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
         elif self.active and confirmed_target is not None and self.policy is not None:
+            self.reset_lane_tof_alignment()
             self.set_control_mode(self.MODE_TRACK_TARGET)
             self.raw_action = self.infer_action(obs)
             self.filtered_action = self.filter_action(
@@ -1011,6 +1060,75 @@ class RLModelPolicyNode(Node):
     def reset_main_road_tof_alignment(self):
         self.main_road_tof_alignment_active = False
         self.main_road_tof_angle_alignment_active = False
+        self.main_road_tof_started_at_s = None
+
+    def reset_lane_tof_alignment(self):
+        self.lane_tof_alignment_active = False
+        self.lane_tof_started_at_s = None
+
+    def start_tof_watchdog(self, timer_name, now_s):
+        if getattr(self, timer_name) is None:
+            setattr(self, timer_name, float(now_s))
+
+    def tof_watchdog_expired(self, timer_name, now_s):
+        started_at_s = getattr(self, timer_name)
+        if started_at_s is None:
+            return False
+        return (
+            max(0.0, float(now_s) - float(started_at_s))
+            >= self.get_float("tof_alignment_watchdog_s")
+        )
+
+    def validated_wall_measurement(
+        self,
+        timeout_parameter="lane_tof_measurement_timeout_s",
+    ):
+        age_s = self.wall_measurement_age_s()
+        if (
+            age_s is None
+            or age_s > self.get_float(timeout_parameter)
+        ):
+            return (None, None, age_s)
+
+        sample_count = max(1, int(self.get_parameter("tof_validation_samples").value))
+        timeout_s = self.get_float(timeout_parameter)
+        now_s = self.now_s()
+        samples = [
+            sample
+            for sample in self.wall_measurement_history
+            if 0.0 <= now_s - sample[0] <= timeout_s
+        ][-sample_count:]
+        if len(samples) < sample_count:
+            return (None, None, age_s)
+
+        distances = [sample[1] for sample in samples]
+        angles = [sample[2] for sample in samples]
+        if any(
+            abs(angle) > self.get_float("tof_max_valid_wall_angle_rad")
+            for angle in angles
+        ):
+            return (None, None, age_s)
+        if (
+            max(angles) - min(angles)
+            > self.get_float("tof_max_angle_spread_rad")
+        ):
+            return (None, None, age_s)
+        if (
+            max(distances) - min(distances)
+            > self.get_float("tof_max_distance_spread_m")
+        ):
+            return (None, None, age_s)
+
+        distances.sort()
+        angles.sort()
+        middle = sample_count // 2
+        if sample_count % 2:
+            return (distances[middle], angles[middle], age_s)
+        return (
+            0.5 * (distances[middle - 1] + distances[middle]),
+            0.5 * (angles[middle - 1] + angles[middle]),
+            age_s,
+        )
 
     def main_road_tof_command(
         self,
@@ -1020,10 +1138,33 @@ class RLModelPolicyNode(Node):
         storage_return,
         now_s=None,
     ):
+        now_s = self.now_s() if now_s is None else float(now_s)
+        self.start_tof_watchdog("main_road_tof_started_at_s", now_s)
+        if self.tof_watchdog_expired("main_road_tof_started_at_s", now_s):
+            self.get_logger().warning(
+                "South-wall ToF alignment watchdog expired; continuing "
+                "without applying a pose correction"
+            )
+            self.reset_main_road_tof_alignment()
+            if storage_return:
+                self.begin_storage_staging_return(now_s)
+            else:
+                self.coverage_controller.complete_current_leg("SCAN_LANE_DOWN")
+                self.coverage_command = self.coverage_controller.hold_command(
+                    "MAIN_ROAD_TOF_WATCHDOG_FALLBACK"
+                )
+            return (0.0, 0.0)
+
+        distance_m, wall_angle_rad, measurement_age_s = (
+            self.validated_wall_measurement(
+                "main_road_tof_measurement_timeout_s"
+            )
+        )
         command = make_main_road_tof_command(
-            distance_m=self.latest_wall_distance_m,
-            wall_angle_rad=self.latest_wall_angle_rad,
-            measurement_age_s=self.wall_measurement_age_s(),
+            distance_m=distance_m,
+            wall_angle_rad=wall_angle_rad,
+            measurement_age_s=measurement_age_s,
+            robot_yaw=self.robot_yaw,
             target_y=target_y,
             south_wall_y_m=self.get_float("main_road_tof_south_wall_y_m"),
             sensor_forward_offset_m=self.get_float(
@@ -1043,6 +1184,7 @@ class RLModelPolicyNode(Node):
             angle_release_rad=self.get_float("main_road_tof_angle_release_rad"),
             angle_gain=self.get_float("coverage_heading_gain"),
             max_angular_speed=self.get_float("coverage_max_angular_speed"),
+            heading_tolerance=self.get_float("coverage_heading_tolerance"),
         )
         self.main_road_tof_alignment_active = True
         self.main_road_tof_angle_alignment_active = (
@@ -1066,7 +1208,7 @@ class RLModelPolicyNode(Node):
         self.publish_pose_y_correction(float(target_y))
         self.publish_pose_yaw_correction(-math.pi / 2.0)
         measured_y = command.measured_robot_y
-        wall_angle = self.latest_wall_angle_rad
+        wall_angle = wall_angle_rad
         self.reset_main_road_tof_alignment()
         self.get_logger().info(
             "South-wall main-road correction complete: "
@@ -1432,6 +1574,18 @@ class RLModelPolicyNode(Node):
 
     def storage_tof_axis_command(self, axis, now_s):
         axis = str(axis).strip().lower()
+        if self.mission.phase_age_s(now_s) >= self.get_float(
+            "tof_alignment_watchdog_s"
+        ):
+            self.get_logger().warning(
+                f"Storage ToF {axis} alignment watchdog expired; continuing "
+                "without applying a pose correction"
+            )
+            if axis == "x":
+                return self.begin_storage_entry_open(now_s)
+            self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
+            return (0.0, 0.0)
+
         target_coordinate = self.get_float(
             "storage_staging_x" if axis == "x" else "storage_staging_y"
         )
@@ -1440,10 +1594,13 @@ class RLModelPolicyNode(Node):
             if axis == "x"
             else "storage_tof_bottom_wall_y_m"
         )
+        distance_m, wall_angle_rad, measurement_age_s = (
+            self.validated_wall_measurement("storage_tof_measurement_timeout_s")
+        )
         command = make_storage_tof_command(
             axis=axis,
-            distance_m=self.latest_wall_distance_m,
-            measurement_age_s=self.wall_measurement_age_s(),
+            distance_m=distance_m,
+            measurement_age_s=measurement_age_s,
             robot_yaw=self.robot_yaw,
             target_coordinate=target_coordinate,
             wall_coordinate_m=wall_coordinate,
@@ -1461,7 +1618,7 @@ class RLModelPolicyNode(Node):
             max_angular_speed=self.get_float("storage_max_angular_speed"),
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
             advance_without_measurement=False,
-            wall_angle_rad=self.latest_wall_angle_rad,
+            wall_angle_rad=wall_angle_rad,
             wall_angle_tolerance_rad=self.get_float(
                 "storage_tof_wall_angle_tolerance_rad"
             ),
@@ -1493,7 +1650,7 @@ class RLModelPolicyNode(Node):
         self.get_logger().info(
             f"Storage ToF {axis} alignment complete: "
             f"measured_{axis}={command.measured_coordinate:.3f}, "
-            f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
+            f"wall_angle={math.degrees(wall_angle_rad):.2f} deg, "
             f"pose_{axis}->{correction.data:.3f}"
         )
         if axis == "x":
@@ -1502,10 +1659,27 @@ class RLModelPolicyNode(Node):
 
     def storage_exit_tof_command(self, now_s):
         target_coordinate = self.get_float("storage_exit_x")
+        if self.mission.phase_age_s(now_s) >= self.get_float(
+            "tof_alignment_watchdog_s"
+        ):
+            self.get_logger().warning(
+                "Storage-exit ToF watchdog expired; continuing without "
+                "applying a pose correction"
+            )
+            return self.complete_storage_exit_tof(
+                now_s,
+                target_coordinate,
+                measured_coordinate=None,
+            )
+
+        distance_m, wall_angle_rad, measurement_age_s = (
+            self.validated_wall_measurement("storage_tof_measurement_timeout_s")
+        )
         command = make_storage_exit_tof_command(
-            distance_m=self.latest_wall_distance_m,
-            wall_angle_rad=self.latest_wall_angle_rad,
-            measurement_age_s=self.wall_measurement_age_s(),
+            distance_m=distance_m,
+            wall_angle_rad=wall_angle_rad,
+            measurement_age_s=measurement_age_s,
+            robot_yaw=self.robot_yaw,
             target_x=target_coordinate,
             west_wall_x_m=self.get_float("storage_tof_left_wall_x_m"),
             sensor_forward_offset_m=self.get_float(
@@ -1527,6 +1701,7 @@ class RLModelPolicyNode(Node):
             ),
             angle_gain=self.get_float("storage_heading_gain"),
             max_angular_speed=self.get_float("storage_max_angular_speed"),
+            heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
         )
         self.storage_exit_tof_angle_alignment_active = (
             command.angle_alignment_active
@@ -1566,19 +1741,18 @@ class RLModelPolicyNode(Node):
         target_coordinate,
         measured_coordinate,
     ):
-        correction = Float64()
-        correction.data = target_coordinate
-        if not self.dry_run:
-            self.pose_x_correction_pub.publish(correction)
-            self.pending_pose_x_correction = correction.data
-            self.pending_pose_x_correction_time = self.get_clock().now()
-
         if measured_coordinate is None:
             self.get_logger().warning(
                 "No valid storage-exit ToF for the fallback timeout; "
-                f"assuming pose_x={correction.data:.3f} without changing yaw"
+                "continuing with odometry without changing pose or yaw"
             )
         else:
+            correction = Float64()
+            correction.data = target_coordinate
+            if not self.dry_run:
+                self.pose_x_correction_pub.publish(correction)
+                self.pending_pose_x_correction = correction.data
+                self.pending_pose_x_correction_time = self.get_clock().now()
             self.publish_pose_yaw_correction(math.pi)
             self.get_logger().info(
                 "Storage exit west-wall correction complete: "
@@ -1765,7 +1939,7 @@ class RLModelPolicyNode(Node):
 
     def resume_collection_after_storage(self):
         self.coverage_controller = self.create_coverage_controller(reverse_order=True)
-        self.lane_tof_alignment_active = False
+        self.reset_lane_tof_alignment()
         self.reset_main_road_tof_alignment()
         self.storage_exit_tof_angle_alignment_active = False
         self.coverage_command = None
@@ -1998,8 +2172,8 @@ class RLModelPolicyNode(Node):
                     f"starting {wall_name}-wall ToF x fine alignment"
                 )
             self.lane_tof_alignment_active = True
-            return self.lane_tof_shift_command()
-        self.lane_tof_alignment_active = False
+            return self.lane_tof_shift_command(self.now_s())
+        self.reset_lane_tof_alignment()
 
         self.coverage_command = self.coverage_controller.command(
             robot_x=self.robot_x,
@@ -2015,12 +2189,27 @@ class RLModelPolicyNode(Node):
             self.coverage_command.angular_z,
         )
 
-    def lane_tof_shift_command(self):
+    def lane_tof_shift_command(self, now_s):
         leg = self.coverage_controller.current_leg
         wall_side = self.coverage_controller.current_shift_wall_side()
-        age_s = self.wall_measurement_age_s()
+        self.start_tof_watchdog("lane_tof_started_at_s", now_s)
+        if self.tof_watchdog_expired("lane_tof_started_at_s", now_s):
+            self.get_logger().warning(
+                "Lane ToF alignment watchdog expired; continuing without "
+                "applying a pose correction"
+            )
+            self.reset_lane_tof_alignment()
+            self.coverage_controller.complete_current_leg("SHIFT_TO_NEXT_LANE")
+            self.coverage_command = self.coverage_controller.hold_command(
+                "LANE_TOF_WATCHDOG_FALLBACK"
+            )
+            return (0.0, 0.0)
+
+        distance_m, wall_angle_rad, age_s = self.validated_wall_measurement(
+            "lane_tof_measurement_timeout_s"
+        )
         command = make_lane_tof_command(
-            distance_m=self.latest_wall_distance_m,
+            distance_m=distance_m,
             measurement_age_s=age_s,
             robot_yaw=self.robot_yaw,
             target_x=leg.target_x,
@@ -2036,7 +2225,7 @@ class RLModelPolicyNode(Node):
             heading_gain=self.get_float("coverage_heading_gain"),
             max_angular_speed=self.get_float("coverage_max_angular_speed"),
             heading_tolerance=self.get_float("coverage_heading_tolerance"),
-            wall_angle_rad=self.latest_wall_angle_rad,
+            wall_angle_rad=wall_angle_rad,
             wall_angle_tolerance_rad=self.get_float(
                 "lane_tof_wall_angle_tolerance_rad"
             ),
@@ -2056,7 +2245,7 @@ class RLModelPolicyNode(Node):
             self.pose_x_correction_pub.publish(correction)
             self.pending_pose_x_correction = correction.data
             self.pending_pose_x_correction_time = self.get_clock().now()
-        self.lane_tof_alignment_active = False
+        self.reset_lane_tof_alignment()
         self.coverage_controller.complete_current_leg("SHIFT_TO_NEXT_LANE")
         self.coverage_command = self.coverage_controller.hold_command(
             "TOF_LANE_ALIGNED"
@@ -2065,7 +2254,7 @@ class RLModelPolicyNode(Node):
             "ToF lane alignment complete: "
             f"lane={leg.lane_number}, "
             f"measured_x={command.measured_robot_x:.3f}, "
-            f"wall_angle={math.degrees(self.latest_wall_angle_rad):.2f} deg, "
+            f"wall_angle={math.degrees(wall_angle_rad):.2f} deg, "
             f"wall={'east' if wall_side == 'right' else 'west'}, "
             f"pose_x->{correction.data:.3f}"
         )
@@ -2300,27 +2489,92 @@ class RLModelPolicyNode(Node):
         scale = self.get_float("speed_scale")
         return linear_x * scale, angular_z * scale
 
-    def update_grab_sequence(self, target):
+    def update_near_target_candidate(self, target):
+        if not bool(self.get_parameter("near_target_loss_enabled").value):
+            self.clear_near_target_candidate()
+            return
+        if not self.latest_target_visible:
+            return
+        if target is None or not self.is_fresh(
+            self.latest_target_time,
+            "grab_detection_timeout_s",
+        ):
+            self.clear_near_target_candidate()
+            return
+
+        near_threshold = max(
+            0.0,
+            self.get_float("grab_area_ratio")
+            - self.get_float("near_target_loss_margin"),
+        )
+        if abs(float(target.x)) > self.get_float("grab_center_tolerance") or float(
+            target.y
+        ) < near_threshold:
+            self.clear_near_target_candidate()
+            return
+
+        self.near_target_candidate = self.make_point(target.x, target.y, target.z)
+        self.near_target_candidate_time = self.get_clock().now()
+        self.near_target_candidate_label = self.current_target_label() or "unknown"
+
+    def near_target_loss_pickup_ready(self):
+        if (
+            not bool(self.get_parameter("near_target_loss_enabled").value)
+            or self.near_target_candidate is None
+            or self.near_target_candidate_time is None
+            or self.near_target_missing_started_at is None
+            or self.latest_target_visible
+        ):
+            return False
+
+        now = self.get_clock().now()
+        candidate_age_s = (
+            now - self.near_target_candidate_time
+        ).nanoseconds / 1_000_000_000.0
+        missing_age_s = (
+            now - self.near_target_missing_started_at
+        ).nanoseconds / 1_000_000_000.0
+        return (
+            candidate_age_s <= self.get_float("near_target_loss_timeout_s")
+            and missing_age_s >= self.get_float("near_target_loss_min_missing_s")
+        )
+
+    def clear_near_target_candidate(self):
+        self.near_target_candidate = None
+        self.near_target_candidate_time = None
+        self.near_target_candidate_label = None
+        self.near_target_missing_started_at = None
+
+    def update_grab_sequence(self, target, allow_near_target_loss=False):
         if not bool(self.get_parameter("gripper_enabled").value):
             return None
 
         if self.grab_state == self.GRAB_TRACKING:
-            if target is None:
-                return None
-            if not self.is_fresh(
-                self.latest_target_time,
-                "grab_detection_timeout_s",
-            ):
-                return None
-            if not pickup_is_ready(
-                target_x=target.x,
-                target_y=target.y,
-                center_tolerance=self.get_float("grab_center_tolerance"),
-                grab_area_ratio=self.get_float("grab_area_ratio"),
-            ):
+            regular_pickup_ready = (
+                target is not None
+                and self.is_fresh(
+                    self.latest_target_time,
+                    "grab_detection_timeout_s",
+                )
+                and pickup_is_ready(
+                    target_x=target.x,
+                    target_y=target.y,
+                    center_tolerance=self.get_float("grab_center_tolerance"),
+                    grab_area_ratio=self.get_float("grab_area_ratio"),
+                )
+            )
+            if not regular_pickup_ready and not allow_near_target_loss:
                 return None
 
-            self.pickup_label = self.current_target_label() or "unknown"
+            if allow_near_target_loss and not regular_pickup_ready:
+                self.pickup_label = self.near_target_candidate_label or "unknown"
+                self.get_logger().warning(
+                    "Near centered target disappeared at the gripper edge; "
+                    "continuing the pickup sequence"
+                )
+            else:
+                self.pickup_label = self.current_target_label() or "unknown"
+            self.clear_near_target_candidate()
             self.publish_cmd(0.0, 0.0)
             self.command_gripper(open_gripper=True)
             self.change_grab_state(self.GRAB_OPENING)
@@ -2382,6 +2636,7 @@ class RLModelPolicyNode(Node):
         self.target_visibility_history.clear()
         self.had_visible_target = False
         self.target_lost_started_at = None
+        self.clear_near_target_candidate()
 
     def current_avoid_objects(self, target):
         if self.is_fresh(self.latest_avoid_objects_time, "avoid_timeout_s"):

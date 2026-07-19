@@ -11,6 +11,7 @@ def make_command(**overrides):
         "distance_m": 0.66,
         "wall_angle_rad": 0.0,
         "measurement_age_s": 0.02,
+        "robot_yaw": math.pi,
         "target_x": -1.25,
         "west_wall_x_m": -2.0,
         "sensor_forward_offset_m": 0.09,
@@ -24,12 +25,20 @@ def make_command(**overrides):
         "angle_release_rad": math.radians(5.0),
         "angle_gain": 1.5,
         "max_angular_speed": 0.60,
+        "heading_tolerance": 0.12,
     }
     values.update(overrides)
     return make_storage_exit_tof_command(**values)
 
 
 class StorageExitTofCorrectionTest(unittest.TestCase):
+    def test_coarse_west_heading_precedes_tof(self):
+        command = make_command(robot_yaw=-math.pi / 2.0)
+
+        self.assertEqual(command.phase, "ALIGN_STORAGE_EXIT_WEST_ODOMETRY")
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertNotEqual(command.angular_z, 0.0)
+
     def test_waits_for_fresh_tof(self):
         command = make_command(measurement_age_s=0.30)
 

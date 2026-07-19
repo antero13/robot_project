@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import math
 from typing import Optional
 
-from rl_model_policy.coverage_controller import clamp
+from rl_model_policy.coverage_controller import clamp, normalize_angle
 from rl_model_policy.storage_tof_correction import (
     robot_coordinate_from_min_wall_distance,
 )
@@ -24,6 +24,7 @@ def make_storage_exit_tof_command(
     distance_m,
     wall_angle_rad,
     measurement_age_s,
+    robot_yaw,
     target_x,
     west_wall_x_m,
     sensor_forward_offset_m,
@@ -37,12 +38,29 @@ def make_storage_exit_tof_command(
     angle_release_rad,
     angle_gain,
     max_angular_speed,
+    heading_tolerance,
 ):
     """Correct storage-exit x first, then conditionally square to west wall."""
     angle_trigger_rad = float(angle_trigger_rad)
     angle_release_rad = float(angle_release_rad)
     if not 0.0 <= angle_release_rad < angle_trigger_rad:
         raise ValueError("angle thresholds must satisfy 0 <= release < trigger")
+
+    heading_error = normalize_angle(math.pi - float(robot_yaw))
+    if abs(heading_error) > float(heading_tolerance):
+        return StorageExitTofCommand(
+            linear_x=0.0,
+            angular_z=clamp(
+                float(angle_gain) * heading_error,
+                -float(max_angular_speed),
+                float(max_angular_speed),
+            ),
+            phase="ALIGN_STORAGE_EXIT_WEST_ODOMETRY",
+            measured_robot_x=None,
+            x_error=None,
+            angle_alignment_active=False,
+            reached=False,
+        )
 
     measurement_is_fresh = (
         distance_m is not None

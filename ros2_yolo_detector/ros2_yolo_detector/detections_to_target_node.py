@@ -7,6 +7,11 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, Float32, String
 
 from .detection_geometry import bbox_to_normalized_point
+from .target_lock import (
+    candidate_matches_lock,
+    lock_from_candidate,
+    select_locked_candidate,
+)
 
 
 class DetectionsToTargetNode(Node):
@@ -26,6 +31,10 @@ class DetectionsToTargetNode(Node):
         self.declare_parameter("min_confidence", 0.25)
         self.declare_parameter("target_center_weight", 0.25)
         self.declare_parameter("avoid_target_iou_threshold", 0.35)
+        self.declare_parameter("target_lock_enabled", True)
+        self.declare_parameter("target_lock_timeout_s", 0.80)
+        self.declare_parameter("target_lock_iou_threshold", 0.10)
+        self.declare_parameter("target_lock_center_distance", 0.20)
         self.declare_parameter("image_width", 640.0)
         self.declare_parameter("image_height", 480.0)
 
@@ -42,6 +51,8 @@ class DetectionsToTargetNode(Node):
         self.avoid_target_iou_threshold = float(self.get_parameter("avoid_target_iou_threshold").value)
         self.target_classes = self.parse_class_list(self.get_parameter("target_classes").value)
         self.avoid_classes = self.parse_class_list(self.get_parameter("avoid_classes").value)
+        self.target_lock = None
+        self.target_lock_last_seen_s = None
 
         self.target_pub = self.create_publisher(PointStamped, self.target_topic, 10)
         self.target_label_pub = self.create_publisher(String, self.target_label_topic, 10)
@@ -103,8 +114,12 @@ class DetectionsToTargetNode(Node):
                     (point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio)
                 )
 
-        avoid_candidates = self.filter_overlapping_avoid_candidates(avoid_candidates, target_candidates)
         target_candidate = self.select_target_candidate(target_candidates)
+        avoid_candidates = self.filter_overlapping_avoid_candidates(
+            avoid_candidates,
+            target_candidates,
+        )
+        avoid_candidates = self.filter_locked_target_from_avoid(avoid_candidates)
         visibility_msg = Bool()
         visibility_msg.data = target_candidate is not None
         self.target_visibility_pub.publish(visibility_msg)
@@ -175,10 +190,52 @@ class DetectionsToTargetNode(Node):
                 filtered.append(avoid_candidate)
         return filtered
 
+    def filter_locked_target_from_avoid(self, avoid_candidates):
+        if self.target_lock is None:
+            return avoid_candidates
+        return [
+            candidate
+            for candidate in avoid_candidates
+            if not candidate_matches_lock(
+                candidate,
+                self.target_lock,
+                iou_threshold=float(
+                    self.get_parameter("target_lock_iou_threshold").value
+                ),
+                center_distance_threshold=float(
+                    self.get_parameter("target_lock_center_distance").value
+                ),
+            )
+        ]
+
     def select_target_candidate(self, candidates):
-        if not candidates:
-            return None
-        return self.best_target_candidate(candidates)
+        if not bool(self.get_parameter("target_lock_enabled").value):
+            return None if not candidates else self.best_target_candidate(candidates)
+
+        now_s = self.get_clock().now().nanoseconds / 1_000_000_000.0
+        if (
+            self.target_lock_last_seen_s is not None
+            and now_s - self.target_lock_last_seen_s
+            > float(self.get_parameter("target_lock_timeout_s").value)
+        ):
+            self.target_lock = None
+            self.target_lock_last_seen_s = None
+
+        selected = select_locked_candidate(
+            candidates,
+            self.target_lock,
+            score=self.target_candidate_score,
+            iou_threshold=float(
+                self.get_parameter("target_lock_iou_threshold").value
+            ),
+            center_distance_threshold=float(
+                self.get_parameter("target_lock_center_distance").value
+            ),
+        )
+        if selected is not None:
+            self.target_lock = lock_from_candidate(selected)
+            self.target_lock_last_seen_s = now_s
+        return selected
 
     def best_target_candidate(self, candidates):
         return max(candidates, key=self.target_candidate_score)

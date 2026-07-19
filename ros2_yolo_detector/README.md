@@ -124,6 +124,7 @@ at startup:
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   yolo_model_path:=/absolute/path/to/best.engine \
+  secondary_yolo_model_path:=/absolute/path/to/best_secondary.engine \
   yolo_imgsz:=800 \
   correction_backend:=auto \
   correction_device:=cuda:0
@@ -135,6 +136,20 @@ Every five seconds the node also reports output Hz, total pipeline latency, and
 Ultralytics preprocess, inference, and postprocess latency. Set the node
 parameter `performance_log_interval_s` to `0` to disable these logs. The
 integrated RL launch exposes it as `yolo_performance_log_interval_s`.
+
+## Two-stage fruit classification
+
+The primary detector passes classes `0` through `3` directly to ROS. Primary
+classes `4` through `7` are treated as fruit-cube candidates: their crops are
+classified by the secondary YOLO model, whose classes `0` through `3` are
+published as final classes `4` through `7`. If `secondary_model_path` is empty,
+the node looks for `best_secondary.pt` beside the primary model. Pass an explicit
+`.pt` or `.engine` path when the secondary model uses a different filename.
+
+Useful parameters are `secondary_confidence`, `secondary_imgsz`, and
+`min_bbox_area_ratio`. The integrated autonomous launch exposes them as
+`secondary_yolo_confidence`, `secondary_yolo_imgsz`, and
+`yolo_min_bbox_area_ratio`.
 
 In `object_pickup_mission.launch.py`, these correction settings and `imgsz=800`
 apply only to camera1. The optional camera2 YOLO node explicitly disables image
@@ -194,10 +209,11 @@ each avoid object.
 Lower-level consumers can subscribe to `/yolo/detections` for the full class,
 confidence, and bounding-box payload.
 
-Each image is processed independently with `YOLO.predict()`. The detector does
-not run ByteTrack, assign object IDs, vote across frames, or retain detections
-when an object is missing from the current frame. `/target_object` is selected
-only from the candidates present in the same detection message.
+The detector does not run ByteTrack or assign object IDs. The target converter
+does retain a spatial target lock across short gaps, however: IoU and normalized
+center distance keep control attached to the same physical box and prevent an
+instant jump to another same-class object. Configure this with the
+`target_lock_*` launch parameters.
 
 ## Annotated Normalized Coordinates
 

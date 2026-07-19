@@ -18,6 +18,7 @@ AUTO_START_DELAY_S = 8.0
 
 def generate_launch_description():
     yolo_model_path = LaunchConfiguration("yolo_model_path")
+    secondary_yolo_model_path = LaunchConfiguration("secondary_yolo_model_path")
     rl_model_path = LaunchConfiguration("rl_model_path")
     video_device = LaunchConfiguration("video_device")
     target_classes = LaunchConfiguration("target_classes")
@@ -28,6 +29,13 @@ def generate_launch_description():
     publish_annotated = LaunchConfiguration("publish_annotated")
     correction_enabled = LaunchConfiguration("correction_enabled")
     yolo_imgsz = LaunchConfiguration("yolo_imgsz")
+    secondary_yolo_confidence = LaunchConfiguration("secondary_yolo_confidence")
+    secondary_yolo_imgsz = LaunchConfiguration("secondary_yolo_imgsz")
+    yolo_min_bbox_area_ratio = LaunchConfiguration("yolo_min_bbox_area_ratio")
+    target_lock_enabled = LaunchConfiguration("target_lock_enabled")
+    target_lock_timeout_s = LaunchConfiguration("target_lock_timeout_s")
+    target_lock_iou_threshold = LaunchConfiguration("target_lock_iou_threshold")
+    target_lock_center_distance = LaunchConfiguration("target_lock_center_distance")
     correction_backend = LaunchConfiguration("correction_backend")
     correction_device = LaunchConfiguration("correction_device")
     yolo_performance_log_interval_s = LaunchConfiguration(
@@ -56,6 +64,12 @@ def generate_launch_description():
     target_bearing_prediction_enabled = LaunchConfiguration(
         "target_bearing_prediction_enabled"
     )
+    near_target_loss_enabled = LaunchConfiguration("near_target_loss_enabled")
+    near_target_loss_margin = LaunchConfiguration("near_target_loss_margin")
+    near_target_loss_timeout_s = LaunchConfiguration("near_target_loss_timeout_s")
+    near_target_loss_min_missing_s = LaunchConfiguration(
+        "near_target_loss_min_missing_s"
+    )
     odometry_topic = LaunchConfiguration("odometry_topic")
     pose_timeout_s = LaunchConfiguration("pose_timeout_s")
     pose_observation_enabled = LaunchConfiguration("pose_observation_enabled")
@@ -71,6 +85,12 @@ def generate_launch_description():
     wall_right_address = LaunchConfiguration("wall_right_address")
     wall_ranging_mode = LaunchConfiguration("wall_ranging_mode")
     wall_distance_angle_topic = LaunchConfiguration("wall_distance_angle_topic")
+    tof_wall_angle_sign = LaunchConfiguration("tof_wall_angle_sign")
+    tof_validation_samples = LaunchConfiguration("tof_validation_samples")
+    tof_max_valid_wall_angle_rad = LaunchConfiguration("tof_max_valid_wall_angle_rad")
+    tof_max_angle_spread_rad = LaunchConfiguration("tof_max_angle_spread_rad")
+    tof_max_distance_spread_m = LaunchConfiguration("tof_max_distance_spread_m")
+    tof_alignment_watchdog_s = LaunchConfiguration("tof_alignment_watchdog_s")
     arena_half_extent_m = LaunchConfiguration("arena_half_extent_m")
     pose_bounds_tolerance_m = LaunchConfiguration("pose_bounds_tolerance_m")
     camera_horizontal_fov_deg = LaunchConfiguration("camera_horizontal_fov_deg")
@@ -255,6 +275,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "model_path": yolo_model_path,
+            "secondary_model_path": secondary_yolo_model_path,
             "video_device": video_device,
             "target_classes": target_classes,
             "avoid_classes": avoid_classes,
@@ -264,6 +285,13 @@ def generate_launch_description():
             "publish_annotated": publish_annotated,
             "correction_enabled": correction_enabled,
             "imgsz": yolo_imgsz,
+            "secondary_confidence": secondary_yolo_confidence,
+            "secondary_imgsz": secondary_yolo_imgsz,
+            "min_bbox_area_ratio": yolo_min_bbox_area_ratio,
+            "target_lock_enabled": target_lock_enabled,
+            "target_lock_timeout_s": target_lock_timeout_s,
+            "target_lock_iou_threshold": target_lock_iou_threshold,
+            "target_lock_center_distance": target_lock_center_distance,
             "correction_backend": correction_backend,
             "correction_device": correction_device,
             "performance_log_interval_s": yolo_performance_log_interval_s,
@@ -350,6 +378,10 @@ def generate_launch_description():
             "target_activation_center_y_min": target_activation_center_y_min,
             "target_tracking_center_y_min": target_tracking_center_y_min,
             "target_bearing_prediction_enabled": target_bearing_prediction_enabled,
+            "near_target_loss_enabled": near_target_loss_enabled,
+            "near_target_loss_margin": near_target_loss_margin,
+            "near_target_loss_timeout_s": near_target_loss_timeout_s,
+            "near_target_loss_min_missing_s": near_target_loss_min_missing_s,
             "dry_run": dry_run,
             "odometry_topic": odometry_topic,
             "pose_timeout_s": pose_timeout_s,
@@ -384,6 +416,12 @@ def generate_launch_description():
             "coverage_reacquire_angular_z": coverage_reacquire_angular_z,
             "lane_tof_correction_enabled": lane_tof_correction_enabled,
             "wall_distance_angle_topic": wall_distance_angle_topic,
+            "tof_wall_angle_sign": tof_wall_angle_sign,
+            "tof_validation_samples": tof_validation_samples,
+            "tof_max_valid_wall_angle_rad": tof_max_valid_wall_angle_rad,
+            "tof_max_angle_spread_rad": tof_max_angle_spread_rad,
+            "tof_max_distance_spread_m": tof_max_distance_spread_m,
+            "tof_alignment_watchdog_s": tof_alignment_watchdog_s,
             "pose_x_correction_topic": pose_x_correction_topic,
             "pose_y_correction_topic": pose_y_correction_topic,
             "pose_yaw_correction_topic": pose_yaw_correction_topic,
@@ -592,6 +630,14 @@ def generate_launch_description():
             description="Trained RL policy checkpoint path.",
         ),
         DeclareLaunchArgument(
+            "secondary_yolo_model_path",
+            default_value="",
+            description=(
+                "Fruit crop classifier model. Empty uses best_secondary.pt "
+                "beside the primary YOLO model."
+            ),
+        ),
+        DeclareLaunchArgument(
             "video_device",
             default_value=(
                 "/dev/v4l/by-path/"
@@ -615,6 +661,13 @@ def generate_launch_description():
         DeclareLaunchArgument("publish_annotated", default_value="false"),
         DeclareLaunchArgument("correction_enabled", default_value="true"),
         DeclareLaunchArgument("yolo_imgsz", default_value="800"),
+        DeclareLaunchArgument("secondary_yolo_confidence", default_value="0.25"),
+        DeclareLaunchArgument("secondary_yolo_imgsz", default_value="640"),
+        DeclareLaunchArgument("yolo_min_bbox_area_ratio", default_value="0.02"),
+        DeclareLaunchArgument("target_lock_enabled", default_value="true"),
+        DeclareLaunchArgument("target_lock_timeout_s", default_value="0.80"),
+        DeclareLaunchArgument("target_lock_iou_threshold", default_value="0.10"),
+        DeclareLaunchArgument("target_lock_center_distance", default_value="0.20"),
         DeclareLaunchArgument("correction_backend", default_value="auto"),
         DeclareLaunchArgument("correction_device", default_value="cuda:0"),
             DeclareLaunchArgument(
@@ -677,6 +730,10 @@ def generate_launch_description():
             default_value="true",
             description="Project target image x from odometry during short detection gaps.",
         ),
+        DeclareLaunchArgument("near_target_loss_enabled", default_value="true"),
+        DeclareLaunchArgument("near_target_loss_margin", default_value="0.10"),
+        DeclareLaunchArgument("near_target_loss_timeout_s", default_value="0.60"),
+        DeclareLaunchArgument("near_target_loss_min_missing_s", default_value="0.15"),
         DeclareLaunchArgument("odometry_topic", default_value="/odom"),
         DeclareLaunchArgument("pose_timeout_s", default_value="0.5"),
         DeclareLaunchArgument(
@@ -814,6 +871,12 @@ def generate_launch_description():
             default_value="0.05",
             description="Maximum east/west wall angle before x correction.",
         ),
+        DeclareLaunchArgument("tof_wall_angle_sign", default_value="-1.0"),
+        DeclareLaunchArgument("tof_validation_samples", default_value="3"),
+        DeclareLaunchArgument("tof_max_valid_wall_angle_rad", default_value="0.436332313"),
+        DeclareLaunchArgument("tof_max_angle_spread_rad", default_value="0.13962634"),
+        DeclareLaunchArgument("tof_max_distance_spread_m", default_value="0.12"),
+        DeclareLaunchArgument("tof_alignment_watchdog_s", default_value="4.0"),
         DeclareLaunchArgument(
             "main_road_tof_correction_enabled",
             default_value="true",

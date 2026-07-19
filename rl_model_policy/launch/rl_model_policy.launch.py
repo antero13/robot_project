@@ -34,6 +34,10 @@ def generate_launch_description():
     target_bearing_prediction_enabled = LaunchConfiguration(
         'target_bearing_prediction_enabled'
     )
+    near_target_loss_enabled = LaunchConfiguration('near_target_loss_enabled')
+    near_target_loss_margin = LaunchConfiguration('near_target_loss_margin')
+    near_target_loss_timeout_s = LaunchConfiguration('near_target_loss_timeout_s')
+    near_target_loss_min_missing_s = LaunchConfiguration('near_target_loss_min_missing_s')
     odometry_topic = LaunchConfiguration('odometry_topic')
     pose_timeout_s = LaunchConfiguration('pose_timeout_s')
     pose_observation_enabled = LaunchConfiguration('pose_observation_enabled')
@@ -90,6 +94,12 @@ def generate_launch_description():
     lane_tof_wall_angle_tolerance_rad = LaunchConfiguration(
         'lane_tof_wall_angle_tolerance_rad'
     )
+    tof_wall_angle_sign = LaunchConfiguration('tof_wall_angle_sign')
+    tof_validation_samples = LaunchConfiguration('tof_validation_samples')
+    tof_max_valid_wall_angle_rad = LaunchConfiguration('tof_max_valid_wall_angle_rad')
+    tof_max_angle_spread_rad = LaunchConfiguration('tof_max_angle_spread_rad')
+    tof_max_distance_spread_m = LaunchConfiguration('tof_max_distance_spread_m')
+    tof_alignment_watchdog_s = LaunchConfiguration('tof_alignment_watchdog_s')
     main_road_tof_correction_enabled = LaunchConfiguration(
         'main_road_tof_correction_enabled'
     )
@@ -235,6 +245,10 @@ def generate_launch_description():
             default_value='true',
             description='Project target image x from odometry during short detection gaps.',
         ),
+        DeclareLaunchArgument('near_target_loss_enabled', default_value='true'),
+        DeclareLaunchArgument('near_target_loss_margin', default_value='0.10'),
+        DeclareLaunchArgument('near_target_loss_timeout_s', default_value='0.60'),
+        DeclareLaunchArgument('near_target_loss_min_missing_s', default_value='0.15'),
         DeclareLaunchArgument('odometry_topic', default_value='/odom'),
         DeclareLaunchArgument('pose_timeout_s', default_value='0.5'),
         DeclareLaunchArgument(
@@ -340,6 +354,12 @@ def generate_launch_description():
             'lane_tof_wall_angle_tolerance_rad',
             default_value='0.05',
         ),
+        DeclareLaunchArgument('tof_wall_angle_sign', default_value='-1.0'),
+        DeclareLaunchArgument('tof_validation_samples', default_value='3'),
+        DeclareLaunchArgument('tof_max_valid_wall_angle_rad', default_value='0.436332313'),
+        DeclareLaunchArgument('tof_max_angle_spread_rad', default_value='0.13962634'),
+        DeclareLaunchArgument('tof_max_distance_spread_m', default_value='0.12'),
+        DeclareLaunchArgument('tof_alignment_watchdog_s', default_value='4.0'),
         DeclareLaunchArgument('main_road_tof_correction_enabled', default_value='true'),
         DeclareLaunchArgument('main_road_tof_south_wall_y_m', default_value='-2.0'),
         DeclareLaunchArgument(
@@ -498,6 +518,10 @@ def generate_launch_description():
                     target_bearing_prediction_enabled,
                     value_type=bool,
                 ),
+                'near_target_loss_enabled': ParameterValue(near_target_loss_enabled, value_type=bool),
+                'near_target_loss_margin': ParameterValue(near_target_loss_margin, value_type=float),
+                'near_target_loss_timeout_s': ParameterValue(near_target_loss_timeout_s, value_type=float),
+                'near_target_loss_min_missing_s': ParameterValue(near_target_loss_min_missing_s, value_type=float),
                 'avoid_timeout_s': 0.25,
                 'episode_length_s': 18.0,
                         'pose_timeout_s': ParameterValue(
@@ -655,6 +679,12 @@ def generate_launch_description():
                     lane_tof_wall_angle_tolerance_rad,
                     value_type=float,
                 ),
+                'tof_wall_angle_sign': ParameterValue(tof_wall_angle_sign, value_type=float),
+                'tof_validation_samples': ParameterValue(tof_validation_samples, value_type=int),
+                'tof_max_valid_wall_angle_rad': ParameterValue(tof_max_valid_wall_angle_rad, value_type=float),
+                'tof_max_angle_spread_rad': ParameterValue(tof_max_angle_spread_rad, value_type=float),
+                'tof_max_distance_spread_m': ParameterValue(tof_max_distance_spread_m, value_type=float),
+                'tof_alignment_watchdog_s': ParameterValue(tof_alignment_watchdog_s, value_type=float),
                 'main_road_tof_correction_enabled': ParameterValue(
                     main_road_tof_correction_enabled,
                     value_type=bool,

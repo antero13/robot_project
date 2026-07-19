@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import math
 from typing import Optional
 
-from rl_model_policy.coverage_controller import clamp
+from rl_model_policy.coverage_controller import clamp, normalize_angle
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,7 @@ def make_main_road_tof_command(
     distance_m,
     wall_angle_rad,
     measurement_age_s,
+    robot_yaw,
     target_y,
     south_wall_y_m,
     sensor_forward_offset_m,
@@ -53,6 +54,7 @@ def make_main_road_tof_command(
     angle_release_rad,
     angle_gain,
     max_angular_speed,
+    heading_tolerance,
 ):
     """Correct main-road y first, then conditionally square to the south wall.
 
@@ -63,6 +65,23 @@ def make_main_road_tof_command(
     angle_release_rad = float(angle_release_rad)
     if not 0.0 <= angle_release_rad < angle_trigger_rad:
         raise ValueError("angle thresholds must satisfy 0 <= release < trigger")
+
+    desired_yaw = -math.pi / 2.0
+    heading_error = normalize_angle(desired_yaw - float(robot_yaw))
+    if abs(heading_error) > float(heading_tolerance):
+        return MainRoadTofCommand(
+            linear_x=0.0,
+            angular_z=clamp(
+                float(angle_gain) * heading_error,
+                -float(max_angular_speed),
+                float(max_angular_speed),
+            ),
+            phase="ALIGN_MAIN_ROAD_SOUTH_ODOMETRY",
+            measured_robot_y=None,
+            y_error=None,
+            angle_alignment_active=False,
+            reached=False,
+        )
 
     measurement_is_fresh = (
         distance_m is not None

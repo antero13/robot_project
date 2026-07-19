@@ -104,13 +104,10 @@ def make_storage_tof_command(
             or math.isfinite(float(wall_angle_rad))
         )
     )
-    wall_angle_is_authoritative = (
-        measurement_is_fresh and wall_angle_rad is not None
-    )
-    if (
-        not wall_angle_is_authoritative
-        and abs(heading_error) > float(heading_tolerance)
-    ):
+    # Always establish the coarse cardinal heading before trusting the pair
+    # angle.  Otherwise two sensors looking at different surfaces can steer
+    # the robot away from the intended wall.
+    if abs(heading_error) > float(heading_tolerance):
         return StorageTofCommand(
             linear_x=0.0,
             angular_z=angular_z,
