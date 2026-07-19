@@ -20,11 +20,16 @@ from .frame_correction import (
 )
 
 
+PASSTHROUGH_CLASS_IDS = frozenset({0, 1, 2, 3})
+SECOND_STAGE_CLASS_IDS = frozenset({4, 5, 6, 7})
+
+
 class YoloCameraNode(Node):
     def __init__(self) -> None:
         super().__init__("yolo_camera_node")
 
         self.declare_parameter("model_path", "best.pt")
+        self.declare_parameter("secondary_model_path", "")
         self.declare_parameter("input_mode", "topic")
         self.declare_parameter("image_topic", "/camera/image_raw")
         self.declare_parameter("raw_topic", "/camera/image_raw")
@@ -35,6 +40,9 @@ class YoloCameraNode(Node):
         self.declare_parameter("agnostic_nms", True)
         self.declare_parameter("device", "")
         self.declare_parameter("imgsz", 640)
+        self.declare_parameter("secondary_confidence", 0.25)
+        self.declare_parameter("secondary_imgsz", 640)
+        self.declare_parameter("min_bbox_area_ratio", 0.02)
         self.declare_parameter("correction_enabled", False)
         self.declare_parameter("correction_gamma", 0.65)
         self.declare_parameter("correction_clahe_clip_limit", 1.2)
@@ -57,6 +65,13 @@ class YoloCameraNode(Node):
         self.declare_parameter("camera_auto_exposure_value", 3.0)
 
         self.model_path = self.get_parameter("model_path").get_parameter_value().string_value
+        secondary_model_path = self.get_parameter(
+            "secondary_model_path"
+        ).get_parameter_value().string_value
+        self.secondary_model_path = self._resolve_secondary_model_path(
+            self.model_path,
+            secondary_model_path,
+        )
         self.input_mode = self.get_parameter("input_mode").get_parameter_value().string_value
         self.image_topic = self.get_parameter("image_topic").get_parameter_value().string_value
         self.raw_topic = self.get_parameter("raw_topic").get_parameter_value().string_value
@@ -69,6 +84,15 @@ class YoloCameraNode(Node):
         )
         self.device = self.get_parameter("device").get_parameter_value().string_value
         self.imgsz = self.get_parameter("imgsz").get_parameter_value().integer_value
+        self.secondary_confidence = self.get_parameter(
+            "secondary_confidence"
+        ).get_parameter_value().double_value
+        self.secondary_imgsz = self.get_parameter(
+            "secondary_imgsz"
+        ).get_parameter_value().integer_value
+        self.min_bbox_area_ratio = self.get_parameter(
+            "min_bbox_area_ratio"
+        ).get_parameter_value().double_value
         self.correction_enabled = self.get_parameter(
             "correction_enabled"
         ).get_parameter_value().bool_value
@@ -112,12 +136,19 @@ class YoloCameraNode(Node):
 
         if self.imgsz <= 0:
             raise ValueError("imgsz must be greater than 0")
+        if self.secondary_imgsz <= 0:
+            raise ValueError("secondary_imgsz must be greater than 0")
+        if not 0.0 <= self.secondary_confidence <= 1.0:
+            raise ValueError("secondary_confidence must be between 0 and 1")
+        if not 0.0 <= self.min_bbox_area_ratio <= 1.0:
+            raise ValueError("min_bbox_area_ratio must be between 0 and 1")
         if self.performance_log_interval_s < 0:
             raise ValueError("performance_log_interval_s must be 0 or greater")
 
         self.bridge = CvBridge()
         self.frame_corrector = self._create_frame_corrector()
         self.model = self._load_model(self.model_path)
+        self.secondary_model = self._load_model(self.secondary_model_path)
         self.camera = None
         self.camera_timer = None
         self.image_sub = None
@@ -156,7 +187,15 @@ class YoloCameraNode(Node):
         active_backend = (
             "cuda" if isinstance(self.frame_corrector, CudaFrameCorrector) else "cpu"
         )
-        self.get_logger().info(f"YOLO model loaded: {self.model_path}")
+        self.get_logger().info(f"Primary YOLO model loaded: {self.model_path}")
+        self.get_logger().info(
+            f"Secondary crop YOLO model loaded: {self.secondary_model_path}"
+        )
+        self.get_logger().info(
+            "Two-stage detection: "
+            f"minimum bbox area={self.min_bbox_area_ratio:.1%}, "
+            "classes 0-3 pass through, classes 4-7 require crop inference"
+        )
         self.get_logger().info(
             "Inference preprocessing: "
             f"imgsz={self.imgsz}, enabled={self.correction_enabled}, "
@@ -217,6 +256,17 @@ class YoloCameraNode(Node):
             raise FileNotFoundError(f"YOLO model file does not exist: {resolved_path}")
 
         return YOLO(str(resolved_path))
+
+    @staticmethod
+    def _resolve_secondary_model_path(
+        primary_model_path: str,
+        configured_path: str,
+    ) -> str:
+        configured_path = configured_path.strip()
+        if configured_path:
+            return str(Path(configured_path).expanduser())
+        primary_path = Path(primary_model_path).expanduser()
+        return str(primary_path.with_name("best_secondary.pt"))
 
     def _start_camera(self) -> None:
         try:
@@ -328,18 +378,14 @@ class YoloCameraNode(Node):
 
         result = results[0] if results else None
         detections = (
-            self._result_to_detections(result, transform)
+            self._result_to_detections(result, frame, transform)
             if result is not None
             else []
         )
         self._publish_detections(header, detections, image_width, image_height)
 
         if self.annotated_pub is not None and result is not None:
-            annotated = (
-                self._annotate_detections(frame.copy(), detections)
-                if transform is not None
-                else result.plot()
-            )
+            annotated = self._annotate_detections(frame.copy(), detections)
             self._draw_normalized_coordinates(
                 annotated,
                 detections,
@@ -502,13 +548,20 @@ class YoloCameraNode(Node):
     def _result_to_detections(
         self,
         result: Any,
+        frame: Any,
         transform: LetterboxTransform | None = None,
     ) -> list[dict[str, Any]]:
         detections = []
+        refinement_candidates = []
         names = result.names if hasattr(result, "names") else {}
         boxes = result.boxes
 
         if boxes is None:
+            return detections
+
+        image_height, image_width = frame.shape[:2]
+        image_area = float(image_width * image_height)
+        if image_area <= 0.0:
             return detections
 
         xyxy_rows = boxes.xyxy.detach().cpu().tolist()
@@ -521,31 +574,134 @@ class YoloCameraNode(Node):
         ):
             if transform is not None:
                 xyxy = transform.to_original_bbox(xyxy)
-            if xyxy[2] <= xyxy[0] or xyxy[3] <= xyxy[1]:
+            x1 = max(0.0, min(float(image_width), float(xyxy[0])))
+            y1 = max(0.0, min(float(image_height), float(xyxy[1])))
+            x2 = max(0.0, min(float(image_width), float(xyxy[2])))
+            y2 = max(0.0, min(float(image_height), float(xyxy[3])))
+            if x2 <= x1 or y2 <= y1:
                 continue
+
+            bbox_area_ratio = ((x2 - x1) * (y2 - y1)) / image_area
+            if bbox_area_ratio < self.min_bbox_area_ratio:
+                continue
+
             class_id = int(raw_class_id)
+            if class_id not in PASSTHROUGH_CLASS_IDS | SECOND_STAGE_CLASS_IDS:
+                continue
+
             confidence = float(raw_confidence)
-            if isinstance(names, dict):
-                class_name = names.get(class_id, str(class_id))
-            elif 0 <= class_id < len(names):
-                class_name = names[class_id]
-            else:
-                class_name = str(class_id)
+            class_name = self._class_name(names, class_id)
             detection = {
                 "class_id": class_id,
                 "class_name": class_name,
                 "confidence": confidence,
+                "bbox_area_ratio": bbox_area_ratio,
                 "bbox_xyxy": {
-                    "x1": float(xyxy[0]),
-                    "y1": float(xyxy[1]),
-                    "x2": float(xyxy[2]),
-                    "y2": float(xyxy[3]),
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
                 },
             }
 
-            detections.append(detection)
+            if class_id in PASSTHROUGH_CLASS_IDS:
+                detection["classification_stage"] = "primary"
+                detections.append(detection)
+                continue
+
+            crop_x1 = max(0, int(x1))
+            crop_y1 = max(0, int(y1))
+            crop_x2 = min(image_width, int(x2 + 0.999999))
+            crop_y2 = min(image_height, int(y2 + 0.999999))
+            crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+            if crop.size == 0:
+                continue
+            refinement_candidates.append((detection, crop.copy()))
+
+        detections.extend(self._refine_detections(refinement_candidates))
 
         return detections
+
+    def _refine_detections(self, candidates) -> list[dict[str, Any]]:
+        if not candidates:
+            return []
+
+        inference_kwargs = {
+            "source": [crop for _, crop in candidates],
+            "conf": self.secondary_confidence,
+            "iou": self.iou,
+            "agnostic_nms": self.agnostic_nms,
+            "imgsz": self.secondary_imgsz,
+            "verbose": False,
+        }
+        if self.device:
+            inference_kwargs["device"] = self.device
+
+        try:
+            results = self.secondary_model.predict(**inference_kwargs)
+        except Exception as exc:
+            self.get_logger().error(f"Secondary crop YOLO inference failed: {exc}")
+            return []
+
+        refined_detections = []
+        for (detection, _), result in zip(candidates, results):
+            refined_class = self._best_secondary_class(result)
+            if refined_class is None:
+                continue
+
+            class_id, class_name, confidence = refined_class
+            if class_id not in PASSTHROUGH_CLASS_IDS:
+                continue
+            if confidence < self.secondary_confidence:
+                continue
+
+            detection["primary_class_id"] = detection["class_id"]
+            detection["primary_class_name"] = detection["class_name"]
+            detection["primary_confidence"] = detection["confidence"]
+            detection["class_id"] = class_id
+            detection["class_name"] = class_name
+            detection["confidence"] = confidence
+            detection["secondary_confidence"] = confidence
+            detection["classification_stage"] = "secondary"
+            refined_detections.append(detection)
+        return refined_detections
+
+    @classmethod
+    def _best_secondary_class(
+        cls,
+        result: Any,
+    ) -> tuple[int, str, float] | None:
+        names = result.names if hasattr(result, "names") else {}
+        probabilities = getattr(result, "probs", None)
+        if probabilities is not None and probabilities.top1 is not None:
+            class_id = int(probabilities.top1)
+            confidence = cls._scalar_to_float(probabilities.top1conf)
+            return class_id, cls._class_name(names, class_id), confidence
+
+        boxes = getattr(result, "boxes", None)
+        if boxes is None or boxes.conf is None or len(boxes.conf) == 0:
+            return None
+
+        confidences = boxes.conf.detach().cpu().tolist()
+        class_ids = boxes.cls.detach().cpu().tolist()
+        best_index = max(range(len(confidences)), key=confidences.__getitem__)
+        class_id = int(class_ids[best_index])
+        confidence = float(confidences[best_index])
+        return class_id, cls._class_name(names, class_id), confidence
+
+    @staticmethod
+    def _class_name(names: Any, class_id: int) -> str:
+        if isinstance(names, dict):
+            return str(names.get(class_id, str(class_id)))
+        if 0 <= class_id < len(names):
+            return str(names[class_id])
+        return str(class_id)
+
+    @staticmethod
+    def _scalar_to_float(value: Any) -> float:
+        if hasattr(value, "item"):
+            return float(value.item())
+        return float(value)
 
     def _publish_detections(
         self,
