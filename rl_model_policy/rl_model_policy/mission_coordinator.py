@@ -14,6 +14,7 @@ class MissionPhase:
     CORRECT_STORAGE_Y = "CORRECT_STORAGE_Y"
     ALIGN_STORAGE_ENTRY = "ALIGN_STORAGE_ENTRY"
     OPEN_STORAGE_ENTRY = "OPEN_STORAGE_ENTRY"
+    ALIGN_STORAGE_DASH = "ALIGN_STORAGE_DASH"
     ENTER_STORAGE = "ENTER_STORAGE"
     EXIT_STORAGE = "EXIT_STORAGE"
     CORRECT_STORAGE_EXIT_X = "CORRECT_STORAGE_EXIT_X"
@@ -34,6 +35,7 @@ class MissionPhase:
             CORRECT_STORAGE_Y,
             ALIGN_STORAGE_ENTRY,
             OPEN_STORAGE_ENTRY,
+            ALIGN_STORAGE_DASH,
             ENTER_STORAGE,
             EXIT_STORAGE,
             CORRECT_STORAGE_EXIT_X,
@@ -241,6 +243,39 @@ def waypoint_command(
     )
     linear_x = 0.0 if abs(heading_error) > float(heading_tolerance) else float(speed)
     return NavigationCommand(linear_x, angular_z, False)
+
+
+def storage_dash_heading(staging_x, staging_y, center_x, center_y):
+    """Return the fixed IMU heading from the staging pose to storage."""
+    return math.atan2(
+        float(center_y) - float(staging_y),
+        float(center_x) - float(staging_x),
+    )
+
+
+def fixed_heading_dash_command(
+    robot_yaw,
+    desired_yaw,
+    speed,
+    elapsed_s,
+    duration_s,
+    heading_gain=1.5,
+    max_angular_speed=0.30,
+):
+    """Drive continuously for a fixed time while holding only IMU yaw."""
+    if float(elapsed_s) >= max(0.0, float(duration_s)):
+        return NavigationCommand(0.0, 0.0, True)
+
+    heading_error = normalize_angle(float(desired_yaw) - float(robot_yaw))
+    return NavigationCommand(
+        float(speed),
+        clamp(
+            float(heading_gain) * heading_error,
+            -float(max_angular_speed),
+            float(max_angular_speed),
+        ),
+        False,
+    )
 
 
 def reverse_storage_x_exit_command(

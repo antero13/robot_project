@@ -2,10 +2,12 @@ import math
 import unittest
 
 from rl_model_policy.mission_coordinator import (
+    fixed_heading_dash_command,
     MissionCoordinator,
     MissionPhase,
     ReturnReason,
     reverse_storage_x_exit_command,
+    storage_dash_heading,
     storage_return_start_phase,
     waypoint_command,
 )
@@ -92,6 +94,9 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertTrue(self.mission.is_storage_phase())
 
         self.mission.set_phase(MissionPhase.OPEN_STORAGE_ENTRY, 23.0)
+        self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, 23.5)
         self.assertTrue(self.mission.is_storage_phase())
 
         self.mission.set_phase(MissionPhase.CLOSE_STORAGE_EXIT, 24.0)
@@ -197,6 +202,54 @@ class MissionCoordinatorTest(unittest.TestCase):
             math.hypot(returned[0] - staging[0], returned[1] - staging[1]),
             0.04,
         )
+
+    def test_storage_dash_heading_is_fixed_by_staging_and_contact_coordinates(self):
+        heading = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+
+        self.assertAlmostEqual(
+            heading,
+            math.atan2(-1.75 + 1.3343, -1.75 + 1.25),
+        )
+        self.assertAlmostEqual(math.degrees(heading), -140.260, places=3)
+
+    def test_fixed_heading_dash_does_not_stop_to_chase_pose(self):
+        desired_yaw = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+        command = fixed_heading_dash_command(
+            robot_yaw=desired_yaw + 0.10,
+            desired_yaw=desired_yaw,
+            speed=0.40,
+            elapsed_s=0.50,
+            duration_s=1.75,
+            heading_gain=1.5,
+            max_angular_speed=0.30,
+        )
+
+        self.assertAlmostEqual(command.linear_x, 0.40)
+        self.assertLess(command.angular_z, 0.0)
+        self.assertFalse(command.reached)
+
+    def test_fixed_heading_reverse_uses_same_heading_until_timer_finishes(self):
+        desired_yaw = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+        reversing = fixed_heading_dash_command(
+            robot_yaw=desired_yaw,
+            desired_yaw=desired_yaw,
+            speed=-0.25,
+            elapsed_s=2.55,
+            duration_s=2.60,
+        )
+        stopped = fixed_heading_dash_command(
+            robot_yaw=desired_yaw,
+            desired_yaw=desired_yaw,
+            speed=-0.25,
+            elapsed_s=2.60,
+            duration_s=2.60,
+        )
+
+        self.assertAlmostEqual(reversing.linear_x, -0.25)
+        self.assertAlmostEqual(reversing.angular_z, 0.0)
+        self.assertFalse(reversing.reached)
+        self.assertEqual((stopped.linear_x, stopped.angular_z), (0.0, 0.0))
+        self.assertTrue(stopped.reached)
 
 
 if __name__ == "__main__":

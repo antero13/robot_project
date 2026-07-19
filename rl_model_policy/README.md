@@ -254,7 +254,7 @@ VL53L1X 값으로 남은 x 오차를 기본 3 cm 이내로 보정한다.
 left/right wall은 경기장의 서쪽/동쪽 벽 좌표이며, 차체에 달린 두 센서의
 좌우를 뜻하지 않는다.
 버스 1번과 7번의 두 ToF 센서는 같은 벽의 거리와 각도를 함께 계산한다.
-보관소 x 진입과 후진 확인에서는 로봇이 서쪽을 보기 때문에 서쪽 벽만 사용한다.
+보관소 진입 전과 후진 완료 후의 x 보정에서는 서쪽 벽만 사용한다.
 
 Coverage와 보관소 waypoint, `robot_x/y`, pose correction 토픽은 모두 차체의
 기하학적 중심을 좌표 원점으로 사용한다. 보정이 끝나면 목표 차체 중심 x를
@@ -456,12 +456,13 @@ COLLECTING
 4. **서보 개방과 보관소 진입**
    - 입구 x 보정이 끝난 뒤 서보를 열고 기본 0.5초 기다린다.
    - 입구 `(-1.25, -1.3343) m`에서 보관소 중심 `(-1.75, -1.75) m`까지
-     odometry waypoint로 `0.30 m/s`로 진입한다. 이 구간에서는 ToF로
-     진입을 중단하지 않는다.
+     향하는 고정 yaw로 먼저 정렬한 뒤 `0.40 m/s`로 1.75초 연속 진입한다.
+     이 구간에서는 pose x/y로 방향을 다시 계산하거나 ToF로 중단하지 않는다.
+   - 진입 정지 후 0.20초 안정화하고 pose를 `storage_center_x/y`로 보정한다.
 
 5. **같은 경로 후진과 출구 x 재보정**
-   - 서보를 연 상태로 보관소 중심에서 입구 `(-1.25, -1.3343) m`까지 같은
-     경로를 후진한다.
+   - pose 보정 반영을 확인한 뒤 서보를 연 상태로 같은 IMU yaw를 유지하며
+     기본 2.60초 후진한다.
    - 입구에 도착하면 서보를 닫고 기본 0.5초 기다린 뒤 서쪽을 바라본다.
    - 서쪽 벽 ToF로 `x=-1.25 m`를 다시 3 cm 이내로 보정한다. 신선한 ToF
      값이 연속 1초 동안 없으면 `x=-1.25 m`로 간주하는 fallback을 사용한다.
@@ -508,13 +509,25 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_main_road_y:=-1.3343 storage_staging_x:=-1.25 \
   storage_center_x:=-1.75 storage_center_y:=-1.75 \
   storage_exit_x:=-1.25 \
-  storage_x_entry_speed:=0.30 \
-  storage_entry_yaw_deg:=-90.0 \
+  storage_x_entry_speed:=0.40 \
+  storage_entry_dash_duration_s:=1.75 \
+  storage_exit_reverse_speed:=0.25 \
+  storage_exit_dash_duration_s:=2.60 \
+  storage_contact_settle_duration_s:=0.20 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_sensor_forward_offset_m:=0.09 \
   storage_exit_tof_fallback_timeout_s:=1.0
 ```
 
+보관소 진입 방향은 입구 `(-1.25, -1.3343)`에서 접촉 기준점
+`(-1.75, -1.75)`로 향하는 각도(기본 약 `-140.26 deg`)로 한 번 정렬한다.
+그 뒤에는 pose x/y로 목표 방향을 다시 계산하지 않고 IMU yaw만 유지하면서
+`storage_entry_dash_duration_s` 동안 연속 전진한다. 정지 및 접촉 안정화 후
+`storage_center_x/y`를 `/robot_pose/correct_x`, `/robot_pose/correct_y`로 동시에
+발행하며, 보정 반영을 확인한 다음 같은 yaw로
+`storage_exit_dash_duration_s` 동안 후진한다. 실제 로봇 속도에 따라 두 시간은
+현장에서 조정한다.
+
 `storage_tof_correction_enabled:=false`를 사용하면 진입 전·후의 입구 x ToF
-보정을 생략하고 odometry waypoint만 사용한다. `storage_tof_xy_tolerance_m`
-기본값은 `0.03 m`이다.
+보정만 생략한다. 고정 yaw 시간 기반 진입·후진과 보관소 접촉 pose x/y 보정은
+그대로 수행한다. `storage_tof_xy_tolerance_m` 기본값은 `0.03 m`이다.

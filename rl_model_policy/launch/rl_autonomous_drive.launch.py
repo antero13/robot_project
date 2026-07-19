@@ -161,6 +161,21 @@ def generate_launch_description():
     storage_entry_speed = LaunchConfiguration("storage_entry_speed")
     storage_x_entry_speed = LaunchConfiguration("storage_x_entry_speed")
     storage_exit_reverse_speed = LaunchConfiguration("storage_exit_reverse_speed")
+    storage_entry_dash_duration_s = LaunchConfiguration(
+        "storage_entry_dash_duration_s"
+    )
+    storage_exit_dash_duration_s = LaunchConfiguration(
+        "storage_exit_dash_duration_s"
+    )
+    storage_contact_settle_duration_s = LaunchConfiguration(
+        "storage_contact_settle_duration_s"
+    )
+    storage_dash_heading_tolerance = LaunchConfiguration(
+        "storage_dash_heading_tolerance"
+    )
+    storage_dash_max_angular_speed = LaunchConfiguration(
+        "storage_dash_max_angular_speed"
+    )
     storage_entry_tolerance = LaunchConfiguration("storage_entry_tolerance")
     storage_tof_correction_enabled = LaunchConfiguration(
         "storage_tof_correction_enabled"
@@ -368,6 +383,13 @@ def generate_launch_description():
             "storage_entry_speed": storage_entry_speed,
             "storage_x_entry_speed": storage_x_entry_speed,
             "storage_exit_reverse_speed": storage_exit_reverse_speed,
+            "storage_entry_dash_duration_s": storage_entry_dash_duration_s,
+            "storage_exit_dash_duration_s": storage_exit_dash_duration_s,
+            "storage_contact_settle_duration_s": (
+                storage_contact_settle_duration_s
+            ),
+            "storage_dash_heading_tolerance": storage_dash_heading_tolerance,
+            "storage_dash_max_angular_speed": storage_dash_max_angular_speed,
             "storage_entry_tolerance": storage_entry_tolerance,
             "storage_tof_correction_enabled": storage_tof_correction_enabled,
             "storage_tof_left_wall_x_m": storage_tof_left_wall_x_m,
@@ -749,10 +771,24 @@ def generate_launch_description():
         DeclareLaunchArgument("storage_entry_yaw_deg", default_value="-90.0"),
         DeclareLaunchArgument("storage_return_speed", default_value="0.25"),
             DeclareLaunchArgument("storage_entry_speed", default_value="0.30"),
-            DeclareLaunchArgument("storage_x_entry_speed", default_value="0.30"),
+            DeclareLaunchArgument("storage_x_entry_speed", default_value="0.40"),
         DeclareLaunchArgument(
             "storage_exit_reverse_speed",
                 default_value="0.25",
+        ),
+        DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="1.75"),
+        DeclareLaunchArgument("storage_exit_dash_duration_s", default_value="2.60"),
+        DeclareLaunchArgument(
+            "storage_contact_settle_duration_s",
+            default_value="0.20",
+        ),
+        DeclareLaunchArgument(
+            "storage_dash_heading_tolerance",
+            default_value="0.05",
+        ),
+        DeclareLaunchArgument(
+            "storage_dash_max_angular_speed",
+            default_value="0.30",
         ),
         DeclareLaunchArgument("storage_entry_tolerance", default_value="0.04"),
             DeclareLaunchArgument(

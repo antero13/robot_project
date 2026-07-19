@@ -17,9 +17,11 @@ from rl_model_policy.coverage_controller import (
     generate_coverage_legs,
 )
 from rl_model_policy.mission_coordinator import (
+    fixed_heading_dash_command,
     MissionCoordinator,
     MissionPhase,
     ReturnReason,
+    storage_dash_heading,
     storage_return_start_phase,
     waypoint_command,
 )
@@ -227,8 +229,13 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_entry_yaw_deg", -90.0)
         self.declare_parameter("storage_return_speed", 0.25)
         self.declare_parameter("storage_entry_speed", 0.30)
-        self.declare_parameter("storage_x_entry_speed", 0.30)
+        self.declare_parameter("storage_x_entry_speed", 0.40)
         self.declare_parameter("storage_exit_reverse_speed", 0.25)
+        self.declare_parameter("storage_entry_dash_duration_s", 1.75)
+        self.declare_parameter("storage_exit_dash_duration_s", 2.60)
+        self.declare_parameter("storage_contact_settle_duration_s", 0.20)
+        self.declare_parameter("storage_dash_heading_tolerance", 0.05)
+        self.declare_parameter("storage_dash_max_angular_speed", 0.30)
         self.declare_parameter("storage_waypoint_tolerance", 0.10)
         self.declare_parameter("storage_entry_tolerance", 0.04)
         self.declare_parameter("storage_heading_tolerance", 0.14)
@@ -329,6 +336,9 @@ class RLModelPolicyNode(Node):
         self.pending_pose_y_correction = None
         self.pending_pose_y_correction_time = None
         self.storage_exit_tof_missing_started_at = None
+        self.storage_dash_timer_phase = None
+        self.storage_dash_elapsed_s = 0.0
+        self.storage_dash_last_update_s = None
         self.mission_waypoint = None
         self.return_lane_x = 0.0
 
@@ -766,6 +776,7 @@ class RLModelPolicyNode(Node):
             else None
         )
         if self.active and self.motion_paused:
+            self.pause_storage_dash_timer()
             if self.grab_state != self.GRAB_TRACKING:
                 self.set_control_mode(self.MODE_GRAB_SEQUENCE)
             linear_x, angular_z = (0.0, 0.0)
@@ -880,6 +891,7 @@ class RLModelPolicyNode(Node):
     def prepare_storage_return(self):
         self.cancel_leave_start()
         self.coverage_controller.cancel_rejoin()
+        self.reset_storage_dash_timer()
         self.pending_pose_x_correction = None
         self.pending_pose_x_correction_time = None
         self.pending_pose_y_correction = None
@@ -936,12 +948,21 @@ class RLModelPolicyNode(Node):
 
     def storage_mission_command(self, bins, now_s):
         if not self.storage_pose_is_valid():
+            self.pause_storage_dash_timer()
             self.mission_waypoint = None
             self.set_control_mode(self.MODE_WAITING_FOR_POSE)
             return (0.0, 0.0)
 
-        if self.waiting_for_pose_x_correction() or self.waiting_for_pose_y_correction():
-            if self.waiting_for_pose_x_correction():
+        waiting_for_x = self.waiting_for_pose_x_correction()
+        waiting_for_y = self.waiting_for_pose_y_correction()
+        if waiting_for_x or waiting_for_y:
+            self.pause_storage_dash_timer()
+            if self.mission.phase == MissionPhase.EXIT_STORAGE:
+                self.mission_waypoint = (
+                    self.get_float("storage_center_x"),
+                    self.get_float("storage_center_y"),
+                )
+            elif waiting_for_x:
                 self.mission_waypoint = (
                     self.pending_pose_x_correction,
                     self.get_float("storage_main_road_y"),
@@ -1085,21 +1106,61 @@ class RLModelPolicyNode(Node):
                 "gripper_move_duration_s"
             ):
                 return (0.0, 0.0)
-            self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
+            self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, now_s)
             return (0.0, 0.0)
+
+        if phase == MissionPhase.ALIGN_STORAGE_DASH:
+            self.set_control_mode(self.MODE_ENTER_STORAGE)
+            self.mission_waypoint = (
+                self.get_float("storage_center_x"),
+                self.get_float("storage_center_y"),
+            )
+            command = waypoint_command(
+                robot_x=self.robot_x,
+                robot_y=self.robot_y,
+                robot_yaw=self.robot_yaw,
+                target_x=self.robot_x,
+                target_y=self.robot_y,
+                speed=0.0,
+                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
+                heading_tolerance=self.get_float("storage_dash_heading_tolerance"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_max_angular_speed"),
+                final_yaw=self.storage_entry_dash_yaw(),
+                final_yaw_tolerance=self.get_float(
+                    "storage_dash_heading_tolerance"
+                ),
+            )
+            if command.reached:
+                self.reset_storage_dash_timer()
+                self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
 
         if phase == MissionPhase.ENTER_STORAGE:
             self.set_control_mode(self.MODE_ENTER_STORAGE)
-            command = self.storage_waypoint_command(
-                (0.0, 0.0, 0.0),
+            self.mission_waypoint = (
                 self.get_float("storage_center_x"),
                 self.get_float("storage_center_y"),
-                self.get_float("storage_x_entry_speed"),
-                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
             )
-            if command.reached:
-                return self.complete_storage_entry(now_s)
-            return (command.linear_x, command.angular_z)
+            elapsed_s = self.update_storage_dash_timer(phase, now_s)
+            command = fixed_heading_dash_command(
+                robot_yaw=self.robot_yaw,
+                desired_yaw=self.storage_entry_dash_yaw(),
+                speed=self.get_float("storage_x_entry_speed"),
+                elapsed_s=elapsed_s,
+                duration_s=self.get_float("storage_entry_dash_duration_s"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_dash_max_angular_speed"),
+            )
+            if not command.reached:
+                return (command.linear_x, command.angular_z)
+            if elapsed_s < (
+                self.get_float("storage_entry_dash_duration_s")
+                + self.get_float("storage_contact_settle_duration_s")
+            ):
+                return (0.0, 0.0)
+            return self.complete_storage_entry(now_s)
 
         if phase == MissionPhase.EXIT_STORAGE:
             self.set_control_mode(self.MODE_EXIT_STORAGE)
@@ -1107,14 +1168,18 @@ class RLModelPolicyNode(Node):
                 self.get_float("storage_staging_x"),
                 self.get_float("storage_main_road_y"),
             )
-            command = self.storage_waypoint_command(
-                (0.0, 0.0, 0.0),
-                self.get_float("storage_staging_x"),
-                self.get_float("storage_main_road_y"),
-                -abs(self.get_float("storage_exit_reverse_speed")),
-                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
+            elapsed_s = self.update_storage_dash_timer(phase, now_s)
+            command = fixed_heading_dash_command(
+                robot_yaw=self.robot_yaw,
+                desired_yaw=self.storage_entry_dash_yaw(),
+                speed=-abs(self.get_float("storage_exit_reverse_speed")),
+                elapsed_s=elapsed_s,
+                duration_s=self.get_float("storage_exit_dash_duration_s"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_dash_max_angular_speed"),
             )
             if command.reached:
+                self.reset_storage_dash_timer()
                 return self.begin_storage_exit_close(now_s)
             return (command.linear_x, command.angular_z)
 
@@ -1315,6 +1380,58 @@ class RLModelPolicyNode(Node):
         )
         return (0.0, 0.0)
 
+    def storage_entry_dash_yaw(self):
+        return storage_dash_heading(
+            self.get_float("storage_staging_x"),
+            self.get_float("storage_main_road_y"),
+            self.get_float("storage_center_x"),
+            self.get_float("storage_center_y"),
+        )
+
+    def reset_storage_dash_timer(self):
+        self.storage_dash_timer_phase = None
+        self.storage_dash_elapsed_s = 0.0
+        self.storage_dash_last_update_s = None
+
+    def pause_storage_dash_timer(self):
+        self.storage_dash_last_update_s = None
+
+    def update_storage_dash_timer(self, phase, now_s):
+        phase = str(phase)
+        now_s = float(now_s)
+        if self.storage_dash_timer_phase != phase:
+            self.storage_dash_timer_phase = phase
+            self.storage_dash_elapsed_s = 0.0
+            self.storage_dash_last_update_s = now_s
+            return 0.0
+        if self.storage_dash_last_update_s is None:
+            self.storage_dash_last_update_s = now_s
+            return self.storage_dash_elapsed_s
+        self.storage_dash_elapsed_s += max(
+            0.0,
+            now_s - self.storage_dash_last_update_s,
+        )
+        self.storage_dash_last_update_s = now_s
+        return self.storage_dash_elapsed_s
+
+    def correct_pose_at_storage_contact(self):
+        corrected_x = self.get_float("storage_center_x")
+        corrected_y = self.get_float("storage_center_y")
+        if self.dry_run:
+            return
+
+        x_correction = Float64()
+        x_correction.data = corrected_x
+        y_correction = Float64()
+        y_correction.data = corrected_y
+        correction_time = self.get_clock().now()
+        self.pose_x_correction_pub.publish(x_correction)
+        self.pose_y_correction_pub.publish(y_correction)
+        self.pending_pose_x_correction = corrected_x
+        self.pending_pose_x_correction_time = correction_time
+        self.pending_pose_y_correction = corrected_y
+        self.pending_pose_y_correction_time = correction_time
+
     def begin_storage_entry_open(self, now_s):
         self.publish_cmd(0.0, 0.0)
         self.command_gripper(open_gripper=True)
@@ -1337,6 +1454,8 @@ class RLModelPolicyNode(Node):
 
     def complete_storage_entry(self, now_s):
         self.publish_cmd(0.0, 0.0)
+        self.reset_storage_dash_timer()
+        self.correct_pose_at_storage_contact()
         deposited_count = self.mission.onboard_count
         self.mission.record_deposit(now_s)
         self.mission_waypoint = (
@@ -1345,7 +1464,10 @@ class RLModelPolicyNode(Node):
         )
         self.get_logger().info(
             f"Deposited {deposited_count} object(s); "
-            f"total delivered={self.mission.delivered_count}; reversing with gripper open"
+            f"total delivered={self.mission.delivered_count}; "
+            f"pose corrected to ({self.get_float('storage_center_x'):.3f}, "
+            f"{self.get_float('storage_center_y'):.3f}); "
+            "reversing with gripper open"
         )
         return (0.0, 0.0)
 
@@ -1690,7 +1812,7 @@ class RLModelPolicyNode(Node):
         if age.nanoseconds / 1_000_000_000.0 <= self.get_float("pose_timeout_s"):
             return True
         self.get_logger().warning(
-            "Timed out waiting for pose tracker to publish the ToF x correction"
+            "Timed out waiting for pose tracker to publish the x correction"
         )
         self.pending_pose_x_correction = None
         self.pending_pose_x_correction_time = None
@@ -1708,7 +1830,7 @@ class RLModelPolicyNode(Node):
         if age.nanoseconds / 1_000_000_000.0 <= self.get_float("pose_timeout_s"):
             return True
         self.get_logger().warning(
-            "Timed out waiting for pose tracker to publish the ToF y correction"
+            "Timed out waiting for pose tracker to publish the y correction"
         )
         self.pending_pose_y_correction = None
         self.pending_pose_y_correction_time = None
