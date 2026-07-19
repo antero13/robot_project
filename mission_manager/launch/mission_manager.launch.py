@@ -18,7 +18,7 @@ def generate_launch_description():
                 'avoid_objects_topic': '/avoid_objects',
                 'pwm_servo_topic': '/ros_robot_controller/pwm_servo/set_state',
                 'bus_servo_topic': '/ros_robot_controller/bus_servo/set_state',
-                'timer_rate_hz': 20.0,
+                'timer_rate_hz': 10.0,
 
                 'leave_start_linear_x': 0.08,
                 'leave_start_angular_z': 0.0,
@@ -34,6 +34,9 @@ def generate_launch_description():
                 'approach_max_linear_x': 0.10,
                 'approach_min_linear_x': 0.03,
                 'approach_angular_gain': 0.8,
+                'approach_derivative_gain': 0.12,
+                'approach_derivative_limit': 0.25,
+                'approach_center_deadband': 0.06,
                 'approach_max_angular_z': 0.45,
                 'center_tolerance': 0.12,
                 'grab_area_ratio': 0.50,
