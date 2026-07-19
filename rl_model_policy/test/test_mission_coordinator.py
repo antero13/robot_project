@@ -102,6 +102,9 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, 23.5)
         self.assertTrue(self.mission.is_storage_phase())
 
+        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_EXIT_WEST, 23.8)
+        self.assertTrue(self.mission.is_storage_phase())
+
         self.mission.set_phase(MissionPhase.CLOSE_STORAGE_EXIT, 24.0)
         self.assertTrue(self.mission.is_storage_phase())
 
@@ -158,10 +161,10 @@ class MissionCoordinatorTest(unittest.TestCase):
 
     def test_reverse_storage_exit_stops_at_x_minus_1_25(self):
         moving = reverse_storage_x_exit_command(
-            -1.75, math.pi, -1.25, math.pi, 0.25, x_tolerance=0.04
+            -1.75, math.pi, -1.25, math.pi, 0.40, x_tolerance=0.04
         )
         stopped = reverse_storage_x_exit_command(
-            -1.24, math.pi, -1.25, math.pi, 0.25, x_tolerance=0.04
+            -1.24, math.pi, -1.25, math.pi, 0.40, x_tolerance=0.04
         )
 
         self.assertLess(moving.linear_x, 0.0)
@@ -176,7 +179,7 @@ class MissionCoordinatorTest(unittest.TestCase):
             robot_yaw=entry_heading,
             target_x=-1.25,
             target_y=-1.3343,
-            speed=-0.25,
+            speed=-0.40,
         )
 
         self.assertLess(command.linear_x, 0.0)
@@ -194,7 +197,7 @@ class MissionCoordinatorTest(unittest.TestCase):
         returned = simulate_waypoint(
             entered,
             staging,
-            speed=-0.25,
+            speed=-0.40,
         )
 
         self.assertLess(
@@ -222,7 +225,7 @@ class MissionCoordinatorTest(unittest.TestCase):
             desired_yaw=desired_yaw,
             speed=0.40,
             elapsed_s=0.50,
-            duration_s=1.75,
+            duration_s=2.50,
             heading_gain=1.5,
             max_angular_speed=0.30,
         )
@@ -231,24 +234,58 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertLess(command.angular_z, 0.0)
         self.assertFalse(command.reached)
 
+    def test_storage_exit_rotates_to_west_before_tof(self):
+        dash_yaw = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+        command = waypoint_command(
+            robot_x=-1.25,
+            robot_y=-1.3343,
+            robot_yaw=dash_yaw,
+            target_x=-1.25,
+            target_y=-1.3343,
+            speed=0.0,
+            waypoint_tolerance=0.04,
+            heading_tolerance=0.14,
+            heading_gain=1.5,
+            max_angular_speed=0.60,
+            final_yaw=math.pi,
+            final_yaw_tolerance=0.12,
+        )
+
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertLess(command.angular_z, 0.0)
+        self.assertFalse(command.reached)
+
+        aligned = waypoint_command(
+            robot_x=-1.25,
+            robot_y=-1.3343,
+            robot_yaw=math.pi,
+            target_x=-1.25,
+            target_y=-1.3343,
+            speed=0.0,
+            waypoint_tolerance=0.04,
+            final_yaw=math.pi,
+            final_yaw_tolerance=0.12,
+        )
+        self.assertTrue(aligned.reached)
+
     def test_fixed_heading_reverse_uses_same_heading_until_timer_finishes(self):
         desired_yaw = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
         reversing = fixed_heading_dash_command(
             robot_yaw=desired_yaw,
             desired_yaw=desired_yaw,
-            speed=-0.25,
-            elapsed_s=2.55,
-            duration_s=2.60,
+            speed=-0.40,
+            elapsed_s=1.45,
+            duration_s=1.50,
         )
         stopped = fixed_heading_dash_command(
             robot_yaw=desired_yaw,
             desired_yaw=desired_yaw,
-            speed=-0.25,
-            elapsed_s=2.60,
-            duration_s=2.60,
+            speed=-0.40,
+            elapsed_s=1.50,
+            duration_s=1.50,
         )
 
-        self.assertAlmostEqual(reversing.linear_x, -0.25)
+        self.assertAlmostEqual(reversing.linear_x, -0.40)
         self.assertAlmostEqual(reversing.angular_z, 0.0)
         self.assertFalse(reversing.reached)
         self.assertEqual((stopped.linear_x, stopped.angular_z), (0.0, 0.0))

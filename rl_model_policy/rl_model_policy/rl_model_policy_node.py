@@ -1350,6 +1350,33 @@ class RLModelPolicyNode(Node):
             )
             if command.reached:
                 self.reset_storage_dash_timer()
+                return self.begin_storage_exit_west_alignment(now_s)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.ALIGN_STORAGE_EXIT_WEST:
+            self.set_control_mode(self.MODE_EXIT_STORAGE)
+            self.mission_waypoint = (self.robot_x, self.robot_y)
+            command = waypoint_command(
+                robot_x=self.robot_x,
+                robot_y=self.robot_y,
+                robot_yaw=self.robot_yaw,
+                target_x=self.robot_x,
+                target_y=self.robot_y,
+                speed=0.0,
+                waypoint_tolerance=self.get_float("storage_entry_tolerance"),
+                heading_tolerance=self.get_float("storage_heading_tolerance"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_max_angular_speed"),
+                final_yaw=math.pi,
+                final_yaw_tolerance=self.get_float(
+                    "storage_final_yaw_tolerance"
+                ),
+            )
+            if command.reached:
+                self.get_logger().info(
+                    "Storage reverse complete; west-facing odometry alignment "
+                    "complete, closing gripper"
+                )
                 return self.begin_storage_exit_close(now_s)
             return (command.linear_x, command.angular_z)
 
@@ -1657,6 +1684,16 @@ class RLModelPolicyNode(Node):
         self.mission_waypoint = (
             self.get_float("storage_exit_x"),
             self.get_float("storage_main_road_y"),
+        )
+        return (0.0, 0.0)
+
+    def begin_storage_exit_west_alignment(self, now_s):
+        self.publish_cmd(0.0, 0.0)
+        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_EXIT_WEST, now_s)
+        self.mission_waypoint = (self.robot_x, self.robot_y)
+        self.get_logger().info(
+            "Storage reverse complete; rotating toward west with odometry "
+            "before closing gripper"
         )
         return (0.0, 0.0)
 

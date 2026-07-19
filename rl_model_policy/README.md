@@ -433,6 +433,7 @@ COLLECTING
   -> OPEN_STORAGE_ENTRY
   -> ENTER_STORAGE
   -> EXIT_STORAGE
+  -> ALIGN_STORAGE_EXIT_WEST
   -> CLOSE_STORAGE_EXIT
   -> CORRECT_STORAGE_EXIT_X
   -> RETURN_FROM_STORAGE
@@ -487,7 +488,8 @@ COLLECTING
 5. **같은 경로 후진과 출구 x 재보정**
    - pose 보정 반영을 확인한 뒤 서보를 연 상태로 같은 IMU yaw를 유지하며
      `-0.40 m/s`로 기본 1.50초 후진한다.
-   - 입구에 도착하면 서보를 닫고 기본 0.5초 기다린 뒤 서쪽을 바라본다.
+   - 후진이 끝나면 서보를 연 상태로 odometry yaw를 사용해 서쪽 180도로
+     제자리 회전한다. 서쪽 정렬이 끝난 뒤 서보를 닫고 기본 0.5초 기다린다.
    - 서쪽 벽 ToF 거리로 `x=-1.25 m`를 먼저 보정한다. 거리 완료 후 벽 각도가
      10도 이상이면 정렬을 시작하고 5도 이하에서 멈춘 뒤 yaw를 180도로
      재설정한다. 신선한 ToF 값이 연속 1초 동안 없으면 x를 `-1.25 m`로
@@ -556,7 +558,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 `storage_exit_dash_duration_s` 동안 후진한다. 실제 로봇 속도에 따라 두 시간은
 현장에서 조정한다.
 
-후진과 서보 닫기가 끝나면 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
+후진이 끝나면 먼저 odometry yaw로 서쪽 180도를 바라보도록 제자리 회전하고,
+회전 완료 후 서보를 닫는다. 그다음 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
 각도가 10도 이상일 때만 회전을 시작하고, 시작된 회전은 5도 이하까지 계속한
 다음 pose yaw를 180도로 재설정한다.
 
