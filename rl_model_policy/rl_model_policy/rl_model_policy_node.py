@@ -672,6 +672,8 @@ class DeterministicMissionControllerNode(Node):
         target = self.current_target()
         objects = self.current_avoid_objects(target)
         obs, bins, nearest = self.make_observation(target, objects)
+        pickup_objects = self.pickup_avoid_objects(objects)
+        pickup_bins = self.avoid_bins(pickup_objects)[:3]
         if self.active and self.full_mission_is_enabled():
             previous_phase = self.mission.phase
             self.mission.update_time(now_s)
@@ -700,7 +702,7 @@ class DeterministicMissionControllerNode(Node):
         confirmed_target = target if target_control_ready else None
         pickup_avoid_required = (
             confirmed_target is not None
-            and self.should_avoid_target_path(objects, confirmed_target)
+            and self.should_avoid_target_path(pickup_objects, confirmed_target)
         )
         grab_cmd = (
             self.update_grab_sequence(confirmed_target)
@@ -765,7 +767,7 @@ class DeterministicMissionControllerNode(Node):
                     None if confirmed_target is None else confirmed_target.y
                 ),
                 avoid_required=pickup_avoid_required,
-                avoid_bins=bins,
+                avoid_bins=pickup_bins,
             )
             linear_x = pickup_command.linear_x
             angular_z = pickup_command.angular_z
@@ -2234,10 +2236,12 @@ class DeterministicMissionControllerNode(Node):
         else:
             objects = []
 
-        if bool(self.get_parameter("avoid_roi_enabled").value):
-            objects = [obj for obj in objects if self.avoid_is_inside_roi(obj)]
-
         return objects
+
+    def pickup_avoid_objects(self, objects):
+        if not bool(self.get_parameter("avoid_roi_enabled").value):
+            return list(objects)
+        return [obj for obj in objects if self.avoid_is_inside_roi(obj)]
 
     def should_avoid_target_path(self, objects, target):
         if not bool(self.get_parameter("avoid_enabled").value):
