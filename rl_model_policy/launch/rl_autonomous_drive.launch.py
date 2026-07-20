@@ -55,6 +55,21 @@ def generate_launch_description():
     target_pd_derivative_limit = LaunchConfiguration("target_pd_derivative_limit")
     target_pd_center_deadband = LaunchConfiguration("target_pd_center_deadband")
     target_pd_max_angular_z = LaunchConfiguration("target_pd_max_angular_z")
+    near_target_alignment_enabled = LaunchConfiguration(
+        "near_target_alignment_enabled"
+    )
+    near_target_alignment_enter_y = LaunchConfiguration(
+        "near_target_alignment_enter_y"
+    )
+    near_target_alignment_linear_x = LaunchConfiguration(
+        "near_target_alignment_linear_x"
+    )
+    near_target_alignment_angular_gain = LaunchConfiguration(
+        "near_target_alignment_angular_gain"
+    )
+    near_target_alignment_max_angular_z = LaunchConfiguration(
+        "near_target_alignment_max_angular_z"
+    )
     target_timeout_s = LaunchConfiguration("target_timeout_s")
     target_tracking_timeout_s = LaunchConfiguration("target_tracking_timeout_s")
     target_confirmation_window = LaunchConfiguration("target_confirmation_window")
@@ -381,6 +396,11 @@ def generate_launch_description():
             "target_pd_derivative_limit": target_pd_derivative_limit,
             "target_pd_center_deadband": target_pd_center_deadband,
             "target_pd_max_angular_z": target_pd_max_angular_z,
+            "near_target_alignment_enabled": near_target_alignment_enabled,
+            "near_target_alignment_enter_y": near_target_alignment_enter_y,
+            "near_target_alignment_linear_x": near_target_alignment_linear_x,
+            "near_target_alignment_angular_gain": near_target_alignment_angular_gain,
+            "near_target_alignment_max_angular_z": near_target_alignment_max_angular_z,
             "target_timeout_s": target_timeout_s,
             "target_tracking_timeout_s": target_tracking_timeout_s,
             "target_confirmation_window": target_confirmation_window,
@@ -709,6 +729,17 @@ def generate_launch_description():
         DeclareLaunchArgument("target_pd_derivative_limit", default_value="0.25"),
         DeclareLaunchArgument("target_pd_center_deadband", default_value="0.06"),
         DeclareLaunchArgument("target_pd_max_angular_z", default_value="0.45"),
+        DeclareLaunchArgument("near_target_alignment_enabled", default_value="true"),
+        DeclareLaunchArgument("near_target_alignment_enter_y", default_value="0.60"),
+        DeclareLaunchArgument("near_target_alignment_linear_x", default_value="0.05"),
+        DeclareLaunchArgument(
+            "near_target_alignment_angular_gain",
+            default_value="0.90",
+        ),
+        DeclareLaunchArgument(
+            "near_target_alignment_max_angular_z",
+            default_value="0.55",
+        ),
         DeclareLaunchArgument(
             "target_timeout_s",
             default_value="1.0",

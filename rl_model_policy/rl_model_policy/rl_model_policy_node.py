@@ -253,6 +253,11 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("target_pd_derivative_limit", 0.25)
         self.declare_parameter("target_pd_center_deadband", 0.06)
         self.declare_parameter("target_pd_max_angular_z", 0.45)
+        self.declare_parameter("near_target_alignment_enabled", True)
+        self.declare_parameter("near_target_alignment_enter_y", 0.60)
+        self.declare_parameter("near_target_alignment_linear_x", 0.05)
+        self.declare_parameter("near_target_alignment_angular_gain", 0.90)
+        self.declare_parameter("near_target_alignment_max_angular_z", 0.55)
 
         self.declare_parameter("full_mission_enabled", True)
         self.declare_parameter("mission_duration_s", 180.0)
@@ -362,6 +367,7 @@ class RLModelPolicyNode(Node):
             max_angular_z=self.get_float("target_pd_max_angular_z"),
         )
         self.target_pd_last_command = None
+        self.near_target_alignment_active = False
         self.last_cmd = (0.0, 0.0)
         self.grab_state = self.GRAB_TRACKING
         self.grab_state_started_at = self.get_clock().now()
@@ -921,11 +927,17 @@ class RLModelPolicyNode(Node):
                 self.filtered_action, self.raw_action
             )
             linear_x, angular_z = self.action_to_cmd(self.filtered_action)
-            angular_z = self.target_alignment_angular_z(
-                confirmed_target.x,
-                now_s,
-                fallback_angular_z=angular_z,
+            near_alignment_cmd = self.near_target_alignment_command(
+                confirmed_target,
             )
+            if near_alignment_cmd is not None:
+                linear_x, angular_z = near_alignment_cmd
+            else:
+                angular_z = self.target_alignment_angular_z(
+                    confirmed_target.x,
+                    now_s,
+                    fallback_angular_z=angular_z,
+                )
             self.coverage_command = None
         elif (
             self.active
@@ -2367,6 +2379,8 @@ class RLModelPolicyNode(Node):
         previous_mode = self.control_mode
         if mode == self.MODE_TRACK_TARGET or previous_mode == self.MODE_TRACK_TARGET:
             self.reset_target_alignment_pd()
+        if mode != self.MODE_TRACK_TARGET:
+            self.near_target_alignment_active = False
         self.control_mode = mode
         if mode == self.MODE_TRACK_TARGET:
             self.filtered_action = [0.0, 0.0]
@@ -2393,8 +2407,45 @@ class RLModelPolicyNode(Node):
         self.target_pd_last_command = command
         return command.angular_z
 
+    def near_target_alignment_command(self, target):
+        if not bool(self.get_parameter("near_target_alignment_enabled").value):
+            self.near_target_alignment_active = False
+            return None
+        if target is None:
+            self.near_target_alignment_active = False
+            return None
+        if float(target.y) < self.get_float("near_target_alignment_enter_y"):
+            if self.near_target_alignment_active:
+                self.get_logger().info("Near target alignment released")
+            self.near_target_alignment_active = False
+            return None
+
+        if not self.near_target_alignment_active:
+            self.get_logger().info(
+                "Near target alignment active: visual x-control overrides RL turn"
+            )
+        self.near_target_alignment_active = True
+
+        error = float(target.x)
+        deadband = min(
+            self.get_float("grab_center_tolerance") * 0.5,
+            self.get_float("target_pd_center_deadband"),
+        )
+        if abs(error) <= deadband:
+            angular_z = 0.0
+        else:
+            angular_z = self.clamp(
+                -self.get_float("near_target_alignment_angular_gain") * error,
+                -self.get_float("near_target_alignment_max_angular_z"),
+                self.get_float("near_target_alignment_max_angular_z"),
+            )
+
+        linear_x = self.get_float("near_target_alignment_linear_x")
+        return linear_x, angular_z
+
     def current_target(self):
         if not self.target_data_is_fresh(self.latest_target_time):
+            self.near_target_alignment_active = False
             return None
 
         target = self.make_point(
@@ -2874,6 +2925,20 @@ class RLModelPolicyNode(Node):
                         None
                         if self.target_pd_last_command is None
                         else round(self.target_pd_last_command.angular_z, 4)
+                    ),
+                },
+                "near_target_alignment": {
+                    "enabled": bool(
+                        self.get_parameter("near_target_alignment_enabled").value
+                    ),
+                    "active": self.near_target_alignment_active,
+                    "enter_y": self.get_float("near_target_alignment_enter_y"),
+                    "linear_x": self.get_float("near_target_alignment_linear_x"),
+                    "angular_gain": self.get_float(
+                        "near_target_alignment_angular_gain"
+                    ),
+                    "max_angular_z": self.get_float(
+                        "near_target_alignment_max_angular_z"
                     ),
                 },
                 "leave_start": {
