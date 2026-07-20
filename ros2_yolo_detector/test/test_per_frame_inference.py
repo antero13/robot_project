@@ -52,6 +52,33 @@ class PerFrameInferenceTest(unittest.TestCase):
     def test_secondary_default_size_matches_exported_engine(self):
         self.assertIn('declare_parameter("secondary_imgsz", 800)', self.source)
 
+    def test_final_class_names_match_dataset_order(self):
+        expected_names = {
+            0: "12",
+            1: "20",
+            2: "6",
+            3: "8",
+            4: "apple",
+            5: "banana",
+            6: "orange",
+            7: "pineapple",
+        }
+        assignments = {
+            node.targets[0].id: ast.literal_eval(node.value)
+            for node in self.tree.body
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "FINAL_CLASS_NAMES"
+        }
+        self.assertEqual(assignments["FINAL_CLASS_NAMES"], expected_names)
+
+    def test_secondary_name_uses_final_class_mapping(self):
+        self.assertIn(
+            'detection["class_name"] = FINAL_CLASS_NAMES[final_class_id]',
+            self.source,
+        )
+
     def test_secondary_crop_uses_its_own_frame_correction(self):
         self.assertIn(
             "self.secondary_frame_corrector = self._create_frame_corrector(\n"

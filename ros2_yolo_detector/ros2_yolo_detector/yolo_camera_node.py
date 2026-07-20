@@ -23,6 +23,20 @@ from .frame_correction import (
 PASSTHROUGH_CLASS_IDS = frozenset({0, 1, 2, 3})
 SECOND_STAGE_CLASS_IDS = frozenset({4, 5, 6, 7})
 SECONDARY_TO_FINAL_CLASS_ID = {0: 4, 1: 5, 2: 6, 3: 7}
+FINAL_CLASS_NAMES = {
+    0: "12",
+    1: "20",
+    2: "6",
+    3: "8",
+    4: "apple",
+    5: "banana",
+    6: "orange",
+    7: "pineapple",
+}
+SECONDARY_CLASS_NAMES = {
+    secondary_id: FINAL_CLASS_NAMES[final_id]
+    for secondary_id, final_id in SECONDARY_TO_FINAL_CLASS_ID.items()
+}
 
 
 class YoloCameraNode(Node):
@@ -594,7 +608,10 @@ class YoloCameraNode(Node):
                 continue
 
             confidence = float(raw_confidence)
-            class_name = self._class_name(names, class_id)
+            class_name = FINAL_CLASS_NAMES.get(
+                class_id,
+                self._class_name(names, class_id),
+            )
             detection = {
                 "class_id": class_id,
                 "class_name": class_name,
@@ -666,7 +683,7 @@ class YoloCameraNode(Node):
             if refined_class is None:
                 continue
 
-            secondary_class_id, class_name, confidence = refined_class
+            secondary_class_id, model_class_name, confidence = refined_class
             final_class_id = SECONDARY_TO_FINAL_CLASS_ID.get(secondary_class_id)
             if final_class_id is None:
                 continue
@@ -677,9 +694,12 @@ class YoloCameraNode(Node):
             detection["primary_class_name"] = detection["class_name"]
             detection["primary_confidence"] = detection["confidence"]
             detection["secondary_class_id"] = secondary_class_id
-            detection["secondary_class_name"] = class_name
+            detection["secondary_model_class_name"] = model_class_name
+            detection["secondary_class_name"] = SECONDARY_CLASS_NAMES[
+                secondary_class_id
+            ]
             detection["class_id"] = final_class_id
-            detection["class_name"] = class_name
+            detection["class_name"] = FINAL_CLASS_NAMES[final_class_id]
             detection["confidence"] = confidence
             detection["secondary_confidence"] = confidence
             detection["classification_stage"] = "secondary"
