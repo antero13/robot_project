@@ -4,8 +4,8 @@ ROS 2 package for two front-facing VL53L1X ToF sensors.
 
 The launch starts three OS processes:
 
-- `left_wall_tof`: reads exactly one VL53L1X on I2C bus 1
-- `right_wall_tof`: reads exactly one VL53L1X on I2C bus 7
+- `left_wall_tof`: reads exactly one VL53L1X on Linux I2C bus 7
+- `right_wall_tof`: reads exactly one VL53L1X on Linux I2C bus 1
 - `wall_distance_aggregator`: combines the two `Range` topics
 
 Keeping each native `VL53L1X` driver in its own process avoids the driver's
@@ -58,7 +58,7 @@ For Jetson Orin Nano, use two separate I2C buses so the two VL53L1X sensors can
 both keep their default `0x29` address. This avoids SDA/SCL branching and does
 not require XSHUT wiring.
 
-Left sensor:
+Left sensor (exposed as Linux I2C bus 7 on the target Jetson):
 
 ```text
 VCC -> Pin 1 or Pin 17, 3.3V
@@ -67,7 +67,7 @@ SDA -> Pin 3, I2C1_SDA
 SCL -> Pin 5, I2C1_SCL
 ```
 
-Right sensor (exposed as Linux I2C bus 7 on the target Jetson):
+Right sensor (exposed as Linux I2C bus 1 on the target Jetson):
 
 ```text
 VCC -> Pin 1 or Pin 17, 3.3V
@@ -80,8 +80,8 @@ Default launch for this wiring:
 
 ```bash
 ros2 launch wall_distance_sensor wall_distance_angle.launch.py \
-  left_i2c_bus:=1 \
-  right_i2c_bus:=7 \
+  left_i2c_bus:=7 \
+  right_i2c_bus:=1 \
   left_address:=41 \
   right_address:=41 \
   ranging_mode:=3 \

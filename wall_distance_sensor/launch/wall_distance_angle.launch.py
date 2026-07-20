@@ -12,8 +12,8 @@ def typed(name, value_type):
 def generate_launch_description():
     declarations = [
         DeclareLaunchArgument("driver_backend", default_value="vl53l1x"),
-        DeclareLaunchArgument("left_i2c_bus", default_value="1"),
-        DeclareLaunchArgument("right_i2c_bus", default_value="7"),
+        DeclareLaunchArgument("left_i2c_bus", default_value="7"),
+        DeclareLaunchArgument("right_i2c_bus", default_value="1"),
         DeclareLaunchArgument(
             "left_address",
             default_value="41",

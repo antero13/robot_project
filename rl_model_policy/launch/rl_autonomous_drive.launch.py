@@ -817,8 +817,8 @@ def generate_launch_description():
             description="Start the two-VL53L1X wall distance node.",
         ),
         DeclareLaunchArgument("wall_driver_backend", default_value="vl53l1x"),
-        DeclareLaunchArgument("wall_left_i2c_bus", default_value="1"),
-        DeclareLaunchArgument("wall_right_i2c_bus", default_value="7"),
+        DeclareLaunchArgument("wall_left_i2c_bus", default_value="7"),
+        DeclareLaunchArgument("wall_right_i2c_bus", default_value="1"),
         DeclareLaunchArgument(
             "wall_left_address",
             default_value="41",
