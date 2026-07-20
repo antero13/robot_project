@@ -3,7 +3,7 @@
 <package format="3">
   <name>rl_model_policy</name>
   <version>0.0.1</version>
-  <description>Runs the trained RL avoid/search policy and publishes cmd_vel.</description>
+  <description>Runs deterministic coverage, ROI avoidance, and pickup control.</description>
   <maintainer email="antero13@todo.todo">antero13</maintainer>
   <license>MIT</license>
 

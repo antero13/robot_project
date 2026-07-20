@@ -1,23 +1,17 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    model_path = LaunchConfiguration('model_path')
-    speed_scale = LaunchConfiguration('speed_scale')
     timer_rate_hz = LaunchConfiguration('timer_rate_hz')
-    target_pd_enabled = LaunchConfiguration('target_pd_enabled')
-    target_pd_proportional_gain = LaunchConfiguration(
-        'target_pd_proportional_gain'
-    )
-    target_pd_derivative_gain = LaunchConfiguration('target_pd_derivative_gain')
-    target_pd_derivative_limit = LaunchConfiguration('target_pd_derivative_limit')
-    target_pd_center_deadband = LaunchConfiguration('target_pd_center_deadband')
-    target_pd_max_angular_z = LaunchConfiguration('target_pd_max_angular_z')
+    approach_center_tolerance = LaunchConfiguration('approach_center_tolerance')
+    approach_max_linear_x = LaunchConfiguration('approach_max_linear_x')
+    approach_min_linear_x = LaunchConfiguration('approach_min_linear_x')
+    approach_angular_gain = LaunchConfiguration('approach_angular_gain')
+    approach_max_angular_z = LaunchConfiguration('approach_max_angular_z')
     dry_run = LaunchConfiguration('dry_run')
     target_timeout_s = LaunchConfiguration('target_timeout_s')
     target_tracking_timeout_s = LaunchConfiguration('target_tracking_timeout_s')
@@ -189,32 +183,15 @@ def generate_launch_description():
     return LaunchDescription(
         [
         DeclareLaunchArgument(
-            'model_path',
-                default_value=PathJoinSubstitution(
-                    [
-                FindPackageShare('mission_manager'),
-                'models',
-                'rl_avoid_search_best.pt',
-                    ]
-                ),
-            description='Path to the trained skrl best_agent.pt file.',
-        ),
-        DeclareLaunchArgument(
-            'speed_scale',
-            default_value='0.75',
-            description='Scale applied to learned linear/angular velocity commands.',
-        ),
-        DeclareLaunchArgument(
             'timer_rate_hz',
             default_value='10.0',
-            description='RL policy inference and cmd_vel publication rate.',
+            description='Deterministic controller and cmd_vel publication rate.',
         ),
-        DeclareLaunchArgument('target_pd_enabled', default_value='false'),
-        DeclareLaunchArgument('target_pd_proportional_gain', default_value='0.8'),
-        DeclareLaunchArgument('target_pd_derivative_gain', default_value='0.12'),
-        DeclareLaunchArgument('target_pd_derivative_limit', default_value='0.25'),
-        DeclareLaunchArgument('target_pd_center_deadband', default_value='0.06'),
-        DeclareLaunchArgument('target_pd_max_angular_z', default_value='0.45'),
+        DeclareLaunchArgument('approach_center_tolerance', default_value='0.12'),
+        DeclareLaunchArgument('approach_max_linear_x', default_value='0.10'),
+        DeclareLaunchArgument('approach_min_linear_x', default_value='0.03'),
+        DeclareLaunchArgument('approach_angular_gain', default_value='0.8'),
+        DeclareLaunchArgument('approach_max_angular_z', default_value='0.45'),
         DeclareLaunchArgument(
             'dry_run',
             default_value='false',
@@ -228,7 +205,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'target_tracking_timeout_s',
             default_value='1.5',
-            description='Use a longer target timeout after RL tracking has started.',
+            description='Use a longer target timeout after deterministic tracking starts.',
         ),
         DeclareLaunchArgument(
             'target_bearing_prediction_enabled',
@@ -240,7 +217,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'pose_observation_enabled',
             default_value='false',
-            description='Use pose/IMU policy inputs and yaw-based target prediction.',
+            description='Include pose/IMU fields in controller state telemetry.',
         ),
         DeclareLaunchArgument('arena_half_extent_m', default_value='2.0'),
         DeclareLaunchArgument('pose_bounds_tolerance_m', default_value='0.25'),
@@ -453,12 +430,11 @@ def generate_launch_description():
         DeclareLaunchArgument('stop_after_grab', default_value='false'),
         Node(
             package='rl_model_policy',
-            executable='rl_model_policy',
-            name='rl_model_policy',
+            executable='deterministic_mission_controller',
+            name='deterministic_mission_controller',
             output='screen',
                 parameters=[
                     {
-                'model_path': model_path,
                 'cmd_vel_topic': '/cmd_vel',
                 'target_object_topic': '/target_object',
                 'target_visibility_topic': target_visibility_topic,
@@ -691,39 +667,49 @@ def generate_launch_description():
                     main_road_tof_angle_release_rad,
                     value_type=float,
                 ),
-                'avoid_area_ratio': 0.42,
+                'avoid_enabled': True,
+                'avoid_area_ratio': 0.38,
+                'avoid_emergency_ratio': 0.68,
                 'avoid_center_band': 0.75,
-                'avoid_center_corridor': 0.15,
+                'avoid_center_corridor': 0.30,
+                'avoid_path_margin': 0.30,
                 'avoid_vfh_center_weight': 0.5,
-                'avoid_only_if_closer_than_target': False,
+                'avoid_only_if_closer_than_target': True,
                 'avoid_closer_ratio': 0.85,
-                # These match the training environment before speed_scale.
-                'max_forward_speed': 0.20,
-                'max_reverse_speed': 0.05,
+                'avoid_roi_enabled': True,
+                'avoid_roi_left_near_x': -0.6563,
+                'avoid_roi_left_near_y': 0.7483,
+                'avoid_roi_left_far_x': -0.2649,
+                'avoid_roi_left_far_y': 0.2576,
+                'avoid_roi_right_near_x': 0.4620,
+                'avoid_roi_right_near_y': 0.6992,
+                'avoid_roi_right_far_x': 0.0951,
+                'avoid_roi_right_far_y': 0.2567,
+                'avoid_turn_duration_s': 0.55,
+                'avoid_turn_angular_z': 0.65,
+                'avoid_forward_duration_s': 0.85,
+                'avoid_forward_linear_x': 0.05,
+                'avoid_forward_angular_z': 0.25,
+                'avoid_vfh_target_weight': 0.60,
+                'avoid_vfh_switch_penalty': 0.25,
+                'avoid_direction_hold_s': 0.8,
+                'approach_center_tolerance': ParameterValue(
+                    approach_center_tolerance, value_type=float
+                ),
+                'approach_max_linear_x': ParameterValue(
+                    approach_max_linear_x, value_type=float
+                ),
+                'approach_min_linear_x': ParameterValue(
+                    approach_min_linear_x, value_type=float
+                ),
+                'approach_angular_gain': ParameterValue(
+                    approach_angular_gain, value_type=float
+                ),
+                'approach_max_angular_z': ParameterValue(
+                    approach_max_angular_z, value_type=float
+                ),
                 'max_angular_speed': 0.80,
-                'speed_scale': speed_scale,
-                'max_linear_action_delta': 0.25,
-                'max_angular_action_delta': 0.08,
-                'action_filter_alpha': 0.55,
                 'publish_stop_when_inactive': True,
-                'target_pd_enabled': ParameterValue(
-                    target_pd_enabled, value_type=bool
-                ),
-                'target_pd_proportional_gain': ParameterValue(
-                    target_pd_proportional_gain, value_type=float
-                ),
-                'target_pd_derivative_gain': ParameterValue(
-                    target_pd_derivative_gain, value_type=float
-                ),
-                'target_pd_derivative_limit': ParameterValue(
-                    target_pd_derivative_limit, value_type=float
-                ),
-                'target_pd_center_deadband': ParameterValue(
-                    target_pd_center_deadband, value_type=float
-                ),
-                'target_pd_max_angular_z': ParameterValue(
-                    target_pd_max_angular_z, value_type=float
-                ),
                 'full_mission_enabled': ParameterValue(
                     full_mission_enabled,
                     value_type=bool,
