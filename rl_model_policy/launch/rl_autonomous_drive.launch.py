@@ -43,6 +43,10 @@ def generate_launch_description():
     )
     speed_scale = LaunchConfiguration("speed_scale")
     timer_rate_hz = LaunchConfiguration("timer_rate_hz")
+    max_angular_action_delta = LaunchConfiguration("max_angular_action_delta")
+    angular_action_filter_alpha = LaunchConfiguration(
+        "angular_action_filter_alpha"
+    )
     target_pd_enabled = LaunchConfiguration("target_pd_enabled")
     target_pd_proportional_gain = LaunchConfiguration(
         "target_pd_proportional_gain"
@@ -365,6 +369,8 @@ def generate_launch_description():
             "model_path": rl_model_path,
             "speed_scale": speed_scale,
             "timer_rate_hz": timer_rate_hz,
+            "max_angular_action_delta": max_angular_action_delta,
+            "angular_action_filter_alpha": angular_action_filter_alpha,
             "target_pd_enabled": target_pd_enabled,
             "target_pd_proportional_gain": target_pd_proportional_gain,
             "target_pd_derivative_gain": target_pd_derivative_gain,
@@ -678,6 +684,16 @@ def generate_launch_description():
             "timer_rate_hz",
             default_value="10.0",
             description="RL policy inference and cmd_vel publication rate.",
+        ),
+        DeclareLaunchArgument(
+            "max_angular_action_delta",
+            default_value="0.40",
+            description="Maximum normalized angular-action change before filtering.",
+        ),
+        DeclareLaunchArgument(
+            "angular_action_filter_alpha",
+            default_value="0.80",
+            description="Angular filter response; larger values follow RL output faster.",
         ),
         DeclareLaunchArgument("target_pd_enabled", default_value="false"),
         DeclareLaunchArgument(

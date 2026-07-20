@@ -238,8 +238,9 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("max_angular_speed", 0.80)
         self.declare_parameter("speed_scale", 0.75)
         self.declare_parameter("max_linear_action_delta", 0.25)
-        self.declare_parameter("max_angular_action_delta", 0.08)
+        self.declare_parameter("max_angular_action_delta", 0.40)
         self.declare_parameter("action_filter_alpha", 0.55)
+        self.declare_parameter("angular_action_filter_alpha", 0.80)
         self.declare_parameter("publish_stop_when_inactive", True)
         self.declare_parameter("state_preprocessor_epsilon", 1e-8)
         self.declare_parameter("target_pd_enabled", False)
@@ -2467,13 +2468,16 @@ class RLModelPolicyNode(Node):
         return [float(action[0].item()), float(action[1].item())]
 
     def filter_action(self, current, target):
-        alpha = self.get_float("action_filter_alpha")
+        alphas = [
+            self.get_float("action_filter_alpha"),
+            self.get_float("angular_action_filter_alpha"),
+        ]
         max_delta = [
             self.get_float("max_linear_action_delta"),
             self.get_float("max_angular_action_delta"),
         ]
         out = []
-        for old, new, limit in zip(current, target, max_delta):
+        for old, new, limit, alpha in zip(current, target, max_delta, alphas):
             delta = self.clamp(new - old, -limit, limit)
             out.append(self.clamp(old + alpha * delta, -1.0, 1.0))
         return out
