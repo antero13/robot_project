@@ -1,7 +1,6 @@
 import json
 import math
 from collections import deque
-from pathlib import Path
 from types import SimpleNamespace
 
 import rclpy
@@ -17,6 +16,10 @@ from rl_model_policy.coverage_controller import (
     generate_coverage_legs,
     normalize_angle,
 )
+from rl_model_policy.avoidance_roi import point_is_inside_trapezoid_roi
+from rl_model_policy.deterministic_pickup_controller import (
+    DeterministicPickupController,
+)
 from rl_model_policy.mission_coordinator import (
     fixed_heading_dash_command,
     MissionCoordinator,
@@ -29,11 +32,9 @@ from rl_model_policy.mission_coordinator import (
 from rl_model_policy.observation import (
     OBSERVATION_DIM,
     OBSERVATION_NAMES,
-    SUPPORTED_OBSERVATION_DIMS,
     estimate_target_image_x,
     estimate_target_world_bearing,
     make_pose_observation,
-    model_uses_pose_observation,
     pose_is_usable,
     quaternion_to_yaw,
     validate_observation,
@@ -60,46 +61,10 @@ from rl_model_policy.target_activation import (
     coverage_phase_allows_target_search,
     target_is_eligible,
 )
-from rl_model_policy.target_alignment_pd import TargetAlignmentPD
-
-try:
-    import torch
-except ImportError as exc:
-    torch = None
-    TORCH_IMPORT_ERROR = exc
-else:
-    TORCH_IMPORT_ERROR = None
-
-try:
-    from ament_index_python.packages import get_package_share_directory
-except ImportError:
-    get_package_share_directory = None
 
 
-if torch is not None:
-
-    class PolicyNetwork(torch.nn.Module):
-        def __init__(self, observation_dim):
-            super().__init__()
-            self.log_std_parameter = torch.nn.Parameter(torch.zeros(2))
-            self.net_container = torch.nn.Sequential(
-                torch.nn.Linear(observation_dim, 128),
-                torch.nn.ELU(),
-                torch.nn.Linear(128, 128),
-                torch.nn.ELU(),
-                torch.nn.Linear(128, 64),
-                torch.nn.ELU(),
-            )
-            self.policy_layer = torch.nn.Linear(64, 2)
-            self.value_layer = torch.nn.Linear(64, 1)
-
-        def forward(self, obs):
-            features = self.net_container(obs)
-            return self.policy_layer(features)
-
-
-class RLModelPolicyNode(Node):
-    """Run the trained Isaac Lab/skrl policy from YOLO-derived observations."""
+class DeterministicMissionControllerNode(Node):
+    """Run deterministic search, ROI avoidance, target approach, and pickup."""
 
     MODE_IDLE = "IDLE"
     MODE_LEAVE_START = "LEAVE_START"
@@ -121,11 +86,8 @@ class RLModelPolicyNode(Node):
     GRAB_COMPLETE = "GRABBED"
 
     def __init__(self):
-        super().__init__("rl_model_policy")
+        super().__init__("deterministic_mission_controller")
 
-        self.declare_parameter(
-            "model_path", "mission_manager/models/rl_avoid_search_best.pt"
-        )
         self.declare_parameter("cmd_vel_topic", "/cmd_vel")
         self.declare_parameter("target_object_topic", "/target_object")
         self.declare_parameter("target_label_topic", "/target_label")
@@ -232,34 +194,40 @@ class RLModelPolicyNode(Node):
             "main_road_tof_angle_release_rad", math.radians(5.0)
         )
 
-        self.declare_parameter("avoid_area_ratio", 0.42)
+        self.declare_parameter("avoid_enabled", True)
+        self.declare_parameter("avoid_area_ratio", 0.38)
+        self.declare_parameter("avoid_emergency_ratio", 0.68)
         self.declare_parameter("avoid_center_band", 0.75)
-        self.declare_parameter("avoid_center_corridor", 0.15)
+        self.declare_parameter("avoid_center_corridor", 0.30)
+        self.declare_parameter("avoid_path_margin", 0.30)
         self.declare_parameter("avoid_vfh_center_weight", 0.5)
-        self.declare_parameter("avoid_only_if_closer_than_target", False)
+        self.declare_parameter("avoid_only_if_closer_than_target", True)
         self.declare_parameter("avoid_closer_ratio", 0.85)
+        self.declare_parameter("avoid_roi_enabled", True)
+        self.declare_parameter("avoid_roi_left_near_x", -0.6563)
+        self.declare_parameter("avoid_roi_left_near_y", 0.7483)
+        self.declare_parameter("avoid_roi_left_far_x", -0.2649)
+        self.declare_parameter("avoid_roi_left_far_y", 0.2576)
+        self.declare_parameter("avoid_roi_right_near_x", 0.4620)
+        self.declare_parameter("avoid_roi_right_near_y", 0.6992)
+        self.declare_parameter("avoid_roi_right_far_x", 0.0951)
+        self.declare_parameter("avoid_roi_right_far_y", 0.2567)
+        self.declare_parameter("avoid_turn_duration_s", 0.55)
+        self.declare_parameter("avoid_turn_angular_z", 0.65)
+        self.declare_parameter("avoid_forward_duration_s", 0.85)
+        self.declare_parameter("avoid_forward_linear_x", 0.05)
+        self.declare_parameter("avoid_forward_angular_z", 0.25)
+        self.declare_parameter("avoid_vfh_target_weight", 0.60)
+        self.declare_parameter("avoid_vfh_switch_penalty", 0.25)
+        self.declare_parameter("avoid_direction_hold_s", 0.8)
 
-        self.declare_parameter("max_forward_speed", 0.20)
-        self.declare_parameter("max_reverse_speed", 0.05)
+        self.declare_parameter("approach_center_tolerance", 0.12)
+        self.declare_parameter("approach_max_linear_x", 0.10)
+        self.declare_parameter("approach_min_linear_x", 0.03)
+        self.declare_parameter("approach_angular_gain", 0.8)
+        self.declare_parameter("approach_max_angular_z", 0.45)
         self.declare_parameter("max_angular_speed", 0.80)
-        self.declare_parameter("speed_scale", 0.75)
-        self.declare_parameter("max_linear_action_delta", 0.25)
-        self.declare_parameter("max_angular_action_delta", 0.40)
-        self.declare_parameter("action_filter_alpha", 0.55)
-        self.declare_parameter("angular_action_filter_alpha", 0.80)
         self.declare_parameter("publish_stop_when_inactive", True)
-        self.declare_parameter("state_preprocessor_epsilon", 1e-8)
-        self.declare_parameter("target_pd_enabled", False)
-        self.declare_parameter("target_pd_proportional_gain", 0.8)
-        self.declare_parameter("target_pd_derivative_gain", 0.12)
-        self.declare_parameter("target_pd_derivative_limit", 0.25)
-        self.declare_parameter("target_pd_center_deadband", 0.06)
-        self.declare_parameter("target_pd_max_angular_z", 0.45)
-        self.declare_parameter("near_target_alignment_enabled", True)
-        self.declare_parameter("near_target_alignment_enter_y", 0.60)
-        self.declare_parameter("near_target_alignment_linear_x", 0.05)
-        self.declare_parameter("near_target_alignment_angular_gain", 0.90)
-        self.declare_parameter("near_target_alignment_max_angular_z", 0.55)
 
         self.declare_parameter("full_mission_enabled", True)
         self.declare_parameter("mission_duration_s", 180.0)
@@ -361,15 +329,22 @@ class RLModelPolicyNode(Node):
         self.last_target_direction = 1.0
         self.raw_action = [0.0, 0.0]
         self.filtered_action = [0.0, 0.0]
-        self.target_alignment_pd = TargetAlignmentPD(
-            proportional_gain=self.get_float("target_pd_proportional_gain"),
-            derivative_gain=self.get_float("target_pd_derivative_gain"),
-            derivative_limit=self.get_float("target_pd_derivative_limit"),
-            center_deadband=self.get_float("target_pd_center_deadband"),
-            max_angular_z=self.get_float("target_pd_max_angular_z"),
+        self.pickup_controller = DeterministicPickupController(
+            center_tolerance=self.get_float("approach_center_tolerance"),
+            approach_max_linear_x=self.get_float("approach_max_linear_x"),
+            approach_min_linear_x=self.get_float("approach_min_linear_x"),
+            approach_angular_gain=self.get_float("approach_angular_gain"),
+            approach_max_angular_z=self.get_float("approach_max_angular_z"),
+            grab_area_ratio=self.get_float("grab_area_ratio"),
+            avoid_turn_duration_s=self.get_float("avoid_turn_duration_s"),
+            avoid_turn_angular_z=self.get_float("avoid_turn_angular_z"),
+            avoid_forward_duration_s=self.get_float("avoid_forward_duration_s"),
+            avoid_forward_linear_x=self.get_float("avoid_forward_linear_x"),
+            avoid_forward_angular_z=self.get_float("avoid_forward_angular_z"),
+            avoid_vfh_target_weight=self.get_float("avoid_vfh_target_weight"),
+            avoid_vfh_switch_penalty=self.get_float("avoid_vfh_switch_penalty"),
+            avoid_direction_hold_s=self.get_float("avoid_direction_hold_s"),
         )
-        self.target_pd_last_command = None
-        self.near_target_alignment_active = False
         self.last_cmd = (0.0, 0.0)
         self.grab_state = self.GRAB_TRACKING
         self.grab_state_started_at = self.get_clock().now()
@@ -419,12 +394,7 @@ class RLModelPolicyNode(Node):
         if self.active:
             self.mission.start(self.now_s())
 
-        self.policy = None
         self.model_observation_dim = OBSERVATION_DIM
-        self.obs_mean = None
-        self.obs_variance = None
-        self.model_path = None
-        self.load_model()
         self.coverage_controller = self.create_coverage_controller()
         self.lane_tof_alignment_active = False
         self.main_road_tof_alignment_active = False
@@ -517,17 +487,7 @@ class RLModelPolicyNode(Node):
             )
         if self.coverage_is_enabled() and not self.pose_observation_is_active():
             self.get_logger().info(
-                "Odometry is enabled for coverage search but remains excluded from RL observations"
-            )
-        elif (
-            self.model_observation_dim == OBSERVATION_DIM and self.odometry_sub is None
-        ):
-            self.get_logger().info(
-                "Legacy 18-input policy loaded with pose disabled; pose inputs remain zero"
-            )
-        elif self.odometry_sub is None:
-            self.get_logger().info(
-                "10-input YOLO-only policy loaded; odometry and pose correction are disabled"
+                "Odometry is enabled for deterministic coverage search"
             )
         self.control_sub = self.create_subscription(
             String,
@@ -540,103 +500,14 @@ class RLModelPolicyNode(Node):
         self.timer = self.create_timer(1.0 / timer_rate_hz, self.tick)
 
         self.get_logger().info(
-            f"RL model policy ready. active={self.active}, dry_run={self.dry_run}, model={self.model_path}"
+            "Deterministic mission controller ready. "
+            f"active={self.active}, dry_run={self.dry_run}, rl_enabled=False"
         )
         self.get_logger().info(
             "Send start/pause_motion/resume_motion/stop on "
             f"{self.get_parameter('control_topic').value}; publishing cmd_vel on "
             f"{self.get_parameter('cmd_vel_topic').value}"
         )
-
-    def load_model(self):
-        if torch is None:
-            self.get_logger().error(f"PyTorch is not installed: {TORCH_IMPORT_ERROR}")
-            self.active = False
-            return
-
-        model_path = self.resolve_model_path(
-            str(self.get_parameter("model_path").value)
-        )
-        if model_path is None:
-            self.get_logger().error(
-                "Cannot find RL model. Pass -p model_path:=<path to rl_avoid_search_best.pt>."
-            )
-            self.active = False
-            return
-
-        checkpoint = torch.load(str(model_path), map_location="cpu")
-        policy_state = checkpoint.get("policy", {})
-        first_weight = policy_state.get("net_container.0.weight")
-        if first_weight is None or len(first_weight.shape) != 2:
-            shape = None if first_weight is None else tuple(first_weight.shape)
-            raise RuntimeError(
-                "RL checkpoint has no valid policy net_container.0.weight; "
-                f"got {shape}"
-            )
-        observation_dim = int(first_weight.shape[1])
-        if (
-            tuple(first_weight.shape) != (128, observation_dim)
-            or observation_dim not in SUPPORTED_OBSERVATION_DIMS
-        ):
-            raise RuntimeError(
-                "RL checkpoint observation contract mismatch: supported input "
-                f"dimensions are {SUPPORTED_OBSERVATION_DIMS}, got {tuple(first_weight.shape)}"
-            )
-
-        preprocessor = checkpoint.get("state_preprocessor", {})
-        obs_mean = preprocessor.get("running_mean")
-        obs_variance = preprocessor.get("running_variance")
-        if obs_mean is None or tuple(obs_mean.shape) != (observation_dim,):
-            raise RuntimeError(
-                f"Checkpoint running_mean must have shape ({observation_dim},)"
-            )
-        if obs_variance is None or tuple(obs_variance.shape) != (observation_dim,):
-            raise RuntimeError(
-                f"Checkpoint running_variance must have shape ({observation_dim},)"
-            )
-
-        self.model_observation_dim = observation_dim
-        self.policy = PolicyNetwork(observation_dim)
-        self.policy.load_state_dict(policy_state, strict=True)
-        self.policy.eval()
-
-        self.obs_mean = obs_mean.float()
-        self.obs_variance = obs_variance.float()
-        self.model_path = str(model_path)
-        self.get_logger().info(
-            f"Loaded {observation_dim}-observation RL checkpoint: {self.model_path}"
-        )
-
-    def resolve_model_path(self, raw_path):
-        candidates = []
-        raw = Path(raw_path)
-        candidates.append(raw)
-        candidates.append(Path.cwd() / raw)
-
-        default_name = "rl_avoid_search_best.pt"
-        for root in [
-            Path.cwd(),
-            *Path.cwd().parents,
-            *Path(__file__).resolve().parents,
-        ]:
-            candidates.append(root / "mission_manager" / "models" / default_name)
-            candidates.append(root / "models" / default_name)
-
-        if get_package_share_directory is not None:
-            for package in ("mission_manager", "rl_model_policy"):
-                try:
-                    share = Path(get_package_share_directory(package))
-                except Exception:
-                    continue
-                candidates.append(share / "models" / default_name)
-
-        for candidate in candidates:
-            try:
-                if candidate.exists():
-                    return candidate.resolve()
-            except OSError:
-                continue
-        return None
 
     def target_callback(self, msg):
         self.latest_target = self.make_point(msg.point.x, msg.point.y, msg.point.z)
@@ -737,10 +608,22 @@ class RLModelPolicyNode(Node):
             try:
                 x = float(raw.get("x", raw.get("point_x", 0.0)))
                 y = float(raw.get("y", raw.get("point_y", 0.0)))
+                center_y = float(
+                    raw.get("center_y", raw.get("bbox_center_y", y))
+                )
+                bottom_y = float(raw.get("bottom_y", y))
                 confidence = float(raw.get("confidence", raw.get("z", 1.0)))
             except (TypeError, ValueError):
                 continue
-            objects.append(self.make_point(x, y, confidence))
+            objects.append(
+                self.make_point(
+                    x,
+                    y,
+                    confidence,
+                    center_y=center_y,
+                    bottom_y=bottom_y,
+                )
+            )
 
         self.latest_avoid_objects = objects
         self.latest_avoid_objects_time = self.get_clock().now()
@@ -748,11 +631,9 @@ class RLModelPolicyNode(Node):
     def control_callback(self, msg):
         command = msg.data.strip().lower()
         if command in ("start", "run", "demo"):
-            if self.policy is None:
-                self.get_logger().error("Cannot start: model is not loaded")
-                return
             self.mission.start(self.now_s())
             self.coverage_controller.reset()
+            self.pickup_controller.reset()
             self.coverage_command = None
             self.pending_pose_x_correction = None
             self.pending_pose_x_correction_time = None
@@ -768,13 +649,12 @@ class RLModelPolicyNode(Node):
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
             self.clear_near_target_candidate()
-            self.reset_target_alignment_pd()
             self.motion_paused = False
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
             self.active = True
             self.begin_leave_start()
-            self.get_logger().info("RL model policy started")
+            self.get_logger().info("Deterministic mission controller started")
         elif command in ("pause", "pause_motion"):
             self.set_motion_paused(True)
         elif command in ("resume", "resume_motion"):
@@ -785,12 +665,12 @@ class RLModelPolicyNode(Node):
             self.motion_paused = False
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
-            self.reset_target_alignment_pd()
+            self.pickup_controller.reset()
             self.coverage_command = None
             self.cancel_leave_start()
             self.set_control_mode(self.MODE_IDLE)
             self.publish_cmd(0.0, 0.0)
-            self.get_logger().info("RL model policy stopped")
+            self.get_logger().info("Deterministic mission controller stopped")
         elif command == "reset":
             self.active = False
             self.mission.reset()
@@ -803,7 +683,7 @@ class RLModelPolicyNode(Node):
             self.time_since_target_seen = self.get_float("episode_length_s")
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
-            self.reset_target_alignment_pd()
+            self.pickup_controller.reset()
             self.coverage_controller.reset()
             self.coverage_command = None
             self.pending_pose_x_correction = None
@@ -827,7 +707,7 @@ class RLModelPolicyNode(Node):
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
             self.publish_cmd(0.0, 0.0)
-            self.get_logger().info("RL model policy reset")
+            self.get_logger().info("Deterministic mission controller reset")
         elif command in ("return", "return_storage"):
             if self.mission.begin_return(ReturnReason.MANUAL, self.now_s()):
                 self.prepare_storage_return()
@@ -846,6 +726,8 @@ class RLModelPolicyNode(Node):
         target = self.current_target()
         objects = self.current_avoid_objects(target)
         obs, bins, nearest = self.make_observation(target, objects)
+        pickup_objects = self.pickup_avoid_objects(objects)
+        pickup_bins = self.avoid_bins(pickup_objects)[:3]
         if self.active and self.full_mission_is_enabled():
             previous_phase = self.mission.phase
             self.mission.update_time(now_s)
@@ -876,6 +758,10 @@ class RLModelPolicyNode(Node):
         confirmed_target = target if target_control_ready else None
         self.update_near_target_candidate(confirmed_target)
         near_target_loss_ready = self.near_target_loss_pickup_ready()
+        pickup_avoid_required = (
+            confirmed_target is not None
+            and self.should_avoid_target_path(pickup_objects, confirmed_target)
+        )
         grab_cmd = (
             self.update_grab_sequence(
                 confirmed_target,
@@ -887,6 +773,8 @@ class RLModelPolicyNode(Node):
                 and not self.motion_paused
                 and not self.coverage_controller.rejoin_active
                 and not self.leave_start_active
+                and not pickup_avoid_required
+                and not self.pickup_controller.is_avoiding
             )
             else None
         )
@@ -922,25 +810,31 @@ class RLModelPolicyNode(Node):
             linear_x, angular_z = self.coverage_search_command(bins)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
-        elif self.active and confirmed_target is not None and self.policy is not None:
+        elif (
+            self.active
+            and collecting
+            and (
+                confirmed_target is not None
+                or self.pickup_controller.is_avoiding
+            )
+        ):
             self.reset_lane_tof_alignment()
             self.set_control_mode(self.MODE_TRACK_TARGET)
-            self.raw_action = self.infer_action(obs)
-            self.filtered_action = self.filter_action(
-                self.filtered_action, self.raw_action
+            pickup_command = self.pickup_controller.command(
+                now_s=now_s,
+                target_x=(
+                    None if confirmed_target is None else confirmed_target.x
+                ),
+                target_y=(
+                    None if confirmed_target is None else confirmed_target.y
+                ),
+                avoid_required=pickup_avoid_required,
+                avoid_bins=pickup_bins,
             )
-            linear_x, angular_z = self.action_to_cmd(self.filtered_action)
-            near_alignment_cmd = self.near_target_alignment_command(
-                confirmed_target,
-            )
-            if near_alignment_cmd is not None:
-                linear_x, angular_z = near_alignment_cmd
-            else:
-                angular_z = self.target_alignment_angular_z(
-                    confirmed_target.x,
-                    now_s,
-                    fallback_angular_z=angular_z,
-                )
+            linear_x = pickup_command.linear_x
+            angular_z = pickup_command.angular_z
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
             self.coverage_command = None
         elif (
             self.active
@@ -962,14 +856,6 @@ class RLModelPolicyNode(Node):
             linear_x, angular_z = self.coverage_search_command(bins)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
-        elif self.active and self.policy is not None:
-            self.set_control_mode(self.MODE_TRACK_TARGET)
-            self.raw_action = self.infer_action(obs)
-            self.filtered_action = self.filter_action(
-                self.filtered_action, self.raw_action
-            )
-            linear_x, angular_z = self.action_to_cmd(self.filtered_action)
-            self.coverage_command = None
         else:
             if self.mission.phase == MissionPhase.COMPLETE:
                 self.set_control_mode(self.MODE_MISSION_COMPLETE)
@@ -978,9 +864,7 @@ class RLModelPolicyNode(Node):
             else:
                 self.set_control_mode(self.MODE_IDLE)
             self.raw_action = [0.0, 0.0]
-            self.filtered_action = self.filter_action(
-                self.filtered_action, self.raw_action
-            )
+            self.filtered_action = [0.0, 0.0]
             linear_x, angular_z = (0.0, 0.0)
             self.coverage_command = None
 
@@ -1008,9 +892,10 @@ class RLModelPolicyNode(Node):
         if paused:
             self.grab_state_elapsed_offset_s = self.grab_state_age_s()
             self.motion_paused = True
+            self.pickup_controller.reset()
             self.publish_cmd(0.0, 0.0)
             self.get_logger().info(
-                "Base motion paused; perception and policy updates remain active"
+                "Base motion paused; perception updates remain active"
             )
             return
 
@@ -2066,7 +1951,7 @@ class RLModelPolicyNode(Node):
         )
 
     def target_search_is_allowed(self):
-        """Block YOLO/RL pursuit on the main road until lane scanning starts."""
+        """Block YOLO target pursuit on the main road until lane scanning starts."""
         return coverage_phase_allows_target_search(
             self.coverage_controller.current_leg.phase,
             coverage_enabled=self.coverage_is_enabled(),
@@ -2399,74 +2284,14 @@ class RLModelPolicyNode(Node):
             return
         previous_mode = self.control_mode
         if mode == self.MODE_TRACK_TARGET or previous_mode == self.MODE_TRACK_TARGET:
-            self.reset_target_alignment_pd()
-        if mode != self.MODE_TRACK_TARGET:
-            self.near_target_alignment_active = False
+            self.pickup_controller.reset()
         self.control_mode = mode
         if mode == self.MODE_TRACK_TARGET:
             self.filtered_action = [0.0, 0.0]
         self.get_logger().info(f"Control mode: {previous_mode} -> {mode}")
 
-    def reset_target_alignment_pd(self):
-        self.target_alignment_pd.reset()
-        self.target_pd_last_command = None
-
-    def target_alignment_angular_z(
-        self,
-        target_x_error,
-        now_s,
-        fallback_angular_z,
-    ):
-        if not bool(self.get_parameter("target_pd_enabled").value):
-            self.reset_target_alignment_pd()
-            return float(fallback_angular_z)
-        command = self.target_alignment_pd.command(
-            error=target_x_error,
-            now_s=now_s,
-            maximum_dt_s=self.get_float("target_tracking_timeout_s"),
-        )
-        self.target_pd_last_command = command
-        return command.angular_z
-
-    def near_target_alignment_command(self, target):
-        if not bool(self.get_parameter("near_target_alignment_enabled").value):
-            self.near_target_alignment_active = False
-            return None
-        if target is None:
-            self.near_target_alignment_active = False
-            return None
-        if float(target.y) < self.get_float("near_target_alignment_enter_y"):
-            if self.near_target_alignment_active:
-                self.get_logger().info("Near target alignment released")
-            self.near_target_alignment_active = False
-            return None
-
-        if not self.near_target_alignment_active:
-            self.get_logger().info(
-                "Near target alignment active: visual x-control overrides RL turn"
-            )
-        self.near_target_alignment_active = True
-
-        error = float(target.x)
-        deadband = min(
-            self.get_float("grab_center_tolerance") * 0.5,
-            self.get_float("target_pd_center_deadband"),
-        )
-        if abs(error) <= deadband:
-            angular_z = 0.0
-        else:
-            angular_z = self.clamp(
-                -self.get_float("near_target_alignment_angular_gain") * error,
-                -self.get_float("near_target_alignment_max_angular_z"),
-                self.get_float("near_target_alignment_max_angular_z"),
-            )
-
-        linear_x = self.get_float("near_target_alignment_linear_x")
-        return linear_x, angular_z
-
     def current_target(self):
         if not self.target_data_is_fresh(self.latest_target_time):
-            self.near_target_alignment_active = False
             return None
 
         target = self.make_point(
@@ -2548,44 +2373,6 @@ class RLModelPolicyNode(Node):
             *pose_obs,
         ]
         return validate_observation(obs), (left, center, right), nearest
-
-    def infer_action(self, obs):
-        validate_observation(obs)
-        model_obs = obs[: self.model_observation_dim]
-        with torch.no_grad():
-            obs_tensor = torch.tensor(model_obs, dtype=torch.float32).unsqueeze(0)
-            scaled = (obs_tensor - self.obs_mean) / torch.sqrt(
-                self.obs_variance + self.get_float("state_preprocessor_epsilon")
-            )
-            action = self.policy(scaled).squeeze(0)
-            action = torch.clamp(action, -1.0, 1.0)
-        return [float(action[0].item()), float(action[1].item())]
-
-    def filter_action(self, current, target):
-        alphas = [
-            self.get_float("action_filter_alpha"),
-            self.get_float("angular_action_filter_alpha"),
-        ]
-        max_delta = [
-            self.get_float("max_linear_action_delta"),
-            self.get_float("max_angular_action_delta"),
-        ]
-        out = []
-        for old, new, limit, alpha in zip(current, target, max_delta, alphas):
-            delta = self.clamp(new - old, -limit, limit)
-            out.append(self.clamp(old + alpha * delta, -1.0, 1.0))
-        return out
-
-    def action_to_cmd(self, action):
-        linear_action = action[0]
-        angular_action = action[1]
-        if linear_action >= 0.0:
-            linear_x = linear_action * self.get_float("max_forward_speed")
-        else:
-            linear_x = linear_action * self.get_float("max_reverse_speed")
-        angular_z = angular_action * self.get_float("max_angular_speed")
-        scale = self.get_float("speed_scale")
-        return linear_x * scale, angular_z * scale
 
     def update_near_target_candidate(self, target):
         if not bool(self.get_parameter("near_target_loss_enabled").value):
@@ -2714,7 +2501,7 @@ class RLModelPolicyNode(Node):
                 self.get_parameter("stop_after_grab").value
             ):
                 self.active = False
-                self.get_logger().info("Object grabbed; RL drive stopped")
+                self.get_logger().info("Object grabbed; deterministic drive stopped")
             else:
                 self.change_grab_state(self.GRAB_TRACKING)
             return (0.0, 0.0)
@@ -2747,13 +2534,63 @@ class RLModelPolicyNode(Node):
         else:
             objects = []
 
-        if (
-            bool(self.get_parameter("avoid_only_if_closer_than_target").value)
-            and target is not None
-        ):
-            threshold = target.y * self.get_float("avoid_closer_ratio")
-            objects = [obj for obj in objects if obj.y >= threshold]
         return objects
+
+    def pickup_avoid_objects(self, objects):
+        if not bool(self.get_parameter("avoid_roi_enabled").value):
+            return list(objects)
+        return [obj for obj in objects if self.avoid_is_inside_roi(obj)]
+
+    def should_avoid_target_path(self, objects, target):
+        if not bool(self.get_parameter("avoid_enabled").value):
+            return False
+
+        for obj in objects:
+            closeness = float(obj.y)
+            if not self.avoid_is_on_active_path(obj, target):
+                continue
+            if closeness >= self.get_float("avoid_emergency_ratio"):
+                return True
+            if closeness < self.get_float("avoid_area_ratio"):
+                continue
+            if (
+                bool(self.get_parameter("avoid_only_if_closer_than_target").value)
+                and target is not None
+                and closeness
+                < float(target.y) * self.get_float("avoid_closer_ratio")
+            ):
+                continue
+            return True
+        return False
+
+    def avoid_is_on_active_path(self, obj, target):
+        x = float(obj.x)
+        closeness = float(obj.y)
+        if abs(x) <= self.get_float("avoid_center_corridor"):
+            return True
+        if closeness >= self.get_float("avoid_emergency_ratio"):
+            return True
+        if target is None:
+            return True
+
+        margin = self.get_float("avoid_path_margin")
+        left_limit = min(0.0, float(target.x)) - margin
+        right_limit = max(0.0, float(target.x)) + margin
+        return left_limit <= x <= right_limit
+
+    def avoid_is_inside_roi(self, obj):
+        return point_is_inside_trapezoid_roi(
+            self.clamp(float(obj.x), -1.0, 1.0),
+            self.clamp(float(getattr(obj, "center_y", obj.y)), 0.0, 1.0),
+            left_far_x=self.get_float("avoid_roi_left_far_x"),
+            left_far_y=self.get_float("avoid_roi_left_far_y"),
+            left_near_x=self.get_float("avoid_roi_left_near_x"),
+            left_near_y=self.get_float("avoid_roi_left_near_y"),
+            right_far_x=self.get_float("avoid_roi_right_far_x"),
+            right_far_y=self.get_float("avoid_roi_right_far_y"),
+            right_near_x=self.get_float("avoid_roi_right_near_x"),
+            right_near_y=self.get_float("avoid_roi_right_near_y"),
+        )
 
     def avoid_bins(self, objects):
         left = 0.0
@@ -2873,7 +2710,10 @@ class RLModelPolicyNode(Node):
                 "active": self.active,
                 "motion_paused": self.motion_paused,
                 "dry_run": self.dry_run,
-                "model_loaded": self.policy is not None,
+                "model_loaded": False,
+                "controller_ready": True,
+                "controller_type": "deterministic_roi_pickup",
+                "rl_enabled": False,
                 "control_mode": self.control_mode,
                 "timer_rate_hz": self.get_float("timer_rate_hz"),
                 "observation_dim": self.model_observation_dim,
@@ -2918,48 +2758,20 @@ class RLModelPolicyNode(Node):
                         else "target_timeout_s"
                     ),
                 },
-                "target_alignment_pd": {
-                    "enabled": bool(
-                        self.get_parameter("target_pd_enabled").value
+                "pickup_controller": {
+                    "state": self.pickup_controller.state,
+                    "avoiding": self.pickup_controller.is_avoiding,
+                    "center_tolerance": self.get_float(
+                        "approach_center_tolerance"
                     ),
-                    "active": self.target_pd_last_command is not None,
-                    "proportional_gain": self.get_float(
-                        "target_pd_proportional_gain"
+                    "approach_max_linear_x": self.get_float(
+                        "approach_max_linear_x"
                     ),
-                    "derivative_gain": self.get_float(
-                        "target_pd_derivative_gain"
+                    "approach_min_linear_x": self.get_float(
+                        "approach_min_linear_x"
                     ),
-                    "center_deadband": self.get_float(
-                        "target_pd_center_deadband"
-                    ),
-                    "error": (
-                        None
-                        if self.target_pd_last_command is None
-                        else round(self.target_pd_last_command.error, 4)
-                    ),
-                    "derivative": (
-                        None
-                        if self.target_pd_last_command is None
-                        else round(self.target_pd_last_command.derivative, 4)
-                    ),
-                    "angular_z": (
-                        None
-                        if self.target_pd_last_command is None
-                        else round(self.target_pd_last_command.angular_z, 4)
-                    ),
-                },
-                "near_target_alignment": {
-                    "enabled": bool(
-                        self.get_parameter("near_target_alignment_enabled").value
-                    ),
-                    "active": self.near_target_alignment_active,
-                    "enter_y": self.get_float("near_target_alignment_enter_y"),
-                    "linear_x": self.get_float("near_target_alignment_linear_x"),
-                    "angular_gain": self.get_float(
-                        "near_target_alignment_angular_gain"
-                    ),
-                    "max_angular_z": self.get_float(
-                        "near_target_alignment_max_angular_z"
+                    "approach_angular_gain": self.get_float(
+                        "approach_angular_gain"
                     ),
                 },
                 "leave_start": {
@@ -3120,10 +2932,7 @@ class RLModelPolicyNode(Node):
         return bool(self.get_parameter("full_mission_enabled").value)
 
     def pose_observation_is_active(self):
-        return model_uses_pose_observation(
-            self.model_observation_dim,
-            self.get_parameter("pose_observation_enabled").value,
-        )
+        return bool(self.get_parameter("pose_observation_enabled").value)
 
     def is_fresh(self, stamp, timeout_param):
         if stamp is None:
@@ -3138,11 +2947,20 @@ class RLModelPolicyNode(Node):
         return self.get_clock().now().nanoseconds / 1_000_000_000.0
 
     @staticmethod
-    def make_point(x, y, z):
+    def make_point(x, y, z, center_y=None, bottom_y=None):
+        normalized_y = max(0.0, min(1.0, float(y)))
         return SimpleNamespace(
             x=max(-1.0, min(1.0, float(x))),
-            y=max(0.0, min(1.0, float(y))),
+            y=normalized_y,
             z=max(0.0, float(z)),
+            center_y=max(
+                0.0,
+                min(1.0, normalized_y if center_y is None else float(center_y)),
+            ),
+            bottom_y=max(
+                0.0,
+                min(1.0, normalized_y if bottom_y is None else float(bottom_y)),
+            ),
         )
 
     @staticmethod
@@ -3152,7 +2970,7 @@ class RLModelPolicyNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = RLModelPolicyNode()
+    node = DeterministicMissionControllerNode()
     try:
         rclpy.spin(node)
     finally:

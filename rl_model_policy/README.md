@@ -1,5 +1,12 @@
 # rl_model_policy
 
+> `codex/tof-mission-tuning` 현재 구현은 패키지명과 토픽명만 기존 호환성을
+> 위해 유지한다. PyTorch 체크포인트와 RL 추론은 실행 중 전혀 사용하지
+> 않는다. 탐색은 coverage/ToF 제어가 담당하고, 목표 확정 이후에는 보정된
+> ROI 회피 → 중앙 정렬 → 감속 접근 → 집기 순서의 결정론적 제어를 사용한다.
+> 아래의 체크포인트, `model_path`, `speed_scale`, `target_pd_*`,
+> `near_target_alignment_*` 설명은 이전 구현 기록이며 현재 launch 인자가 아니다.
+
 학습된 Isaac Lab/skrl 회피·탐색 정책을 실제 ROS 2 로봇에서 실행하는 노드이다.
 
 ## 모델 체크포인트 계약

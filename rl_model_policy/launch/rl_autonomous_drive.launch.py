@@ -19,7 +19,6 @@ AUTO_START_DELAY_S = 8.0
 def generate_launch_description():
     yolo_model_path = LaunchConfiguration("yolo_model_path")
     secondary_yolo_model_path = LaunchConfiguration("secondary_yolo_model_path")
-    rl_model_path = LaunchConfiguration("rl_model_path")
     video_device = LaunchConfiguration("video_device")
     target_classes = LaunchConfiguration("target_classes")
     avoid_classes = LaunchConfiguration("avoid_classes")
@@ -41,35 +40,12 @@ def generate_launch_description():
     yolo_performance_log_interval_s = LaunchConfiguration(
         "yolo_performance_log_interval_s"
     )
-    speed_scale = LaunchConfiguration("speed_scale")
     timer_rate_hz = LaunchConfiguration("timer_rate_hz")
-    max_angular_action_delta = LaunchConfiguration("max_angular_action_delta")
-    angular_action_filter_alpha = LaunchConfiguration(
-        "angular_action_filter_alpha"
-    )
-    target_pd_enabled = LaunchConfiguration("target_pd_enabled")
-    target_pd_proportional_gain = LaunchConfiguration(
-        "target_pd_proportional_gain"
-    )
-    target_pd_derivative_gain = LaunchConfiguration("target_pd_derivative_gain")
-    target_pd_derivative_limit = LaunchConfiguration("target_pd_derivative_limit")
-    target_pd_center_deadband = LaunchConfiguration("target_pd_center_deadband")
-    target_pd_max_angular_z = LaunchConfiguration("target_pd_max_angular_z")
-    near_target_alignment_enabled = LaunchConfiguration(
-        "near_target_alignment_enabled"
-    )
-    near_target_alignment_enter_y = LaunchConfiguration(
-        "near_target_alignment_enter_y"
-    )
-    near_target_alignment_linear_x = LaunchConfiguration(
-        "near_target_alignment_linear_x"
-    )
-    near_target_alignment_angular_gain = LaunchConfiguration(
-        "near_target_alignment_angular_gain"
-    )
-    near_target_alignment_max_angular_z = LaunchConfiguration(
-        "near_target_alignment_max_angular_z"
-    )
+    approach_center_tolerance = LaunchConfiguration("approach_center_tolerance")
+    approach_max_linear_x = LaunchConfiguration("approach_max_linear_x")
+    approach_min_linear_x = LaunchConfiguration("approach_min_linear_x")
+    approach_angular_gain = LaunchConfiguration("approach_angular_gain")
+    approach_max_angular_z = LaunchConfiguration("approach_max_angular_z")
     target_timeout_s = LaunchConfiguration("target_timeout_s")
     target_tracking_timeout_s = LaunchConfiguration("target_tracking_timeout_s")
     target_confirmation_window = LaunchConfiguration("target_confirmation_window")
@@ -376,7 +352,7 @@ def generate_launch_description():
         condition=IfCondition(launch_wall_distance_sensor),
     )
 
-    policy_launch = IncludeLaunchDescription(
+    mission_controller_launch = IncludeLaunchDescription(
         PathJoinSubstitution(
             [
             FindPackageShare("rl_model_policy"),
@@ -385,22 +361,12 @@ def generate_launch_description():
             ]
         ),
         launch_arguments={
-            "model_path": rl_model_path,
-            "speed_scale": speed_scale,
             "timer_rate_hz": timer_rate_hz,
-            "max_angular_action_delta": max_angular_action_delta,
-            "angular_action_filter_alpha": angular_action_filter_alpha,
-            "target_pd_enabled": target_pd_enabled,
-            "target_pd_proportional_gain": target_pd_proportional_gain,
-            "target_pd_derivative_gain": target_pd_derivative_gain,
-            "target_pd_derivative_limit": target_pd_derivative_limit,
-            "target_pd_center_deadband": target_pd_center_deadband,
-            "target_pd_max_angular_z": target_pd_max_angular_z,
-            "near_target_alignment_enabled": near_target_alignment_enabled,
-            "near_target_alignment_enter_y": near_target_alignment_enter_y,
-            "near_target_alignment_linear_x": near_target_alignment_linear_x,
-            "near_target_alignment_angular_gain": near_target_alignment_angular_gain,
-            "near_target_alignment_max_angular_z": near_target_alignment_max_angular_z,
+            "approach_center_tolerance": approach_center_tolerance,
+            "approach_max_linear_x": approach_max_linear_x,
+            "approach_min_linear_x": approach_min_linear_x,
+            "approach_angular_gain": approach_angular_gain,
+            "approach_max_angular_z": approach_max_angular_z,
             "target_timeout_s": target_timeout_s,
             "target_tracking_timeout_s": target_tracking_timeout_s,
             "target_confirmation_window": target_confirmation_window,
@@ -589,7 +555,9 @@ def generate_launch_description():
         period=AUTO_START_DELAY_S,
         condition=IfCondition(auto_start),
         actions=[
-            LogInfo(msg="Auto-starting RL drive after the 8 second startup delay."),
+            LogInfo(
+                msg="Auto-starting deterministic drive after the 8 second startup delay."
+            ),
             ExecuteProcess(
                 cmd=[
                     "ros2",
@@ -651,17 +619,6 @@ def generate_launch_description():
             description="YOLO .pt or TensorRT .engine model path.",
         ),
         DeclareLaunchArgument(
-            "rl_model_path",
-                default_value=PathJoinSubstitution(
-                    [
-                FindPackageShare("mission_manager"),
-                "models",
-                "rl_avoid_search_best.pt",
-                    ]
-                ),
-            description="Trained RL policy checkpoint path.",
-        ),
-        DeclareLaunchArgument(
             "secondary_yolo_model_path",
             default_value="",
             description=(
@@ -705,41 +662,16 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "yolo_performance_log_interval_s", default_value="5.0"
             ),
-        DeclareLaunchArgument("speed_scale", default_value="0.75"),
         DeclareLaunchArgument(
             "timer_rate_hz",
             default_value="10.0",
-            description="RL policy inference and cmd_vel publication rate.",
+            description="Deterministic controller and cmd_vel publication rate.",
         ),
-        DeclareLaunchArgument(
-            "max_angular_action_delta",
-            default_value="0.40",
-            description="Maximum normalized angular-action change before filtering.",
-        ),
-        DeclareLaunchArgument(
-            "angular_action_filter_alpha",
-            default_value="0.80",
-            description="Angular filter response; larger values follow RL output faster.",
-        ),
-        DeclareLaunchArgument("target_pd_enabled", default_value="false"),
-        DeclareLaunchArgument(
-            "target_pd_proportional_gain", default_value="0.8"
-        ),
-        DeclareLaunchArgument("target_pd_derivative_gain", default_value="0.12"),
-        DeclareLaunchArgument("target_pd_derivative_limit", default_value="0.25"),
-        DeclareLaunchArgument("target_pd_center_deadband", default_value="0.06"),
-        DeclareLaunchArgument("target_pd_max_angular_z", default_value="0.45"),
-        DeclareLaunchArgument("near_target_alignment_enabled", default_value="true"),
-        DeclareLaunchArgument("near_target_alignment_enter_y", default_value="0.60"),
-        DeclareLaunchArgument("near_target_alignment_linear_x", default_value="0.05"),
-        DeclareLaunchArgument(
-            "near_target_alignment_angular_gain",
-            default_value="0.90",
-        ),
-        DeclareLaunchArgument(
-            "near_target_alignment_max_angular_z",
-            default_value="0.55",
-        ),
+        DeclareLaunchArgument("approach_center_tolerance", default_value="0.12"),
+        DeclareLaunchArgument("approach_max_linear_x", default_value="0.10"),
+        DeclareLaunchArgument("approach_min_linear_x", default_value="0.03"),
+        DeclareLaunchArgument("approach_angular_gain", default_value="0.8"),
+        DeclareLaunchArgument("approach_max_angular_z", default_value="0.45"),
         DeclareLaunchArgument(
             "target_timeout_s",
             default_value="1.0",
@@ -749,7 +681,7 @@ def generate_launch_description():
             "target_tracking_timeout_s",
             default_value="1.5",
             description=(
-                "Keep the last target briefly during class flicker after RL tracking starts."
+                "Keep the last target briefly during class flicker after tracking starts."
             ),
         ),
         DeclareLaunchArgument(
@@ -767,14 +699,14 @@ def generate_launch_description():
             default_value="0.30",
             description=(
                 "Minimum normalized bbox-center y required before a new target "
-                "can interrupt coverage and enter RL tracking."
+                "can interrupt coverage and enter deterministic target tracking."
             ),
         ),
         DeclareLaunchArgument(
             "target_tracking_center_y_min",
             default_value="0.22",
             description=(
-                "Lower bbox-center y threshold retained while RL target tracking "
+                "Lower bbox-center y threshold retained while target tracking "
                 "is already active."
             ),
         ),
@@ -792,7 +724,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "pose_observation_enabled",
             default_value="false",
-            description="Use pose/IMU policy inputs and yaw-based target prediction.",
+            description="Include pose/IMU fields in controller state telemetry.",
         ),
         DeclareLaunchArgument(
             "launch_pose_tracker",
@@ -1099,7 +1031,7 @@ def generate_launch_description():
         motor_launch,
         wall_distance_launch,
         pose_tracker_launch,
-        policy_launch,
+        mission_controller_launch,
         object_mapper_node,
         status_gui,
         delayed_start,

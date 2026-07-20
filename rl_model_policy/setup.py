@@ -17,11 +17,12 @@ setup(
     zip_safe=True,
     maintainer='antero13',
     maintainer_email='antero13@todo.todo',
-    description='Runs the trained RL avoid/search policy and publishes cmd_vel.',
+    description='Runs deterministic coverage, ROI avoidance, and pickup control.',
     license='MIT',
     entry_points={
         'console_scripts': [
             'rl_model_policy = rl_model_policy.rl_model_policy_node:main',
+            'deterministic_mission_controller = rl_model_policy.rl_model_policy_node:main',
             'rl_object_world_mapper = rl_model_policy.object_world_mapper_node:main',
         ],
     },
