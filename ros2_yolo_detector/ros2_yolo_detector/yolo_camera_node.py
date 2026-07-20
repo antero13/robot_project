@@ -22,6 +22,7 @@ from .frame_correction import (
 
 PASSTHROUGH_CLASS_IDS = frozenset({0, 1, 2, 3})
 SECOND_STAGE_CLASS_IDS = frozenset({4, 5, 6, 7})
+SECONDARY_TO_FINAL_CLASS_ID = {0: 4, 1: 5, 2: 6, 3: 7}
 
 
 class YoloCameraNode(Node):
@@ -649,8 +650,9 @@ class YoloCameraNode(Node):
             if refined_class is None:
                 continue
 
-            class_id, class_name, confidence = refined_class
-            if class_id not in PASSTHROUGH_CLASS_IDS:
+            secondary_class_id, class_name, confidence = refined_class
+            final_class_id = SECONDARY_TO_FINAL_CLASS_ID.get(secondary_class_id)
+            if final_class_id is None:
                 continue
             if confidence < self.secondary_confidence:
                 continue
@@ -658,7 +660,9 @@ class YoloCameraNode(Node):
             detection["primary_class_id"] = detection["class_id"]
             detection["primary_class_name"] = detection["class_name"]
             detection["primary_confidence"] = detection["confidence"]
-            detection["class_id"] = class_id
+            detection["secondary_class_id"] = secondary_class_id
+            detection["secondary_class_name"] = class_name
+            detection["class_id"] = final_class_id
             detection["class_name"] = class_name
             detection["confidence"] = confidence
             detection["secondary_confidence"] = confidence
