@@ -147,7 +147,10 @@ class YoloCameraNode(Node):
             raise ValueError("performance_log_interval_s must be 0 or greater")
 
         self.bridge = CvBridge()
-        self.frame_corrector = self._create_frame_corrector()
+        self.frame_corrector = self._create_frame_corrector(self.imgsz)
+        self.secondary_frame_corrector = self._create_frame_corrector(
+            self.secondary_imgsz
+        )
         self.model = self._load_model(self.model_path)
         self.secondary_model = self._load_model(self.secondary_model_path)
         self.camera = None
@@ -213,7 +216,7 @@ class YoloCameraNode(Node):
         if self.raw_pub is not None:
             self.get_logger().info(f"Publishing raw camera images: {self.raw_topic}")
 
-    def _create_frame_corrector(self) -> Any:
+    def _create_frame_corrector(self, image_size: int) -> Any:
         cpu_corrector = FrameCorrector(
             enabled=self.correction_enabled,
             gamma=self.correction_gamma,
@@ -228,7 +231,7 @@ class YoloCameraNode(Node):
 
         try:
             return CudaFrameCorrector(
-                image_size=self.imgsz,
+                image_size=image_size,
                 device=self.correction_device,
                 enabled=True,
                 gamma=self.correction_gamma,
@@ -632,18 +635,22 @@ class YoloCameraNode(Node):
             # TensorRT engines exported with batch=1 reject a list of crops.
             # Run each crop independently so both fixed-batch engines and .pt
             # models use the same reliable path.
-            inference_kwargs = {
-                "source": crop,
-                "conf": self.secondary_confidence,
-                "iou": self.iou,
-                "agnostic_nms": self.agnostic_nms,
-                "imgsz": self.secondary_imgsz,
-                "verbose": False,
-            }
-            if self.device:
-                inference_kwargs["device"] = self.device
-
             try:
+                corrected = self.secondary_frame_corrector.apply(crop)
+                if isinstance(corrected, CudaCorrectedFrame):
+                    inference_crop = corrected.tensor
+                else:
+                    inference_crop = corrected
+                inference_kwargs = {
+                    "source": inference_crop,
+                    "conf": self.secondary_confidence,
+                    "iou": self.iou,
+                    "agnostic_nms": self.agnostic_nms,
+                    "imgsz": self.secondary_imgsz,
+                    "verbose": False,
+                }
+                if self.device:
+                    inference_kwargs["device"] = self.device
                 results = self.secondary_model.predict(**inference_kwargs)
             except Exception as exc:
                 self.get_logger().error(

@@ -46,11 +46,22 @@ class PerFrameInferenceTest(unittest.TestCase):
         self.assertFalse(tracking_module.exists())
 
     def test_secondary_inference_uses_single_crop_for_fixed_batch_engine(self):
-        self.assertIn('"source": crop', self.source)
+        self.assertIn('"source": inference_crop', self.source)
         self.assertNotIn('"source": [crop for _, crop in candidates]', self.source)
 
     def test_secondary_default_size_matches_exported_engine(self):
         self.assertIn('declare_parameter("secondary_imgsz", 800)', self.source)
+
+    def test_secondary_crop_uses_its_own_frame_correction(self):
+        self.assertIn(
+            "self.secondary_frame_corrector = self._create_frame_corrector(\n"
+            "            self.secondary_imgsz",
+            self.source,
+        )
+        self.assertIn(
+            "corrected = self.secondary_frame_corrector.apply(crop)",
+            self.source,
+        )
 
 
 if __name__ == "__main__":
