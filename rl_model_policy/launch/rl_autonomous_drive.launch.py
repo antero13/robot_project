@@ -928,7 +928,7 @@ def generate_launch_description():
             default_value="0.05",
             description="Maximum east/west wall angle before x correction.",
         ),
-        DeclareLaunchArgument("tof_wall_angle_sign", default_value="-1.0"),
+        DeclareLaunchArgument("tof_wall_angle_sign", default_value="1.0"),
         DeclareLaunchArgument("tof_validation_samples", default_value="3"),
         DeclareLaunchArgument("tof_max_valid_wall_angle_rad", default_value="0.436332313"),
         DeclareLaunchArgument("tof_max_angle_spread_rad", default_value="0.13962634"),

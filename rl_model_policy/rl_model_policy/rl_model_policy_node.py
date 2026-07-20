@@ -208,7 +208,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("lane_tof_min_speed", 0.08)
         self.declare_parameter("lane_tof_slowdown_distance_m", 0.20)
         self.declare_parameter("lane_tof_wall_angle_tolerance_rad", 0.05)
-        self.declare_parameter("tof_wall_angle_sign", -1.0)
+        self.declare_parameter("tof_wall_angle_sign", 1.0)
         self.declare_parameter("tof_validation_samples", 3)
         self.declare_parameter(
             "tof_max_valid_wall_angle_rad", math.radians(25.0)
