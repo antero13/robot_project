@@ -30,6 +30,21 @@ def should_run_lane_tof_fine_alignment(
     )
 
 
+def desired_yaw_for_wall(wall_side):
+    wall_side = str(wall_side).strip().lower()
+    if wall_side == "left":
+        return math.pi
+    if wall_side == "right":
+        return 0.0
+    raise ValueError("wall_side must be 'left' or 'right'")
+
+
+def coarse_heading_is_aligned(robot_yaw, wall_side, heading_tolerance):
+    desired_yaw = desired_yaw_for_wall(wall_side)
+    heading_error = normalize_angle(desired_yaw - float(robot_yaw))
+    return abs(heading_error) <= float(heading_tolerance)
+
+
 def robot_x_from_left_wall_distance(
     distance_m,
     left_wall_x_m,
@@ -92,15 +107,11 @@ def make_lane_tof_command(
     right_wall_x_m=2.0,
     wall_angle_rad=None,
     wall_angle_tolerance_rad=0.05,
+    coarse_heading_aligned=False,
 ):
     """Align to the next lane after facing the wall in the shift direction."""
     wall_side = str(wall_side).strip().lower()
-    if wall_side == "left":
-        desired_yaw = math.pi
-    elif wall_side == "right":
-        desired_yaw = 0.0
-    else:
-        raise ValueError("wall_side must be 'left' or 'right'")
+    desired_yaw = desired_yaw_for_wall(wall_side)
     heading_error = normalize_angle(desired_yaw - float(robot_yaw))
     angular_z = clamp(
         float(heading_gain) * heading_error,
@@ -120,9 +131,12 @@ def make_lane_tof_command(
             or math.isfinite(float(wall_angle_rad))
         )
     )
-    # Odometry provides the coarse cardinal heading.  A two-sensor wall angle
-    # is meaningful only after both sensors are looking at the same wall.
-    if abs(heading_error) > float(heading_tolerance):
+    # Odometry is only a one-time coarse gate. Once both sensors face the wall,
+    # ToF remains authoritative so odometry drift cannot pull alignment back.
+    if (
+        not bool(coarse_heading_aligned)
+        and abs(heading_error) > float(heading_tolerance)
+    ):
         return LaneTofCommand(
             linear_x=0.0,
             angular_z=angular_z,

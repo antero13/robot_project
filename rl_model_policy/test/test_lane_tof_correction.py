@@ -2,6 +2,8 @@ import math
 import unittest
 
 from rl_model_policy.lane_tof_correction import (
+    coarse_heading_is_aligned,
+    desired_yaw_for_wall,
     make_lane_tof_command,
     robot_x_from_left_wall_distance,
     robot_x_from_right_wall_distance,
@@ -116,6 +118,23 @@ class LaneTofCorrectionTest(unittest.TestCase):
 
         self.assertEqual(command.phase, "ALIGN_TOF_NEXT_LANE")
         self.assertGreater(command.angular_z, 0.0)
+
+    def test_latched_tof_alignment_does_not_return_to_odometry(self):
+        command = make_command(
+            robot_yaw=math.pi / 2.0,
+            wall_angle_rad=-0.10,
+            coarse_heading_aligned=True,
+        )
+
+        self.assertEqual(command.phase, "ALIGN_LANE_WALL_ANGLE")
+        self.assertLess(command.angular_z, 0.0)
+
+    def test_coarse_heading_helper_uses_selected_wall(self):
+        self.assertTrue(coarse_heading_is_aligned(math.pi, "left", 0.08))
+        self.assertTrue(coarse_heading_is_aligned(0.0, "right", 0.08))
+        self.assertFalse(coarse_heading_is_aligned(math.pi / 2.0, "right", 0.08))
+        self.assertAlmostEqual(desired_yaw_for_wall("left"), math.pi)
+        self.assertAlmostEqual(desired_yaw_for_wall("right"), 0.0)
 
     def test_drives_left_until_next_lane_is_reached(self):
         command = make_command(distance_m=2.40)

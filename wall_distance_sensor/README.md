@@ -58,22 +58,22 @@ For Jetson Orin Nano, use two separate I2C buses so the two VL53L1X sensors can
 both keep their default `0x29` address. This avoids SDA/SCL branching and does
 not require XSHUT wiring.
 
-Left sensor (exposed as Linux I2C bus 7 on the target Jetson):
-
-```text
-VCC -> Pin 1 or Pin 17, 3.3V
-GND -> Pin 6, 9, 14, 20, 25, 30, 34, or 39
-SDA -> Pin 3, I2C1_SDA
-SCL -> Pin 5, I2C1_SCL
-```
-
-Right sensor (exposed as Linux I2C bus 1 on the target Jetson):
+Left sensor (Linux I2C bus 7 on the target robot):
 
 ```text
 VCC -> Pin 1 or Pin 17, 3.3V
 GND -> Pin 6, 9, 14, 20, 25, 30, 34, or 39
 SDA -> Pin 27, I2C0_SDA
 SCL -> Pin 28, I2C0_SCL
+```
+
+Right sensor (Linux I2C bus 1 on the target robot):
+
+```text
+VCC -> Pin 1 or Pin 17, 3.3V
+GND -> Pin 6, 9, 14, 20, 25, 30, 34, or 39
+SDA -> Pin 3, I2C1_SDA
+SCL -> Pin 5, I2C1_SCL
 ```
 
 Default launch for this wiring:

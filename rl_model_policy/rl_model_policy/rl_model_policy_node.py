@@ -41,6 +41,8 @@ from rl_model_policy.observation import (
 from rl_model_policy.pickup_trigger import pickup_is_ready
 from rl_model_policy.leave_start import make_leave_start_command
 from rl_model_policy.lane_tof_correction import (
+    coarse_heading_is_aligned,
+    desired_yaw_for_wall,
     make_lane_tof_command,
     should_run_lane_tof_fine_alignment,
 )
@@ -400,6 +402,7 @@ class RLModelPolicyNode(Node):
         self.storage_exit_tof_missing_started_at = None
         self.storage_exit_tof_angle_alignment_active = False
         self.lane_tof_started_at_s = None
+        self.lane_tof_coarse_heading_aligned = False
         self.main_road_tof_started_at_s = None
         self.storage_dash_timer_phase = None
         self.storage_dash_elapsed_s = 0.0
@@ -1092,6 +1095,7 @@ class RLModelPolicyNode(Node):
     def reset_lane_tof_alignment(self):
         self.lane_tof_alignment_active = False
         self.lane_tof_started_at_s = None
+        self.lane_tof_coarse_heading_aligned = False
 
     def start_tof_watchdog(self, timer_name, now_s):
         if getattr(self, timer_name) is None:
@@ -2243,6 +2247,19 @@ class RLModelPolicyNode(Node):
         distance_m, wall_angle_rad, age_s = self.validated_wall_measurement(
             "lane_tof_measurement_timeout_s"
         )
+        if (
+            not self.lane_tof_coarse_heading_aligned
+            and coarse_heading_is_aligned(
+                self.robot_yaw,
+                wall_side,
+                self.get_float("coverage_heading_tolerance"),
+            )
+        ):
+            self.lane_tof_coarse_heading_aligned = True
+            self.get_logger().info(
+                "Lane coarse odometry heading acquired; "
+                "ToF angle is now authoritative"
+            )
         command = make_lane_tof_command(
             distance_m=distance_m,
             measurement_age_s=age_s,
@@ -2264,6 +2281,7 @@ class RLModelPolicyNode(Node):
             wall_angle_tolerance_rad=self.get_float(
                 "lane_tof_wall_angle_tolerance_rad"
             ),
+            coarse_heading_aligned=self.lane_tof_coarse_heading_aligned,
         )
         self.coverage_command = self.coverage_controller.external_command(
             command.linear_x,
@@ -2280,6 +2298,9 @@ class RLModelPolicyNode(Node):
             self.pose_x_correction_pub.publish(correction)
             self.pending_pose_x_correction = correction.data
             self.pending_pose_x_correction_time = self.get_clock().now()
+            self.publish_pose_yaw_correction(
+                desired_yaw_for_wall(wall_side)
+            )
         self.reset_lane_tof_alignment()
         self.coverage_controller.complete_current_leg("SHIFT_TO_NEXT_LANE")
         self.coverage_command = self.coverage_controller.hold_command(
@@ -2999,6 +3020,9 @@ class RLModelPolicyNode(Node):
                         self.get_parameter("lane_tof_correction_enabled").value
                     ),
                     "active": self.lane_tof_alignment_active,
+                    "coarse_heading_aligned": (
+                        self.lane_tof_coarse_heading_aligned
+                    ),
                     "distance_m": (
                         None
                         if self.latest_wall_distance_m is None
