@@ -45,6 +45,13 @@ class PerFrameInferenceTest(unittest.TestCase):
         tracking_module = PACKAGE_ROOT / "ros2_yolo_detector" / "temporal_stabilizer.py"
         self.assertFalse(tracking_module.exists())
 
+    def test_secondary_inference_uses_single_crop_for_fixed_batch_engine(self):
+        self.assertIn('"source": crop', self.source)
+        self.assertNotIn('"source": [crop for _, crop in candidates]', self.source)
+
+    def test_secondary_default_size_matches_exported_engine(self):
+        self.assertIn('declare_parameter("secondary_imgsz", 800)', self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

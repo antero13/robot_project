@@ -42,7 +42,7 @@ class YoloCameraNode(Node):
         self.declare_parameter("device", "")
         self.declare_parameter("imgsz", 640)
         self.declare_parameter("secondary_confidence", 0.25)
-        self.declare_parameter("secondary_imgsz", 640)
+        self.declare_parameter("secondary_imgsz", 800)
         self.declare_parameter("min_bbox_area_ratio", 0.02)
         self.declare_parameter("correction_enabled", False)
         self.declare_parameter("correction_gamma", 0.65)
@@ -627,25 +627,34 @@ class YoloCameraNode(Node):
         if not candidates:
             return []
 
-        inference_kwargs = {
-            "source": [crop for _, crop in candidates],
-            "conf": self.secondary_confidence,
-            "iou": self.iou,
-            "agnostic_nms": self.agnostic_nms,
-            "imgsz": self.secondary_imgsz,
-            "verbose": False,
-        }
-        if self.device:
-            inference_kwargs["device"] = self.device
-
-        try:
-            results = self.secondary_model.predict(**inference_kwargs)
-        except Exception as exc:
-            self.get_logger().error(f"Secondary crop YOLO inference failed: {exc}")
-            return []
-
         refined_detections = []
-        for (detection, _), result in zip(candidates, results):
+        for candidate_index, (detection, crop) in enumerate(candidates):
+            # TensorRT engines exported with batch=1 reject a list of crops.
+            # Run each crop independently so both fixed-batch engines and .pt
+            # models use the same reliable path.
+            inference_kwargs = {
+                "source": crop,
+                "conf": self.secondary_confidence,
+                "iou": self.iou,
+                "agnostic_nms": self.agnostic_nms,
+                "imgsz": self.secondary_imgsz,
+                "verbose": False,
+            }
+            if self.device:
+                inference_kwargs["device"] = self.device
+
+            try:
+                results = self.secondary_model.predict(**inference_kwargs)
+            except Exception as exc:
+                self.get_logger().error(
+                    "Secondary crop YOLO inference failed for candidate "
+                    f"{candidate_index}: {exc}"
+                )
+                continue
+            if not results:
+                continue
+
+            result = results[0]
             refined_class = self._best_secondary_class(result)
             if refined_class is None:
                 continue

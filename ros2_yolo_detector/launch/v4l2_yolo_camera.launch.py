@@ -71,7 +71,7 @@ def generate_launch_description():
             DeclareLaunchArgument("device", default_value=""),
             DeclareLaunchArgument("imgsz", default_value="800"),
             DeclareLaunchArgument("secondary_confidence", default_value="0.25"),
-            DeclareLaunchArgument("secondary_imgsz", default_value="640"),
+            DeclareLaunchArgument("secondary_imgsz", default_value="800"),
             DeclareLaunchArgument("min_bbox_area_ratio", default_value="0.02"),
             DeclareLaunchArgument("correction_enabled", default_value="true"),
             DeclareLaunchArgument("correction_gamma", default_value="0.65"),

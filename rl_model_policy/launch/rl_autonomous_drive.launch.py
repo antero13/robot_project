@@ -662,7 +662,7 @@ def generate_launch_description():
         DeclareLaunchArgument("correction_enabled", default_value="true"),
         DeclareLaunchArgument("yolo_imgsz", default_value="800"),
         DeclareLaunchArgument("secondary_yolo_confidence", default_value="0.25"),
-        DeclareLaunchArgument("secondary_yolo_imgsz", default_value="640"),
+        DeclareLaunchArgument("secondary_yolo_imgsz", default_value="800"),
         DeclareLaunchArgument("yolo_min_bbox_area_ratio", default_value="0.02"),
         DeclareLaunchArgument("target_lock_enabled", default_value="true"),
         DeclareLaunchArgument("target_lock_timeout_s", default_value="0.80"),
