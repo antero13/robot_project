@@ -131,6 +131,7 @@ class CoverageController:
         rejoin_approach_angle=math.pi / 4.0,
         rejoin_blend_distance=0.45,
         rejoin_align_tolerance=0.12,
+        rejoin_coordinate_limit=1.8,
     ):
         self.legs = list(legs)
         if not self.legs:
@@ -147,6 +148,7 @@ class CoverageController:
         self.rejoin_approach_angle = float(rejoin_approach_angle)
         self.rejoin_blend_distance = float(rejoin_blend_distance)
         self.rejoin_align_tolerance = float(rejoin_align_tolerance)
+        self.rejoin_coordinate_limit = float(rejoin_coordinate_limit)
         if self.waypoint_tolerance <= 0.0:
             raise ValueError("waypoint_tolerance must be positive")
         if self.heading_tolerance <= 0.0:
@@ -167,12 +169,15 @@ class CoverageController:
             raise ValueError("rejoin_blend_distance must exceed waypoint_tolerance")
         if self.rejoin_align_tolerance <= 0.0:
             raise ValueError("rejoin_align_tolerance must be positive")
+        if self.rejoin_coordinate_limit <= 0.0:
+            raise ValueError("rejoin_coordinate_limit must be positive")
 
         self.leg_index = 0
         self.cycle_count = 0
         self.last_avoid_direction = 1.0
         self.rejoin_target_y = None
         self.rejoin_entry_aligned = False
+        self.rejoin_perpendicular_active = False
 
     def reset(self):
         self.leg_index = 0
@@ -180,6 +185,7 @@ class CoverageController:
         self.last_avoid_direction = 1.0
         self.rejoin_target_y = None
         self.rejoin_entry_aligned = False
+        self.rejoin_perpendicular_active = False
 
     def cancel_avoidance(self):
         # Continuous steering has no persistent avoidance state to reset.
@@ -193,14 +199,17 @@ class CoverageController:
         if not self.current_leg.phase.startswith("SCAN_LANE"):
             self.rejoin_target_y = None
             self.rejoin_entry_aligned = False
+            self.rejoin_perpendicular_active = False
             return False
         self.rejoin_target_y = float(robot_y)
         self.rejoin_entry_aligned = False
+        self.rejoin_perpendicular_active = False
         return True
 
     def cancel_rejoin(self):
         self.rejoin_target_y = None
         self.rejoin_entry_aligned = False
+        self.rejoin_perpendicular_active = False
 
     @property
     def current_leg(self):
@@ -317,9 +326,35 @@ class CoverageController:
         if abs(x_error) <= self.waypoint_tolerance:
             self.rejoin_target_y = None
             self.rejoin_entry_aligned = False
+            self.rejoin_perpendicular_active = False
             return self.command(robot_x, robot_y, robot_yaw)
 
         scan_direction = 1.0 if self.current_leg.phase == "SCAN_LANE_UP" else -1.0
+        if (
+            not self.rejoin_perpendicular_active
+            and curved_rejoin_exceeds_coordinate_limit(
+                robot_x=robot_x,
+                robot_y=robot_y,
+                target_x=target_x,
+                scan_direction=scan_direction,
+                approach_angle=self.rejoin_approach_angle,
+                blend_distance=self.rejoin_blend_distance,
+                waypoint_tolerance=self.waypoint_tolerance,
+                coordinate_limit=self.rejoin_coordinate_limit,
+            )
+        ):
+            self.rejoin_perpendicular_active = True
+            self.rejoin_entry_aligned = False
+
+        if self.rejoin_perpendicular_active:
+            return self._perpendicular_rejoin_command(
+                robot_x,
+                robot_y,
+                robot_yaw,
+                target_x,
+                target_y,
+            )
+
         scan_yaw = scan_direction * math.pi / 2.0
         robot_side = 1.0 if robot_x > target_x else -1.0
         approach_offset = (
@@ -359,6 +394,41 @@ class CoverageController:
             self.rejoin_speed,
             angular_z,
             "CURVE_REJOIN_LANE",
+            target_x,
+            target_y,
+        )
+
+    def _perpendicular_rejoin_command(
+        self,
+        robot_x,
+        robot_y,
+        robot_yaw,
+        target_x,
+        target_y,
+    ):
+        desired_yaw = 0.0 if target_x > robot_x else math.pi
+        heading_error = normalize_angle(desired_yaw - robot_yaw)
+        angular_z = clamp(
+            self.heading_gain * heading_error,
+            -self.max_angular_speed,
+            self.max_angular_speed,
+        )
+        if (
+            not self.rejoin_entry_aligned
+            and abs(heading_error) > self.rejoin_align_tolerance
+        ):
+            return self._make_rejoin_command(
+                0.0,
+                angular_z,
+                "ALIGN_PERPENDICULAR_REJOIN",
+                target_x,
+                target_y,
+            )
+        self.rejoin_entry_aligned = True
+        return self._make_rejoin_command(
+            self.rejoin_speed,
+            angular_z,
+            "PERPENDICULAR_REJOIN_LANE",
             target_x,
             target_y,
         )
@@ -413,6 +483,54 @@ class CoverageController:
             waypoint_y=float(waypoint_y),
             cycle_count=self.cycle_count,
         )
+
+
+def curved_rejoin_exceeds_coordinate_limit(
+    *,
+    robot_x,
+    robot_y,
+    target_x,
+    scan_direction,
+    approach_angle,
+    blend_distance,
+    waypoint_tolerance,
+    coordinate_limit,
+):
+    """Predict whether the ideal curved rejoin reaches the arena safety limit."""
+    robot_x = float(robot_x)
+    robot_y = float(robot_y)
+    target_x = float(target_x)
+    scan_direction = 1.0 if float(scan_direction) >= 0.0 else -1.0
+    approach_angle = float(approach_angle)
+    blend_distance = float(blend_distance)
+    waypoint_tolerance = float(waypoint_tolerance)
+    coordinate_limit = float(coordinate_limit)
+    if coordinate_limit <= 0.0:
+        raise ValueError("coordinate_limit must be positive")
+    if not 0.0 < approach_angle <= math.pi / 2.0:
+        raise ValueError("approach_angle must be in (0, pi/2]")
+    if blend_distance <= waypoint_tolerance or waypoint_tolerance <= 0.0:
+        raise ValueError("blend_distance must exceed positive waypoint_tolerance")
+
+    if max(abs(robot_x), abs(robot_y), abs(target_x)) >= coordinate_limit:
+        return True
+
+    x_error = abs(target_x - robot_x)
+    if x_error <= waypoint_tolerance:
+        return False
+
+    straight_error = max(0.0, x_error - blend_distance)
+    y_travel = straight_error / math.tan(approach_angle)
+
+    curved_upper = min(x_error, blend_distance)
+    if curved_upper > waypoint_tolerance:
+        angle_per_metre = approach_angle / blend_distance
+        upper_sine = math.sin(angle_per_metre * curved_upper)
+        lower_sine = math.sin(angle_per_metre * waypoint_tolerance)
+        y_travel += math.log(upper_sine / lower_sine) / angle_per_metre
+
+    projected_y = robot_y + scan_direction * y_travel
+    return abs(projected_y) >= coordinate_limit
 
 
 def normalize_angle(angle):

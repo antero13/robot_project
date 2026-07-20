@@ -29,3 +29,23 @@ def target_is_eligible(
         else entry_minimum_center_y
     )
     return target_is_close_enough(center_y, minimum_center_y)
+
+
+def coverage_phase_allows_target_search(
+    coverage_phase,
+    *,
+    coverage_enabled=True,
+    leave_start_active=False,
+    rejoin_active=False,
+    main_road_alignment_active=False,
+):
+    """Allow target pursuit only while the robot is scanning inside a lane."""
+    if (
+        bool(leave_start_active)
+        or bool(rejoin_active)
+        or bool(main_road_alignment_active)
+    ):
+        return False
+    if not bool(coverage_enabled):
+        return True
+    return str(coverage_phase) in ("SCAN_LANE_UP", "SCAN_LANE_DOWN")

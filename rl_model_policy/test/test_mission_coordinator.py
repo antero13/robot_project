@@ -209,17 +209,13 @@ class MissionCoordinatorTest(unittest.TestCase):
             0.04,
         )
 
-    def test_storage_dash_heading_is_fixed_by_staging_and_contact_coordinates(self):
-        heading = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+    def test_storage_dash_heading_uses_configured_fixed_angle(self):
+        heading = storage_dash_heading(-139.26)
 
-        self.assertAlmostEqual(
-            heading,
-            math.atan2(-1.75 + 1.3343, -1.75 + 1.25),
-        )
-        self.assertAlmostEqual(math.degrees(heading), -140.260, places=3)
+        self.assertAlmostEqual(math.degrees(heading), -139.26, places=3)
 
     def test_fixed_heading_dash_does_not_stop_to_chase_pose(self):
-        desired_yaw = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+        desired_yaw = storage_dash_heading(-139.26)
         command = fixed_heading_dash_command(
             robot_yaw=desired_yaw + 0.10,
             desired_yaw=desired_yaw,
@@ -235,7 +231,7 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertFalse(command.reached)
 
     def test_storage_exit_rotates_to_west_before_tof(self):
-        dash_yaw = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+        dash_yaw = storage_dash_heading(-139.26)
         command = waypoint_command(
             robot_x=-1.25,
             robot_y=-1.3343,
@@ -269,7 +265,7 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertTrue(aligned.reached)
 
     def test_fixed_heading_reverse_uses_same_heading_until_timer_finishes(self):
-        desired_yaw = storage_dash_heading(-1.25, -1.3343, -1.75, -1.75)
+        desired_yaw = storage_dash_heading(-139.26)
         reversing = fixed_heading_dash_command(
             robot_yaw=desired_yaw,
             desired_yaw=desired_yaw,

@@ -132,6 +132,9 @@ def generate_launch_description():
     coverage_avoid_angular_speed = LaunchConfiguration("coverage_avoid_angular_speed")
     coverage_avoid_linear_scale = LaunchConfiguration("coverage_avoid_linear_scale")
     coverage_rejoin_speed = LaunchConfiguration("coverage_rejoin_speed")
+    coverage_rejoin_coordinate_limit = LaunchConfiguration(
+        "coverage_rejoin_coordinate_limit"
+    )
     coverage_reacquire_duration_s = LaunchConfiguration("coverage_reacquire_duration_s")
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
         "coverage_reacquire_reverse_after_s"
@@ -223,6 +226,7 @@ def generate_launch_description():
     storage_contact_settle_duration_s = LaunchConfiguration(
         "storage_contact_settle_duration_s"
     )
+    storage_dash_heading_deg = LaunchConfiguration("storage_dash_heading_deg")
     storage_dash_heading_tolerance = LaunchConfiguration(
         "storage_dash_heading_tolerance"
     )
@@ -417,6 +421,7 @@ def generate_launch_description():
             "coverage_avoid_angular_speed": coverage_avoid_angular_speed,
             "coverage_avoid_linear_scale": coverage_avoid_linear_scale,
             "coverage_rejoin_speed": coverage_rejoin_speed,
+            "coverage_rejoin_coordinate_limit": coverage_rejoin_coordinate_limit,
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
             "coverage_reacquire_reverse_after_s": (coverage_reacquire_reverse_after_s),
             "coverage_reacquire_angular_z": coverage_reacquire_angular_z,
@@ -496,6 +501,7 @@ def generate_launch_description():
             "storage_contact_settle_duration_s": (
                 storage_contact_settle_duration_s
             ),
+            "storage_dash_heading_deg": storage_dash_heading_deg,
             "storage_dash_heading_tolerance": storage_dash_heading_tolerance,
             "storage_dash_max_angular_speed": storage_dash_max_angular_speed,
             "storage_entry_tolerance": storage_entry_tolerance,
@@ -842,7 +848,7 @@ def generate_launch_description():
         DeclareLaunchArgument("coverage_scan_end_y", default_value="1.0"),
         DeclareLaunchArgument("coverage_lane_spacing", default_value="1.0"),
         DeclareLaunchArgument("coverage_scan_speed", default_value="0.24"),
-        DeclareLaunchArgument("coverage_transit_speed", default_value="0.30"),
+        DeclareLaunchArgument("coverage_transit_speed", default_value="0.40"),
         DeclareLaunchArgument("coverage_return_speed", default_value="0.24"),
         DeclareLaunchArgument("coverage_waypoint_tolerance", default_value="0.10"),
         DeclareLaunchArgument(
@@ -853,6 +859,10 @@ def generate_launch_description():
         DeclareLaunchArgument("coverage_avoid_angular_speed", default_value="0.45"),
         DeclareLaunchArgument("coverage_avoid_linear_scale", default_value="0.70"),
         DeclareLaunchArgument("coverage_rejoin_speed", default_value="0.20"),
+        DeclareLaunchArgument(
+            "coverage_rejoin_coordinate_limit",
+            default_value="1.80",
+        ),
         DeclareLaunchArgument("coverage_reacquire_duration_s", default_value="1.5"),
         DeclareLaunchArgument(
             "coverage_reacquire_reverse_after_s",
@@ -981,6 +991,7 @@ def generate_launch_description():
             "storage_contact_settle_duration_s",
             default_value="0.20",
         ),
+        DeclareLaunchArgument("storage_dash_heading_deg", default_value="-139.26"),
         DeclareLaunchArgument(
             "storage_dash_heading_tolerance",
             default_value="0.05",

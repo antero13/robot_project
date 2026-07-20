@@ -1,12 +1,29 @@
 import unittest
 
 from rl_model_policy.target_activation import (
+    coverage_phase_allows_target_search,
     target_is_close_enough,
     target_is_eligible,
 )
 
 
 class TargetActivationTest(unittest.TestCase):
+    def test_target_search_is_blocked_during_main_road_lane_shift(self):
+        self.assertFalse(coverage_phase_allows_target_search("SHIFT_TO_NEXT_LANE"))
+        self.assertFalse(coverage_phase_allows_target_search("ENTER_FIRST_LANE"))
+
+    def test_target_search_starts_when_lane_scan_starts(self):
+        self.assertTrue(coverage_phase_allows_target_search("SCAN_LANE_UP"))
+        self.assertTrue(coverage_phase_allows_target_search("SCAN_LANE_DOWN"))
+
+    def test_target_search_stays_blocked_during_main_road_alignment(self):
+        self.assertFalse(
+            coverage_phase_allows_target_search(
+                "SCAN_LANE_DOWN",
+                main_road_alignment_active=True,
+            )
+        )
+
     def test_rejects_missing_or_distant_bbox_center(self):
         self.assertFalse(target_is_close_enough(None, 0.30))
         self.assertFalse(target_is_close_enough(0.299, 0.30))

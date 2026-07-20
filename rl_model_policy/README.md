@@ -238,7 +238,7 @@ x 레인 중심: 1.25, 0.25, -0.75, -1.25 m (1, 2, 3, 4번 레인)
 탐색 끝 y: 1.0 m
 상행 탐색 속도: 0.24 m/s
 하행 탐색 속도: 0.24 m/s
-레인 이동 속도: 0.30 m/s
+레인 이동 속도: 0.40 m/s
 coverage 각속도 제한: 1.00 rad/s
 waypoint 허용 오차: 0.10 m
 곡선 회피 전진 비율: 0.70
@@ -249,6 +249,9 @@ waypoint 허용 오차: 0.10 m
 다음 레인 중심까지 이동한다. 이 구간에는 ToF가 필요하지 않다. Odometry가
 waypoint 허용 오차 안에 들어온 뒤에만 선택된 벽을 향해 회전하고, 신선한
 VL53L1X 값으로 남은 x 오차를 기본 3 cm 이내로 보정한다.
+주도로 횡이동과 ToF 미세 보정 중에는 YOLO 타깃 확인 이력을 비우고 RL 타깃
+추적 및 재탐색을 시작하지 않는다. 다음 `SCAN_LANE_UP`이 시작된 뒤부터 다시
+타깃 확인과 추적을 허용한다.
 
 벽 선택은 이동 방향이 아니라 **도착할 레인 번호**를 기준으로 한다. 1·2번
 레인은 동쪽 벽 `x=2.0`, 3·4번 레인은 서쪽 벽 `x=-2.0`을 사용한다.
@@ -321,6 +324,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   coverage_min_x:=-1.25 coverage_max_x:=1.25 \
   coverage_avoid_linear_scale:=0.70 \
   coverage_rejoin_speed:=0.20 \
+  coverage_rejoin_coordinate_limit:=1.80 \
   coverage_turn_in_place_threshold:=0.65 \
   target_activation_center_y_min:=0.30 \
   camera_horizontal_fov_deg:=80.0
@@ -466,6 +470,9 @@ COLLECTING
 2. **물체 수거 후 레인 복귀**
    - 수거 뒤 `CURVE_REJOIN_LANE`으로 현재 레인의 중심 x에 즉시 복귀한다.
      처음에는 레인을 45도로 바라보고 전진하면서 레인 진행 방향으로 합류한다.
+   - 예상 곡선 경로의 x 또는 y 절댓값이 `1.8 m` 이상이면 곡선 복귀를 사용하지
+     않는다. 먼저 `PERPENDICULAR_REJOIN_LANE`으로 오솔길에 수직으로 직진해
+     중심 x에 붙은 뒤 기존 상행·하행 탐색 방향으로 다시 정렬한다.
    - 4개 적재, 일곱 번째 물체 수거, 종료 30초 전 또는 수동 복귀도 먼저
      `REJOIN_STORAGE_LANE`을 끝낸 뒤 보관소 이동을 시작한다.
 
@@ -543,6 +550,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_reverse_speed:=0.40 \
   storage_exit_dash_duration_s:=1.50 \
   storage_contact_settle_duration_s:=0.20 \
+  storage_dash_heading_deg:=-139.26 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_sensor_forward_offset_m:=0.09 \
   storage_exit_tof_fallback_timeout_s:=1.0 \
@@ -551,7 +559,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 ```
 
 보관소 진입 방향은 입구 `(-1.25, -1.3343)`에서 접촉 기준점
-`(-1.75, -1.75)`로 향하는 각도(기본 약 `-140.26 deg`)로 한 번 정렬한다.
+`(-1.75, -1.75)` 쪽의 고정각 `storage_dash_heading_deg`(기본 `-139.26 deg`)로
+한 번 정렬한다.
 그 뒤에는 pose x/y로 목표 방향을 다시 계산하지 않고 IMU yaw만 유지하면서
 `storage_entry_dash_duration_s` 동안 연속 전진한다. 정지 및 접촉 안정화 후
 `storage_center_x/y`를 `/robot_pose/correct_x`, `/robot_pose/correct_y`로 동시에

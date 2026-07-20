@@ -3,6 +3,7 @@ import unittest
 
 from rl_model_policy.coverage_controller import (
     CoverageController,
+    curved_rejoin_exceeds_coordinate_limit,
     generate_coverage_legs,
     normalize_angle,
     signed_lane_shift_speed,
@@ -136,6 +137,24 @@ class CoverageControllerTest(unittest.TestCase):
         self.assertEqual(command.phase, "SHIFT_TO_NEXT_LANE")
         self.assertEqual(controller.leg_index, 3)
         self.assertLess(command.linear_x, 0.0)
+
+    def test_lane_shift_uses_configured_point_four_speed(self):
+        legs = generate_coverage_legs(
+            min_x=-0.75,
+            max_x=1.25,
+            main_road_y=-1.33,
+            scan_end_y=1.0,
+            lane_spacing=1.0,
+            scan_speed=0.24,
+            transit_speed=0.40,
+            return_speed=0.24,
+        )
+        controller = CoverageController(legs)
+        controller.leg_index = 3
+
+        command = controller.command(0.75, -1.33, 0.0)
+
+        self.assertAlmostEqual(command.linear_x, -0.40)
 
     def test_lane_1_to_2_turns_left_to_face_north_after_tof_completion(self):
         controller = CoverageController(make_legs())
@@ -337,6 +356,53 @@ class CoverageControllerTest(unittest.TestCase):
         self.assertEqual(command.phase, "CURVE_REJOIN_LANE")
         self.assertGreater(command.linear_x, 0.0)
         self.assertLess(command.angular_z, 0.0)
+
+    def test_rejoin_uses_perpendicular_path_when_curve_would_leave_arena(self):
+        controller = CoverageController(
+            make_legs(),
+            rejoin_speed=0.16,
+            rejoin_coordinate_limit=1.8,
+        )
+        controller.leg_index = 1
+        controller.begin_rejoin(robot_y=1.10)
+
+        aligning = controller.command(1.75, 1.10, math.pi / 2.0)
+        driving = controller.command(1.75, 1.10, math.pi)
+
+        self.assertEqual(aligning.phase, "ALIGN_PERPENDICULAR_REJOIN")
+        self.assertEqual(aligning.linear_x, 0.0)
+        self.assertEqual(driving.phase, "PERPENDICULAR_REJOIN_LANE")
+        self.assertAlmostEqual(driving.linear_x, 0.16)
+        self.assertAlmostEqual(driving.angular_z, 0.0)
+        self.assertAlmostEqual(driving.waypoint_x, 1.25)
+        self.assertAlmostEqual(driving.waypoint_y, 1.10)
+
+    def test_rejoin_keeps_curved_path_when_prediction_stays_inside_arena(self):
+        controller = CoverageController(
+            make_legs(),
+            rejoin_speed=0.16,
+            rejoin_coordinate_limit=1.8,
+        )
+        controller.leg_index = 1
+        controller.begin_rejoin(robot_y=0.50)
+
+        command = controller.command(1.75, 0.50, 3.0 * math.pi / 4.0)
+
+        self.assertEqual(command.phase, "CURVE_REJOIN_LANE")
+
+    def test_coordinate_at_limit_is_unsafe_for_curved_rejoin(self):
+        self.assertTrue(
+            curved_rejoin_exceeds_coordinate_limit(
+                robot_x=1.75,
+                robot_y=1.80,
+                target_x=1.25,
+                scan_direction=1.0,
+                approach_angle=math.pi / 4.0,
+                blend_distance=0.45,
+                waypoint_tolerance=0.10,
+                coordinate_limit=1.80,
+            )
+        )
 
     def test_rejoin_completion_resumes_existing_scan_leg(self):
         controller = CoverageController(make_legs())

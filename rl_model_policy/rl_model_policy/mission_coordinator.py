@@ -249,12 +249,9 @@ def waypoint_command(
     return NavigationCommand(linear_x, angular_z, False)
 
 
-def storage_dash_heading(staging_x, staging_y, center_x, center_y):
-    """Return the fixed IMU heading from the staging pose to storage."""
-    return math.atan2(
-        float(center_y) - float(staging_y),
-        float(center_x) - float(staging_x),
-    )
+def storage_dash_heading(heading_deg):
+    """Convert the configured fixed storage-dash IMU heading to radians."""
+    return normalize_angle(math.radians(float(heading_deg)))
 
 
 def fixed_heading_dash_command(

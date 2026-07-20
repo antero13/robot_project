@@ -54,7 +54,10 @@ from rl_model_policy.storage_exit_tof_correction import (
 )
 from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
-from rl_model_policy.target_activation import target_is_eligible
+from rl_model_policy.target_activation import (
+    coverage_phase_allows_target_search,
+    target_is_eligible,
+)
 from rl_model_policy.target_alignment_pd import TargetAlignmentPD
 
 try:
@@ -175,7 +178,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("coverage_scan_end_y", 1.0)
         self.declare_parameter("coverage_lane_spacing", 1.0)
         self.declare_parameter("coverage_scan_speed", 0.24)
-        self.declare_parameter("coverage_transit_speed", 0.30)
+        self.declare_parameter("coverage_transit_speed", 0.40)
         self.declare_parameter("coverage_return_speed", 0.24)
         self.declare_parameter("coverage_waypoint_tolerance", 0.10)
         self.declare_parameter("coverage_heading_tolerance", 0.08)
@@ -186,6 +189,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("coverage_avoid_angular_speed", 0.45)
         self.declare_parameter("coverage_avoid_linear_scale", 0.70)
         self.declare_parameter("coverage_rejoin_speed", 0.20)
+        self.declare_parameter("coverage_rejoin_coordinate_limit", 1.80)
         self.declare_parameter("coverage_reacquire_duration_s", 1.5)
         self.declare_parameter("coverage_reacquire_reverse_after_s", 0.75)
         self.declare_parameter("coverage_reacquire_angular_z", 0.35)
@@ -269,6 +273,7 @@ class RLModelPolicyNode(Node):
         self.declare_parameter("storage_entry_dash_duration_s", 2.50)
         self.declare_parameter("storage_exit_dash_duration_s", 1.50)
         self.declare_parameter("storage_contact_settle_duration_s", 0.20)
+        self.declare_parameter("storage_dash_heading_deg", -139.26)
         self.declare_parameter("storage_dash_heading_tolerance", 0.05)
         self.declare_parameter("storage_dash_max_angular_speed", 0.30)
         self.declare_parameter("storage_waypoint_tolerance", 0.10)
@@ -642,6 +647,9 @@ class RLModelPolicyNode(Node):
         self.latest_target_label_time = self.get_clock().now()
 
     def target_visibility_callback(self, msg):
+        if not self.target_search_is_allowed():
+            self.target_visibility_history.clear()
+            return
         visible = bool(msg.data)
         was_visible = self.latest_target_visible
         self.latest_target_visible = visible
@@ -846,11 +854,13 @@ class RLModelPolicyNode(Node):
             not self.full_mission_is_enabled()
             or self.mission.phase == MissionPhase.COLLECTING
         )
-        if collecting and not self.leave_start_active:
+        target_search_allowed = self.target_search_is_allowed()
+        if collecting and target_search_allowed:
             self.update_target_history(target)
         tracking_target = self.control_mode == self.MODE_TRACK_TARGET
         target_control_ready = (
-            target is not None
+            target_search_allowed
+            and target is not None
             and self.target_activation_is_met(tracking_active=tracking_target)
             and (tracking_target or self.target_confirmation_is_met())
         )
@@ -917,7 +927,11 @@ class RLModelPolicyNode(Node):
                 fallback_angular_z=angular_z,
             )
             self.coverage_command = None
-        elif self.active and self.should_locally_reacquire():
+        elif (
+            self.active
+            and target_search_allowed
+            and self.should_locally_reacquire()
+        ):
             self.set_control_mode(self.MODE_LOCAL_REACQUIRE)
             self.raw_action = [0.0, 0.0]
             self.filtered_action = [0.0, 0.0]
@@ -1771,12 +1785,7 @@ class RLModelPolicyNode(Node):
         return (0.0, 0.0)
 
     def storage_entry_dash_yaw(self):
-        return storage_dash_heading(
-            self.get_float("storage_staging_x"),
-            self.get_float("storage_main_road_y"),
-            self.get_float("storage_center_x"),
-            self.get_float("storage_center_y"),
-        )
+        return storage_dash_heading(self.get_float("storage_dash_heading_deg"))
 
     def reset_storage_dash_timer(self):
         self.storage_dash_timer_phase = None
@@ -1980,6 +1989,9 @@ class RLModelPolicyNode(Node):
             avoid_angular_speed=self.get_float("coverage_avoid_angular_speed"),
             avoid_linear_scale=self.get_float("coverage_avoid_linear_scale"),
             rejoin_speed=self.get_float("coverage_rejoin_speed"),
+            rejoin_coordinate_limit=self.get_float(
+                "coverage_rejoin_coordinate_limit"
+            ),
         )
         scan_lane_count = sum(leg.phase.startswith("SCAN_LANE") for leg in legs)
         self.get_logger().info(
@@ -2035,6 +2047,16 @@ class RLModelPolicyNode(Node):
             self.get_float("target_activation_center_y_min"),
             self.get_float("target_tracking_center_y_min"),
             tracking_active,
+        )
+
+    def target_search_is_allowed(self):
+        """Block YOLO/RL pursuit on the main road until lane scanning starts."""
+        return coverage_phase_allows_target_search(
+            self.coverage_controller.current_leg.phase,
+            coverage_enabled=self.coverage_is_enabled(),
+            leave_start_active=self.leave_start_active,
+            rejoin_active=self.coverage_controller.rejoin_active,
+            main_road_alignment_active=self.main_road_tof_alignment_active,
         )
 
     def begin_leave_start(self):
@@ -2805,7 +2827,10 @@ class RLModelPolicyNode(Node):
                         if self.control_mode == self.MODE_TRACK_TARGET
                         else "target_activation_center_y_min"
                     ),
-                    "eligible": self.target_activation_is_met(),
+                    "eligible": (
+                        self.target_search_is_allowed()
+                        and self.target_activation_is_met()
+                    ),
                     "entry_minimum_center_y": self.get_float(
                         "target_activation_center_y_min"
                     ),
