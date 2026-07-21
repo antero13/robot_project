@@ -176,6 +176,9 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("lane_tof_min_speed", 0.08)
         self.declare_parameter("lane_tof_slowdown_distance_m", 0.20)
         self.declare_parameter("lane_tof_wall_angle_tolerance_rad", 0.05)
+        self.declare_parameter("lane_tof_angle_kp", 1.2)
+        self.declare_parameter("lane_tof_angle_kd", 0.08)
+        self.declare_parameter("lane_tof_angle_max_angular_speed", 0.30)
         self.declare_parameter("tof_wall_angle_sign", 1.0)
         self.declare_parameter("tof_validation_samples", 3)
         self.declare_parameter(
@@ -363,6 +366,7 @@ class DeterministicMissionControllerNode(Node):
         self.grab_state_elapsed_offset_s = 0.0
         self.motion_paused = False
         self.pickup_label = None
+        self.pickup_target_x = None
         self.control_mode = self.MODE_IDLE
         self.leave_start_active = self.active and bool(
             self.get_parameter("leave_start_enabled").value
@@ -392,6 +396,8 @@ class DeterministicMissionControllerNode(Node):
         self.storage_exit_tof_coarse_heading_aligned = False
         self.lane_tof_started_at_s = None
         self.lane_tof_coarse_heading_aligned = False
+        self.lane_tof_previous_angle_rad = None
+        self.lane_tof_previous_angle_time_s = None
         self.main_road_tof_started_at_s = None
         self.storage_dash_timer_phase = None
         self.storage_dash_elapsed_s = 0.0
@@ -664,6 +670,7 @@ class DeterministicMissionControllerNode(Node):
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
             self.clear_near_target_candidate()
+            self.pickup_target_x = None
             self.motion_paused = False
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
@@ -716,6 +723,7 @@ class DeterministicMissionControllerNode(Node):
             self.clear_near_target_candidate()
             self.motion_paused = False
             self.pickup_label = None
+            self.pickup_target_x = None
             self.mission_waypoint = None
             self.cancel_leave_start()
             self.set_control_mode(self.MODE_IDLE)
@@ -921,6 +929,8 @@ class DeterministicMissionControllerNode(Node):
     def prepare_storage_return(self):
         self.cancel_leave_start()
         self.coverage_controller.cancel_rejoin()
+        self.coverage_controller.cancel_preferred_lane_end_turn()
+        self.pickup_target_x = None
         self.reset_storage_dash_timer()
         self.pending_pose_x_correction = None
         self.pending_pose_x_correction_time = None
@@ -1000,6 +1010,8 @@ class DeterministicMissionControllerNode(Node):
         self.lane_tof_alignment_active = False
         self.lane_tof_started_at_s = None
         self.lane_tof_coarse_heading_aligned = False
+        self.lane_tof_previous_angle_rad = None
+        self.lane_tof_previous_angle_time_s = None
 
     def reset_storage_tof_alignment(self):
         self.storage_tof_coarse_heading_aligned = False
@@ -2262,6 +2274,12 @@ class DeterministicMissionControllerNode(Node):
                 "Lane coarse odometry heading acquired; "
                 "ToF angle is now authoritative"
             )
+        wall_angle_dt_s = None
+        if self.lane_tof_previous_angle_time_s is not None:
+            wall_angle_dt_s = max(
+                0.0,
+                float(now_s) - self.lane_tof_previous_angle_time_s,
+            )
         command = make_lane_tof_command(
             distance_m=distance_m,
             measurement_age_s=age_s,
@@ -2284,7 +2302,17 @@ class DeterministicMissionControllerNode(Node):
                 "lane_tof_wall_angle_tolerance_rad"
             ),
             coarse_heading_aligned=self.lane_tof_coarse_heading_aligned,
+            wall_angle_previous_rad=self.lane_tof_previous_angle_rad,
+            wall_angle_dt_s=wall_angle_dt_s,
+            wall_angle_kp=self.get_float("lane_tof_angle_kp"),
+            wall_angle_kd=self.get_float("lane_tof_angle_kd"),
+            wall_angle_max_angular_speed=self.get_float(
+                "lane_tof_angle_max_angular_speed"
+            ),
         )
+        if wall_angle_rad is not None:
+            self.lane_tof_previous_angle_rad = float(wall_angle_rad)
+            self.lane_tof_previous_angle_time_s = float(now_s)
         self.coverage_command = self.coverage_controller.external_command(
             command.linear_x,
             command.angular_z,
@@ -2570,12 +2598,14 @@ class DeterministicMissionControllerNode(Node):
 
             if allow_near_target_loss and not regular_pickup_ready:
                 self.pickup_label = self.near_target_candidate_label or "unknown"
+                self.pickup_target_x = float(self.near_target_candidate.x)
                 self.get_logger().warning(
                     "Near centered target disappeared at the gripper edge; "
                     "continuing the pickup sequence"
                 )
             else:
                 self.pickup_label = self.current_target_label() or "unknown"
+                self.pickup_target_x = float(target.x)
             self.clear_near_target_candidate()
             self.publish_cmd(0.0, 0.0)
             self.command_gripper(open_gripper=True)
@@ -2606,12 +2636,10 @@ class DeterministicMissionControllerNode(Node):
                 if return_reason is not None:
                     self.prepare_storage_return()
                 else:
-                    self.clear_target_after_pickup()
-                    self.coverage_controller.begin_rejoin(self.robot_y)
+                    self.resume_coverage_after_pickup()
             else:
                 self.mission.onboard_objects.append(label)
-                self.clear_target_after_pickup()
-                self.coverage_controller.begin_rejoin(self.robot_y)
+                self.resume_coverage_after_pickup()
             self.pickup_label = None
             self.change_grab_state(self.GRAB_COMPLETE)
             if not self.full_mission_is_enabled() and bool(
@@ -2639,6 +2667,25 @@ class DeterministicMissionControllerNode(Node):
         self.had_visible_target = False
         self.target_lost_started_at = None
         self.clear_near_target_candidate()
+
+    def resume_coverage_after_pickup(self):
+        preferred_turn = self.coverage_controller.prefer_lane_end_turn_after_pickup(
+            self.pickup_target_x,
+            self.robot_y,
+        )
+        self.clear_target_after_pickup()
+        self.coverage_controller.begin_rejoin(self.robot_y)
+        if preferred_turn:
+            direction = (
+                "counterclockwise"
+                if self.pickup_target_x > 0.0
+                else "clockwise"
+            )
+            self.get_logger().info(
+                "Lane-end pickup recorded; the 180-degree turn will rotate "
+                f"{direction} to expose the opposite side"
+            )
+        self.pickup_target_x = None
 
     def current_avoid_objects(self, target):
         if self.is_fresh(self.latest_avoid_objects_time, "avoid_timeout_s"):

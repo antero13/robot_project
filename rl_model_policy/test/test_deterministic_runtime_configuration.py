@@ -80,6 +80,21 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_launches_expose_lane_tof_angle_pd_controls(self):
+        required = {
+            "lane_tof_angle_kp",
+            "lane_tof_angle_kd",
+            "lane_tof_angle_max_angular_speed",
+        }
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
+
     def test_launches_expose_pickup_vfh_motion_parameters(self):
         required = {
             "avoid_forward_linear_x",

@@ -184,6 +184,7 @@ class CoverageController:
         self.rejoin_target_y = None
         self.rejoin_entry_aligned = False
         self.rejoin_perpendicular_active = False
+        self.preferred_lane_end_turn_direction = None
 
     def reset(self):
         self.leg_index = 0
@@ -192,6 +193,7 @@ class CoverageController:
         self.rejoin_target_y = None
         self.rejoin_entry_aligned = False
         self.rejoin_perpendicular_active = False
+        self.preferred_lane_end_turn_direction = None
 
     def cancel_avoidance(self):
         # Continuous steering has no persistent avoidance state to reset.
@@ -216,6 +218,26 @@ class CoverageController:
         self.rejoin_target_y = None
         self.rejoin_entry_aligned = False
         self.rejoin_perpendicular_active = False
+
+    def prefer_lane_end_turn_after_pickup(self, target_x, robot_y):
+        """Choose the top-lane U-turn that sweeps past the opposite object side."""
+        if target_x is None or self.current_leg.phase != "SCAN_LANE_UP":
+            return False
+        if float(robot_y) < self.current_leg.target_y - max(
+            self.waypoint_tolerance,
+            0.15,
+        ):
+            return False
+        target_x = float(target_x)
+        if abs(target_x) <= 1e-6:
+            return False
+        # A target on camera-right is followed by a counterclockwise turn so
+        # camera-left sweeps across the other side of the lane, and vice versa.
+        self.preferred_lane_end_turn_direction = 1.0 if target_x > 0.0 else -1.0
+        return True
+
+    def cancel_preferred_lane_end_turn(self):
+        self.preferred_lane_end_turn_direction = None
 
     @property
     def current_leg(self):
@@ -281,6 +303,14 @@ class CoverageController:
             else normalize_angle(travel_heading + math.pi)
         )
         heading_error = normalize_angle(desired_yaw - robot_yaw)
+        heading_error = self._apply_preferred_lane_end_turn(
+            desired_yaw,
+            robot_yaw,
+            heading_error,
+            leg.phase,
+            robot_y,
+            leg.target_y,
+        )
         angular_z = clamp(
             self.heading_gain * heading_error,
             -self.max_angular_speed,
@@ -326,6 +356,33 @@ class CoverageController:
             linear_x *= self.avoid_linear_scale
             phase = "CURVE_AVOID_LEFT" if direction > 0.0 else "CURVE_AVOID_RIGHT"
         return self._make_command(linear_x, angular_z, phase)
+
+    def _apply_preferred_lane_end_turn(
+        self,
+        desired_yaw,
+        robot_yaw,
+        heading_error,
+        leg_phase,
+        robot_y,
+        target_y,
+    ):
+        direction = self.preferred_lane_end_turn_direction
+        phase = str(leg_phase)
+        turning_back_from_top = (
+            phase == "SCAN_LANE_DOWN"
+            or (
+                phase == "SCAN_LANE_UP"
+                and float(robot_y) >= float(target_y) - self.waypoint_tolerance
+            )
+        )
+        if direction is None or not turning_back_from_top:
+            return heading_error
+        if abs(heading_error) <= self.heading_tolerance:
+            self.preferred_lane_end_turn_direction = None
+            return heading_error
+        if direction > 0.0:
+            return (float(desired_yaw) - float(robot_yaw)) % (2.0 * math.pi)
+        return -((float(robot_yaw) - float(desired_yaw)) % (2.0 * math.pi))
 
     def _rejoin_command(self, robot_x, robot_y, robot_yaw):
         target_x = self.current_leg.target_x

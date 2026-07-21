@@ -45,6 +45,40 @@ def coarse_heading_is_aligned(robot_yaw, wall_side, heading_tolerance):
     return abs(heading_error) <= float(heading_tolerance)
 
 
+def wall_angle_pd_command(
+    angle_error_rad,
+    previous_angle_error_rad,
+    dt_s,
+    kp,
+    kd,
+    max_angular_speed,
+):
+    """Return a bounded PD command for the ToF wall-angle error."""
+    angle_error_rad = float(angle_error_rad)
+    kp = float(kp)
+    kd = float(kd)
+    max_angular_speed = float(max_angular_speed)
+    if not all(
+        math.isfinite(value)
+        for value in (angle_error_rad, kp, kd, max_angular_speed)
+    ):
+        raise ValueError("wall-angle PD values must be finite")
+    if kp < 0.0 or kd < 0.0 or max_angular_speed <= 0.0:
+        raise ValueError("wall-angle PD gains and limit are invalid")
+
+    derivative = 0.0
+    if previous_angle_error_rad is not None and dt_s is not None:
+        previous_angle_error_rad = float(previous_angle_error_rad)
+        dt_s = float(dt_s)
+        if math.isfinite(previous_angle_error_rad) and math.isfinite(dt_s) and dt_s > 0.0:
+            derivative = (angle_error_rad - previous_angle_error_rad) / dt_s
+    return clamp(
+        kp * angle_error_rad + kd * derivative,
+        -max_angular_speed,
+        max_angular_speed,
+    )
+
+
 def robot_x_from_left_wall_distance(
     distance_m,
     left_wall_x_m,
@@ -108,6 +142,11 @@ def make_lane_tof_command(
     wall_angle_rad=None,
     wall_angle_tolerance_rad=0.05,
     coarse_heading_aligned=False,
+    wall_angle_previous_rad=None,
+    wall_angle_dt_s=None,
+    wall_angle_kp=None,
+    wall_angle_kd=0.0,
+    wall_angle_max_angular_speed=None,
 ):
     """Align to the next lane after facing the wall in the shift direction."""
     wall_side = str(wall_side).strip().lower()
@@ -156,32 +195,35 @@ def make_lane_tof_command(
             reached=False,
         )
 
+    wall_angle_angular_z = angular_z
+    if wall_angle_rad is not None:
+        wall_angle_angular_z = wall_angle_pd_command(
+            angle_error_rad=wall_angle_rad,
+            previous_angle_error_rad=wall_angle_previous_rad,
+            dt_s=wall_angle_dt_s,
+            kp=(heading_gain if wall_angle_kp is None else wall_angle_kp),
+            kd=wall_angle_kd,
+            max_angular_speed=(
+                max_angular_speed
+                if wall_angle_max_angular_speed is None
+                else wall_angle_max_angular_speed
+            ),
+        )
+
     if (
         wall_angle_rad is not None
         and abs(float(wall_angle_rad)) > float(wall_angle_tolerance_rad)
     ):
         return LaneTofCommand(
             linear_x=0.0,
-            angular_z=clamp(
-                float(heading_gain) * float(wall_angle_rad),
-                -float(max_angular_speed),
-                float(max_angular_speed),
-            ),
+            angular_z=wall_angle_angular_z,
             phase="ALIGN_LANE_WALL_ANGLE",
             measured_robot_x=None,
             x_error=None,
             reached=False,
         )
 
-    wall_angular_z = (
-        angular_z
-        if wall_angle_rad is None
-        else clamp(
-            float(heading_gain) * float(wall_angle_rad),
-            -float(max_angular_speed),
-            float(max_angular_speed),
-        )
-    )
+    wall_angular_z = wall_angle_angular_z
 
     if wall_side == "left":
         measured_robot_x = robot_x_from_left_wall_distance(

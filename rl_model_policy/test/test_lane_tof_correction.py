@@ -8,6 +8,7 @@ from rl_model_policy.lane_tof_correction import (
     robot_x_from_left_wall_distance,
     robot_x_from_right_wall_distance,
     should_run_lane_tof_fine_alignment,
+    wall_angle_pd_command,
 )
 
 
@@ -112,6 +113,31 @@ class LaneTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.linear_x, 0.0)
         self.assertGreater(command.angular_z, 0.0)
         self.assertFalse(command.reached)
+
+    def test_wall_angle_pd_derivative_damps_a_converging_error(self):
+        command = wall_angle_pd_command(
+            angle_error_rad=0.10,
+            previous_angle_error_rad=0.20,
+            dt_s=0.10,
+            kp=1.2,
+            kd=0.08,
+            max_angular_speed=0.30,
+        )
+
+        self.assertAlmostEqual(command, 0.04)
+
+    def test_wall_angle_pd_command_respects_dedicated_speed_limit(self):
+        command = make_command(
+            wall_angle_rad=0.30,
+            wall_angle_previous_rad=0.0,
+            wall_angle_dt_s=0.10,
+            wall_angle_kp=1.2,
+            wall_angle_kd=0.08,
+            wall_angle_max_angular_speed=0.30,
+        )
+
+        self.assertEqual(command.phase, "ALIGN_LANE_WALL_ANGLE")
+        self.assertAlmostEqual(command.angular_z, 0.30)
 
     def test_fresh_wall_angle_does_not_override_coarse_odometry_alignment(self):
         command = make_command(robot_yaw=math.pi / 2.0, wall_angle_rad=0.10)

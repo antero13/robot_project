@@ -98,6 +98,11 @@ def generate_launch_description():
     lane_tof_wall_angle_tolerance_rad = LaunchConfiguration(
         'lane_tof_wall_angle_tolerance_rad'
     )
+    lane_tof_angle_kp = LaunchConfiguration('lane_tof_angle_kp')
+    lane_tof_angle_kd = LaunchConfiguration('lane_tof_angle_kd')
+    lane_tof_angle_max_angular_speed = LaunchConfiguration(
+        'lane_tof_angle_max_angular_speed'
+    )
     tof_wall_angle_sign = LaunchConfiguration('tof_wall_angle_sign')
     tof_validation_samples = LaunchConfiguration('tof_validation_samples')
     tof_max_valid_wall_angle_rad = LaunchConfiguration('tof_max_valid_wall_angle_rad')
@@ -361,6 +366,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'lane_tof_wall_angle_tolerance_rad',
             default_value='0.05',
+        ),
+        DeclareLaunchArgument('lane_tof_angle_kp', default_value='1.2'),
+        DeclareLaunchArgument('lane_tof_angle_kd', default_value='0.08'),
+        DeclareLaunchArgument(
+            'lane_tof_angle_max_angular_speed',
+            default_value='0.30',
         ),
         DeclareLaunchArgument('tof_wall_angle_sign', default_value='1.0'),
         DeclareLaunchArgument('tof_validation_samples', default_value='3'),
@@ -696,6 +707,18 @@ def generate_launch_description():
                 ),
                 'lane_tof_wall_angle_tolerance_rad': ParameterValue(
                     lane_tof_wall_angle_tolerance_rad,
+                    value_type=float,
+                ),
+                'lane_tof_angle_kp': ParameterValue(
+                    lane_tof_angle_kp,
+                    value_type=float,
+                ),
+                'lane_tof_angle_kd': ParameterValue(
+                    lane_tof_angle_kd,
+                    value_type=float,
+                ),
+                'lane_tof_angle_max_angular_speed': ParameterValue(
+                    lane_tof_angle_max_angular_speed,
                     value_type=float,
                 ),
                 'tof_wall_angle_sign': ParameterValue(tof_wall_angle_sign, value_type=float),

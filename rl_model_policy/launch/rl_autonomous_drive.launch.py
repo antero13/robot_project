@@ -153,6 +153,11 @@ def generate_launch_description():
     lane_tof_wall_angle_tolerance_rad = LaunchConfiguration(
         "lane_tof_wall_angle_tolerance_rad"
     )
+    lane_tof_angle_kp = LaunchConfiguration("lane_tof_angle_kp")
+    lane_tof_angle_kd = LaunchConfiguration("lane_tof_angle_kd")
+    lane_tof_angle_max_angular_speed = LaunchConfiguration(
+        "lane_tof_angle_max_angular_speed"
+    )
     main_road_tof_correction_enabled = LaunchConfiguration(
         "main_road_tof_correction_enabled"
     )
@@ -445,6 +450,11 @@ def generate_launch_description():
             "lane_tof_slowdown_distance_m": lane_tof_slowdown_distance_m,
             "lane_tof_wall_angle_tolerance_rad": (
                 lane_tof_wall_angle_tolerance_rad
+            ),
+            "lane_tof_angle_kp": lane_tof_angle_kp,
+            "lane_tof_angle_kd": lane_tof_angle_kd,
+            "lane_tof_angle_max_angular_speed": (
+                lane_tof_angle_max_angular_speed
             ),
             "main_road_tof_correction_enabled": (
                 main_road_tof_correction_enabled
@@ -897,6 +907,12 @@ def generate_launch_description():
             "lane_tof_wall_angle_tolerance_rad",
             default_value="0.05",
             description="Maximum east/west wall angle before x correction.",
+        ),
+        DeclareLaunchArgument("lane_tof_angle_kp", default_value="1.2"),
+        DeclareLaunchArgument("lane_tof_angle_kd", default_value="0.08"),
+        DeclareLaunchArgument(
+            "lane_tof_angle_max_angular_speed",
+            default_value="0.30",
         ),
         DeclareLaunchArgument("tof_wall_angle_sign", default_value="1.0"),
         DeclareLaunchArgument("tof_validation_samples", default_value="3"),
