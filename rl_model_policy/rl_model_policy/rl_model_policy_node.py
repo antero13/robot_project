@@ -220,6 +220,9 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("avoid_forward_duration_s", 0.85)
         self.declare_parameter("avoid_forward_linear_x", 0.05)
         self.declare_parameter("avoid_forward_angular_z", 0.25)
+        self.declare_parameter("avoid_escape_duration_s", 0.70)
+        self.declare_parameter("avoid_escape_linear_x", 0.06)
+        self.declare_parameter("avoid_escape_angular_z", 0.20)
         self.declare_parameter("avoid_vfh_target_weight", 0.60)
         self.declare_parameter("avoid_vfh_switch_penalty", 0.25)
         self.declare_parameter("avoid_direction_hold_s", 0.8)
@@ -344,6 +347,9 @@ class DeterministicMissionControllerNode(Node):
             avoid_forward_duration_s=self.get_float("avoid_forward_duration_s"),
             avoid_forward_linear_x=self.get_float("avoid_forward_linear_x"),
             avoid_forward_angular_z=self.get_float("avoid_forward_angular_z"),
+            avoid_escape_duration_s=self.get_float("avoid_escape_duration_s"),
+            avoid_escape_linear_x=self.get_float("avoid_escape_linear_x"),
+            avoid_escape_angular_z=self.get_float("avoid_escape_angular_z"),
             avoid_vfh_target_weight=self.get_float("avoid_vfh_target_weight"),
             avoid_vfh_switch_penalty=self.get_float("avoid_vfh_switch_penalty"),
             avoid_direction_hold_s=self.get_float("avoid_direction_hold_s"),

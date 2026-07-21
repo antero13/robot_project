@@ -15,6 +15,7 @@ class DeterministicPickupController:
     TRACK = "TRACK"
     AVOID_TURN = "AVOID_TURN"
     AVOID_FORWARD = "AVOID_FORWARD"
+    AVOID_ESCAPE = "AVOID_ESCAPE"
 
     def __init__(
         self,
@@ -30,6 +31,9 @@ class DeterministicPickupController:
         avoid_forward_duration_s=0.85,
         avoid_forward_linear_x=0.05,
         avoid_forward_angular_z=0.25,
+        avoid_escape_duration_s=0.70,
+        avoid_escape_linear_x=0.06,
+        avoid_escape_angular_z=0.20,
         avoid_vfh_target_weight=0.60,
         avoid_vfh_switch_penalty=0.25,
         avoid_direction_hold_s=0.8,
@@ -45,6 +49,9 @@ class DeterministicPickupController:
         self.avoid_forward_duration_s = max(0.0, float(avoid_forward_duration_s))
         self.avoid_forward_linear_x = max(0.0, float(avoid_forward_linear_x))
         self.avoid_forward_angular_z = max(0.0, float(avoid_forward_angular_z))
+        self.avoid_escape_duration_s = max(0.0, float(avoid_escape_duration_s))
+        self.avoid_escape_linear_x = max(0.0, float(avoid_escape_linear_x))
+        self.avoid_escape_angular_z = max(0.0, float(avoid_escape_angular_z))
         self.avoid_vfh_target_weight = max(0.0, float(avoid_vfh_target_weight))
         self.avoid_vfh_switch_penalty = max(0.0, float(avoid_vfh_switch_penalty))
         self.avoid_direction_hold_s = max(0.0, float(avoid_direction_hold_s))
@@ -59,7 +66,11 @@ class DeterministicPickupController:
 
     @property
     def is_avoiding(self):
-        return self.state in (self.AVOID_TURN, self.AVOID_FORWARD)
+        return self.state in (
+            self.AVOID_TURN,
+            self.AVOID_FORWARD,
+            self.AVOID_ESCAPE,
+        )
 
     def command(
         self,
@@ -130,6 +141,17 @@ class DeterministicPickupController:
                 return PickupCommand(
                     self.avoid_forward_linear_x,
                     self.avoid_turn_direction * self.avoid_forward_angular_z,
+                    self.state,
+                )
+            self.state = self.AVOID_ESCAPE
+            self.state_started_s = now_s
+
+        if self.state == self.AVOID_ESCAPE:
+            elapsed_s = max(0.0, now_s - self.state_started_s)
+            if elapsed_s < self.avoid_escape_duration_s:
+                return PickupCommand(
+                    self.avoid_escape_linear_x,
+                    self.avoid_turn_direction * self.avoid_escape_angular_z,
                     self.state,
                 )
             self.state = self.TRACK

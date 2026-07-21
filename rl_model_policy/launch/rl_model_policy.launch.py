@@ -12,6 +12,10 @@ def generate_launch_description():
     approach_min_linear_x = LaunchConfiguration('approach_min_linear_x')
     approach_angular_gain = LaunchConfiguration('approach_angular_gain')
     approach_max_angular_z = LaunchConfiguration('approach_max_angular_z')
+    avoid_forward_linear_x = LaunchConfiguration('avoid_forward_linear_x')
+    avoid_escape_duration_s = LaunchConfiguration('avoid_escape_duration_s')
+    avoid_escape_linear_x = LaunchConfiguration('avoid_escape_linear_x')
+    avoid_escape_angular_z = LaunchConfiguration('avoid_escape_angular_z')
     dry_run = LaunchConfiguration('dry_run')
     target_timeout_s = LaunchConfiguration('target_timeout_s')
     target_tracking_timeout_s = LaunchConfiguration('target_tracking_timeout_s')
@@ -209,6 +213,14 @@ def generate_launch_description():
         DeclareLaunchArgument('approach_min_linear_x', default_value='0.03'),
         DeclareLaunchArgument('approach_angular_gain', default_value='0.8'),
         DeclareLaunchArgument('approach_max_angular_z', default_value='0.45'),
+        DeclareLaunchArgument(
+            'avoid_forward_linear_x',
+            default_value='0.05',
+            description='Linear speed during the VFH forward-avoidance arc.',
+        ),
+        DeclareLaunchArgument('avoid_escape_duration_s', default_value='0.70'),
+        DeclareLaunchArgument('avoid_escape_linear_x', default_value='0.06'),
+        DeclareLaunchArgument('avoid_escape_angular_z', default_value='0.20'),
         DeclareLaunchArgument(
             'dry_run',
             default_value='false',
@@ -749,8 +761,23 @@ def generate_launch_description():
                 'avoid_turn_duration_s': 0.55,
                 'avoid_turn_angular_z': 0.65,
                 'avoid_forward_duration_s': 0.85,
-                'avoid_forward_linear_x': 0.05,
+                'avoid_forward_linear_x': ParameterValue(
+                    avoid_forward_linear_x,
+                    value_type=float,
+                ),
                 'avoid_forward_angular_z': 0.25,
+                'avoid_escape_duration_s': ParameterValue(
+                    avoid_escape_duration_s,
+                    value_type=float,
+                ),
+                'avoid_escape_linear_x': ParameterValue(
+                    avoid_escape_linear_x,
+                    value_type=float,
+                ),
+                'avoid_escape_angular_z': ParameterValue(
+                    avoid_escape_angular_z,
+                    value_type=float,
+                ),
                 'avoid_vfh_target_weight': 0.60,
                 'avoid_vfh_switch_penalty': 0.25,
                 'avoid_direction_hold_s': 0.8,

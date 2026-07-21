@@ -80,6 +80,22 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_launches_expose_pickup_vfh_motion_parameters(self):
+        required = {
+            "avoid_forward_linear_x",
+            "avoid_escape_duration_s",
+            "avoid_escape_linear_x",
+            "avoid_escape_angular_z",
+        }
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

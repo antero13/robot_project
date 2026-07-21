@@ -46,6 +46,10 @@ def generate_launch_description():
     approach_min_linear_x = LaunchConfiguration("approach_min_linear_x")
     approach_angular_gain = LaunchConfiguration("approach_angular_gain")
     approach_max_angular_z = LaunchConfiguration("approach_max_angular_z")
+    avoid_forward_linear_x = LaunchConfiguration("avoid_forward_linear_x")
+    avoid_escape_duration_s = LaunchConfiguration("avoid_escape_duration_s")
+    avoid_escape_linear_x = LaunchConfiguration("avoid_escape_linear_x")
+    avoid_escape_angular_z = LaunchConfiguration("avoid_escape_angular_z")
     target_timeout_s = LaunchConfiguration("target_timeout_s")
     target_tracking_timeout_s = LaunchConfiguration("target_tracking_timeout_s")
     target_confirmation_window = LaunchConfiguration("target_confirmation_window")
@@ -370,6 +374,10 @@ def generate_launch_description():
             "approach_min_linear_x": approach_min_linear_x,
             "approach_angular_gain": approach_angular_gain,
             "approach_max_angular_z": approach_max_angular_z,
+            "avoid_forward_linear_x": avoid_forward_linear_x,
+            "avoid_escape_duration_s": avoid_escape_duration_s,
+            "avoid_escape_linear_x": avoid_escape_linear_x,
+            "avoid_escape_angular_z": avoid_escape_angular_z,
             "target_timeout_s": target_timeout_s,
             "target_tracking_timeout_s": target_tracking_timeout_s,
             "target_confirmation_window": target_confirmation_window,
@@ -678,6 +686,14 @@ def generate_launch_description():
         DeclareLaunchArgument("approach_min_linear_x", default_value="0.03"),
         DeclareLaunchArgument("approach_angular_gain", default_value="0.8"),
         DeclareLaunchArgument("approach_max_angular_z", default_value="0.45"),
+        DeclareLaunchArgument(
+            "avoid_forward_linear_x",
+            default_value="0.05",
+            description="Linear speed during the VFH forward-avoidance arc.",
+        ),
+        DeclareLaunchArgument("avoid_escape_duration_s", default_value="0.70"),
+        DeclareLaunchArgument("avoid_escape_linear_x", default_value="0.06"),
+        DeclareLaunchArgument("avoid_escape_angular_z", default_value="0.20"),
         DeclareLaunchArgument(
             "target_timeout_s",
             default_value="1.0",
