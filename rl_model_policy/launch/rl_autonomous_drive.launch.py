@@ -648,8 +648,16 @@ def generate_launch_description():
             ),
             description="Stable V4L2 path for the driving camera.",
         ),
-        DeclareLaunchArgument("target_classes", default_value="0"),
-        DeclareLaunchArgument("avoid_classes", default_value=""),
+        DeclareLaunchArgument(
+            "target_classes",
+            default_value="0",
+            description="Comma-separated final numeric class IDs only.",
+        ),
+        DeclareLaunchArgument(
+            "avoid_classes",
+            default_value="",
+            description="Comma-separated final numeric class IDs only.",
+        ),
         DeclareLaunchArgument("confidence", default_value="0.25"),
         DeclareLaunchArgument(
             "yolo_iou",

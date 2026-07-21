@@ -146,6 +146,17 @@ published as final classes `4` through `7`. If `secondary_model_path` is empty,
 the node looks for `best_secondary.pt` beside the primary model. Pass an explicit
 `.pt` or `.engine` path when the secondary model uses a different filename.
 
+`target_classes` and `avoid_classes` accept final numeric class IDs only. Class
+names and prefixes such as `orange` or `id:6` are rejected. The final IDs are:
+
+```text
+0=12, 1=20, 2=6, 3=8,
+4=apple, 5=banana, 6=orange, 7=pineapple
+```
+
+For example, use `target_classes:=2` for the geometric class named `6`, and
+use `target_classes:=6` for orange.
+
 Useful parameters are `secondary_confidence`, `secondary_imgsz`, and
 `min_bbox_area_ratio`. The integrated autonomous launch exposes them as
 `secondary_yolo_confidence`, `secondary_yolo_imgsz`, and

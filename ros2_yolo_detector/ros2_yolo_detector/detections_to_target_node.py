@@ -6,6 +6,7 @@ from geometry_msgs.msg import PointStamped
 from rclpy.node import Node
 from std_msgs.msg import Bool, Float32, String
 
+from .class_id_filter import is_avoid_class_id, is_target_class_id, parse_class_ids
 from .detection_geometry import bbox_to_normalized_point
 from .target_lock import (
     candidate_matches_lock,
@@ -49,8 +50,8 @@ class DetectionsToTargetNode(Node):
         self.min_confidence = float(self.get_parameter("min_confidence").value)
         self.target_center_weight = float(self.get_parameter("target_center_weight").value)
         self.avoid_target_iou_threshold = float(self.get_parameter("avoid_target_iou_threshold").value)
-        self.target_classes = self.parse_class_list(self.get_parameter("target_classes").value)
-        self.avoid_classes = self.parse_class_list(self.get_parameter("avoid_classes").value)
+        self.target_classes = parse_class_ids(self.get_parameter("target_classes").value)
+        self.avoid_classes = parse_class_ids(self.get_parameter("avoid_classes").value)
         self.target_lock = None
         self.target_lock_last_seen_s = None
 
@@ -104,12 +105,12 @@ class DetectionsToTargetNode(Node):
             if converted is None:
                 continue
 
-            class_name, class_keys, point_msg, bbox_xyxy, center_y_ratio = converted
-            if self.is_target(class_keys):
+            class_name, class_id, point_msg, bbox_xyxy, center_y_ratio = converted
+            if self.is_target(class_id):
                 target_candidates.append(
                     (point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio)
                 )
-            elif self.is_avoid(class_keys):
+            elif self.is_avoid(class_id):
                 avoid_candidates.append(
                     (point_msg.point.y, class_name, point_msg, bbox_xyxy, center_y_ratio)
                 )
@@ -134,10 +135,12 @@ class DetectionsToTargetNode(Node):
         image_width: float,
         image_height: float,
         header,
-    ) -> tuple[str, set[str], PointStamped, tuple[float, float, float, float], float] | None:
+    ) -> tuple[str, int, PointStamped, tuple[float, float, float, float], float] | None:
         class_name = str(detection.get("class_name", detection.get("class_id", "")))
-        class_id = detection.get("class_id", "")
-        class_keys = {class_name, str(class_id)}
+        try:
+            class_id = int(detection["class_id"])
+        except (KeyError, TypeError, ValueError):
+            return None
         confidence = float(detection.get("confidence", 0.0))
         if confidence < self.min_confidence:
             return None
@@ -172,7 +175,7 @@ class DetectionsToTargetNode(Node):
         # the raw bbox center from /yolo/detections for CSV calibration.
         out.point.y = normalized.policy_y
         out.point.z = confidence
-        return class_name, class_keys, out, (x1, y1, x2, y2), normalized.y
+        return class_name, class_id, out, (x1, y1, x2, y2), normalized.y
 
     def filter_overlapping_avoid_candidates(self, avoid_candidates, target_candidates):
         threshold = self.avoid_target_iou_threshold
@@ -304,17 +307,11 @@ class DetectionsToTargetNode(Node):
         msg.data = json.dumps(payload, separators=(",", ":"))
         self.avoid_objects_pub.publish(msg)
 
-    def is_target(self, class_keys: set[str]) -> bool:
-        if not self.target_classes:
-            if self.avoid_classes and bool(class_keys & self.avoid_classes):
-                return False
-            return True
-        return bool(class_keys & self.target_classes)
+    def is_target(self, class_id: int) -> bool:
+        return is_target_class_id(class_id, self.target_classes, self.avoid_classes)
 
-    def is_avoid(self, class_keys: set[str]) -> bool:
-        if self.avoid_classes:
-            return bool(class_keys & self.avoid_classes)
-        return bool(self.target_classes) and not bool(class_keys & self.target_classes)
+    def is_avoid(self, class_id: int) -> bool:
+        return is_avoid_class_id(class_id, self.target_classes, self.avoid_classes)
 
     def get_image_size(self, payload: dict[str, Any], key: str) -> float:
         value = payload.get(key)
@@ -329,14 +326,6 @@ class DetectionsToTargetNode(Node):
         header.stamp.nanosec = int(stamp.get("nanosec", 0))
         header.frame_id = str(payload.get("frame_id", "camera"))
         return header
-
-    @staticmethod
-    def parse_class_list(value) -> set[str]:
-        if value is None:
-            return set()
-        if isinstance(value, (list, tuple)):
-            return {str(item).strip() for item in value if str(item).strip()}
-        return {item.strip() for item in str(value).split(",") if item.strip()}
 
     @staticmethod
     def clamp(value: float, min_value: float, max_value: float) -> float:

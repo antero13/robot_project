@@ -8,6 +8,8 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from ros2_yolo_detector.class_id_filter import parse_class_ids
+
 from rl_model_policy.observation import quaternion_to_yaw
 from robot_status_gui.object_localization import CalibrationObjectLocalizer
 
@@ -35,10 +37,10 @@ class ObjectWorldMapperNode(Node):
         self.declare_parameter("horizontal_extrapolation_margin", 0.015)
         self.declare_parameter("vertical_extrapolation_margin", 0.012)
 
-        self.target_classes = self.parse_class_list(
+        self.target_classes = parse_class_ids(
             self.get_parameter("target_classes").value
         )
-        self.avoid_classes = self.parse_class_list(
+        self.avoid_classes = parse_class_ids(
             self.get_parameter("avoid_classes").value
         )
         self.pose_timeout_s = self.get_float("pose_timeout_s")
@@ -317,13 +319,15 @@ class ObjectWorldMapperNode(Node):
         if localized is None:
             return None
 
-        class_id = detection.get("class_id", "")
+        try:
+            class_id = int(detection["class_id"])
+        except (KeyError, TypeError, ValueError):
+            return None
         class_name = str(detection.get("class_name", class_id))
-        class_keys = {class_name, str(class_id)}
         return {
             "class_id": class_id,
             "class_name": class_name,
-            "role": self.class_role(class_keys),
+            "role": self.class_role(class_id),
             "confidence": confidence,
             "arena_x": localized.x,
             "arena_y": localized.y,
@@ -395,10 +399,10 @@ class ObjectWorldMapperNode(Node):
         age = self.get_clock().now() - self.latest_pose_time
         return age.nanoseconds / 1_000_000_000.0 <= self.pose_timeout_s
 
-    def class_role(self, class_keys):
-        if self.target_classes and class_keys & self.target_classes:
+    def class_role(self, class_id):
+        if self.target_classes and class_id in self.target_classes:
             return "target"
-        if self.avoid_classes and class_keys & self.avoid_classes:
+        if self.avoid_classes and class_id in self.avoid_classes:
             return "avoid"
         if self.target_classes:
             return "avoid" if not self.avoid_classes else "other"
@@ -410,14 +414,6 @@ class ObjectWorldMapperNode(Node):
     @staticmethod
     def smoothed(previous, current, alpha):
         return float(previous) + (float(current) - float(previous)) * float(alpha)
-
-    @staticmethod
-    def parse_class_list(value):
-        if value is None:
-            return set()
-        if isinstance(value, (list, tuple)):
-            return {str(item).strip() for item in value if str(item).strip()}
-        return {item.strip() for item in str(value).split(",") if item.strip()}
 
 
 def main(args=None):
