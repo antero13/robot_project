@@ -15,6 +15,21 @@ class StorageTofCommand:
     reached: bool
 
 
+def desired_yaw_for_storage_axis(axis):
+    axis = str(axis).strip().lower()
+    if axis == "x":
+        return math.pi
+    if axis == "y":
+        return -math.pi / 2.0
+    raise ValueError("axis must be 'x' or 'y'")
+
+
+def storage_coarse_heading_is_aligned(robot_yaw, axis, heading_tolerance):
+    desired_yaw = desired_yaw_for_storage_axis(axis)
+    heading_error = normalize_angle(desired_yaw - float(robot_yaw))
+    return abs(heading_error) <= float(heading_tolerance)
+
+
 def robot_coordinate_from_min_wall_distance(
     distance_m,
     wall_coordinate_m,
@@ -74,17 +89,17 @@ def make_storage_tof_command(
     advance_without_measurement=False,
     wall_angle_rad=None,
     wall_angle_tolerance_rad=0.05,
+    coarse_heading_aligned=False,
 ):
     """Align one storage-staging axis using the left or bottom arena wall."""
     axis = str(axis).strip().lower()
     if axis == "x":
-        desired_yaw = math.pi
         axis_name = "X"
     elif axis == "y":
-        desired_yaw = -math.pi / 2.0
         axis_name = "Y"
     else:
         raise ValueError("axis must be 'x' or 'y'")
+    desired_yaw = desired_yaw_for_storage_axis(axis)
 
     heading_error = normalize_angle(desired_yaw - float(robot_yaw))
     angular_z = clamp(
@@ -104,10 +119,12 @@ def make_storage_tof_command(
             or math.isfinite(float(wall_angle_rad))
         )
     )
-    # Always establish the coarse cardinal heading before trusting the pair
-    # angle.  Otherwise two sensors looking at different surfaces can steer
-    # the robot away from the intended wall.
-    if abs(heading_error) > float(heading_tolerance):
+    # Odometry is only a one-time coarse gate. Once both sensors face the wall,
+    # ToF remains authoritative so odometry drift cannot pull alignment back.
+    if (
+        not bool(coarse_heading_aligned)
+        and abs(heading_error) > float(heading_tolerance)
+    ):
         return StorageTofCommand(
             linear_x=0.0,
             angular_z=angular_z,
@@ -118,10 +135,11 @@ def make_storage_tof_command(
         )
 
     if not measurement_is_fresh:
+        waiting_angular_z = 0.0 if coarse_heading_aligned else angular_z
         if bool(advance_without_measurement):
             return StorageTofCommand(
                 linear_x=float(transit_speed),
-                angular_z=angular_z,
+                angular_z=waiting_angular_z,
                 phase=f"APPROACH_STORAGE_TOF_{axis_name}",
                 measured_coordinate=None,
                 coordinate_error=None,
@@ -129,7 +147,7 @@ def make_storage_tof_command(
             )
         return StorageTofCommand(
             linear_x=0.0,
-            angular_z=angular_z,
+            angular_z=waiting_angular_z,
             phase=f"WAITING_FOR_STORAGE_TOF_{axis_name}",
             measured_coordinate=None,
             coordinate_error=None,
@@ -154,7 +172,7 @@ def make_storage_tof_command(
         )
 
     wall_angular_z = (
-        angular_z
+        (0.0 if coarse_heading_aligned else angular_z)
         if wall_angle_rad is None
         else clamp(
             float(heading_gain) * float(wall_angle_rad),

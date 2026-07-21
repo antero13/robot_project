@@ -39,6 +39,16 @@ class StorageExitTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.linear_x, 0.0)
         self.assertNotEqual(command.angular_z, 0.0)
 
+    def test_latched_tof_alignment_does_not_return_to_odometry(self):
+        command = make_command(
+            robot_yaw=-math.pi / 2.0,
+            wall_angle_rad=math.radians(-12.0),
+            coarse_heading_aligned=True,
+        )
+
+        self.assertEqual(command.phase, "ALIGN_STORAGE_EXIT_WEST_WALL_ANGLE")
+        self.assertLess(command.angular_z, 0.0)
+
     def test_waits_for_fresh_tof(self):
         command = make_command(measurement_age_s=0.30)
 

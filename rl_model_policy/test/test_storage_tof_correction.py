@@ -5,6 +5,7 @@ from rl_model_policy.storage_tof_correction import (
     make_storage_tof_command,
     measurement_gap_timed_out,
     robot_coordinate_from_min_wall_distance,
+    storage_coarse_heading_is_aligned,
 )
 
 
@@ -93,6 +94,35 @@ class StorageTofCorrectionTest(unittest.TestCase):
 
         self.assertEqual(command.phase, "ALIGN_STORAGE_TOF_X")
         self.assertLess(command.angular_z, 0.0)
+
+    def test_latched_tof_alignment_does_not_return_to_odometry(self):
+        command = make_command(
+            robot_yaw=-math.pi / 2.0,
+            wall_angle_rad=-0.10,
+            coarse_heading_aligned=True,
+        )
+
+        self.assertEqual(command.phase, "ALIGN_STORAGE_WALL_ANGLE_X")
+        self.assertLess(command.angular_z, 0.0)
+
+    def test_latched_tof_alignment_holds_when_measurement_is_stale(self):
+        command = make_command(
+            robot_yaw=-math.pi / 2.0,
+            measurement_age_s=0.50,
+            coarse_heading_aligned=True,
+        )
+
+        self.assertEqual(command.phase, "WAITING_FOR_STORAGE_TOF_X")
+        self.assertEqual(command.angular_z, 0.0)
+
+    def test_coarse_heading_helper_uses_selected_axis(self):
+        self.assertTrue(storage_coarse_heading_is_aligned(math.pi, "x", 0.12))
+        self.assertTrue(
+            storage_coarse_heading_is_aligned(-math.pi / 2.0, "y", 0.12)
+        )
+        self.assertFalse(
+            storage_coarse_heading_is_aligned(-math.pi / 2.0, "x", 0.12)
+        )
 
     def test_x_entry_advances_until_tof_becomes_available(self):
         command = make_command(

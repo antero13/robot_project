@@ -53,6 +53,7 @@ from rl_model_policy.main_road_tof_correction import make_main_road_tof_command
 from rl_model_policy.storage_tof_correction import (
     make_storage_tof_command,
     measurement_gap_timed_out,
+    storage_coarse_heading_is_aligned,
 )
 from rl_model_policy.storage_exit_tof_correction import (
     make_storage_exit_tof_command,
@@ -385,6 +386,8 @@ class DeterministicMissionControllerNode(Node):
         self.pending_pose_yaw_correction_time = None
         self.storage_exit_tof_missing_started_at = None
         self.storage_exit_tof_angle_alignment_active = False
+        self.storage_tof_coarse_heading_aligned = False
+        self.storage_exit_tof_coarse_heading_aligned = False
         self.lane_tof_started_at_s = None
         self.lane_tof_coarse_heading_aligned = False
         self.main_road_tof_started_at_s = None
@@ -653,7 +656,7 @@ class DeterministicMissionControllerNode(Node):
             self.pending_pose_yaw_correction_time = None
             self.reset_main_road_tof_alignment()
             self.reset_lane_tof_alignment()
-            self.storage_exit_tof_angle_alignment_active = False
+            self.reset_storage_tof_alignment()
             self.mission_waypoint = None
             self.had_visible_target = False
             self.target_lost_started_at = None
@@ -704,7 +707,7 @@ class DeterministicMissionControllerNode(Node):
             self.pending_pose_yaw_correction_time = None
             self.reset_main_road_tof_alignment()
             self.reset_lane_tof_alignment()
-            self.storage_exit_tof_angle_alignment_active = False
+            self.reset_storage_tof_alignment()
             self.had_visible_target = False
             self.target_lost_started_at = None
             self.target_visibility_history.clear()
@@ -924,7 +927,7 @@ class DeterministicMissionControllerNode(Node):
         self.pending_pose_yaw_correction = None
         self.pending_pose_yaw_correction_time = None
         self.reset_main_road_tof_alignment()
-        self.storage_exit_tof_angle_alignment_active = False
+        self.reset_storage_tof_alignment()
         return_min_x = min(
             self.get_float("coverage_min_x"),
             self.get_float("storage_staging_x"),
@@ -979,6 +982,7 @@ class DeterministicMissionControllerNode(Node):
         return phase
 
     def begin_storage_staging_return(self, now_s):
+        self.reset_storage_tof_alignment()
         self.mission.set_phase(MissionPhase.RETURN_STAGING, now_s)
         self.mission_waypoint = (
             self.get_float("storage_staging_x"),
@@ -994,6 +998,11 @@ class DeterministicMissionControllerNode(Node):
         self.lane_tof_alignment_active = False
         self.lane_tof_started_at_s = None
         self.lane_tof_coarse_heading_aligned = False
+
+    def reset_storage_tof_alignment(self):
+        self.storage_tof_coarse_heading_aligned = False
+        self.storage_exit_tof_coarse_heading_aligned = False
+        self.storage_exit_tof_angle_alignment_active = False
 
     def start_tof_watchdog(self, timer_name, now_s):
         if getattr(self, timer_name) is None:
@@ -1267,6 +1276,7 @@ class DeterministicMissionControllerNode(Node):
             )
             if command.reached:
                 if bool(self.get_parameter("storage_tof_correction_enabled").value):
+                    self.storage_tof_coarse_heading_aligned = False
                     self.mission.set_phase(
                         MissionPhase.CORRECT_STORAGE_STAGING_X,
                         now_s,
@@ -1298,6 +1308,7 @@ class DeterministicMissionControllerNode(Node):
             )
             if command.reached:
                 if bool(self.get_parameter("storage_tof_correction_enabled").value):
+                    self.storage_tof_coarse_heading_aligned = False
                     self.mission.set_phase(MissionPhase.CORRECT_STORAGE_Y, now_s)
                 else:
                     self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
@@ -1470,6 +1481,7 @@ class DeterministicMissionControllerNode(Node):
             if bool(self.get_parameter("storage_tof_correction_enabled").value):
                 self.storage_exit_tof_missing_started_at = None
                 self.storage_exit_tof_angle_alignment_active = False
+                self.storage_exit_tof_coarse_heading_aligned = False
                 self.mission.set_phase(MissionPhase.CORRECT_STORAGE_EXIT_X, now_s)
             else:
                 self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
@@ -1538,6 +1550,19 @@ class DeterministicMissionControllerNode(Node):
         distance_m, wall_angle_rad, measurement_age_s = (
             self.validated_wall_measurement("storage_tof_measurement_timeout_s")
         )
+        if (
+            not self.storage_tof_coarse_heading_aligned
+            and storage_coarse_heading_is_aligned(
+                self.robot_yaw,
+                axis,
+                self.get_float("storage_final_yaw_tolerance"),
+            )
+        ):
+            self.storage_tof_coarse_heading_aligned = True
+            self.get_logger().info(
+                f"Storage ToF {axis} coarse odometry heading acquired; "
+                "ToF angle is now authoritative"
+            )
         command = make_storage_tof_command(
             axis=axis,
             distance_m=distance_m,
@@ -1563,6 +1588,7 @@ class DeterministicMissionControllerNode(Node):
             wall_angle_tolerance_rad=self.get_float(
                 "storage_tof_wall_angle_tolerance_rad"
             ),
+            coarse_heading_aligned=self.storage_tof_coarse_heading_aligned,
         )
         self.mission_waypoint = (
             (
@@ -1609,6 +1635,7 @@ class DeterministicMissionControllerNode(Node):
     def complete_storage_staging_x_alignment(self, now_s):
         next_phase = storage_phase_after_staging_x(self.return_lane_number)
         if next_phase == MissionPhase.CORRECT_STORAGE_STAGING_Y:
+            self.storage_tof_coarse_heading_aligned = False
             self.mission.set_phase(MissionPhase.CORRECT_STORAGE_STAGING_Y, now_s)
             self.mission_waypoint = (
                 self.get_float("storage_staging_x"),
@@ -1639,6 +1666,19 @@ class DeterministicMissionControllerNode(Node):
         distance_m, wall_angle_rad, measurement_age_s = (
             self.validated_wall_measurement("storage_tof_measurement_timeout_s")
         )
+        if (
+            not self.storage_exit_tof_coarse_heading_aligned
+            and storage_coarse_heading_is_aligned(
+                self.robot_yaw,
+                "x",
+                self.get_float("storage_final_yaw_tolerance"),
+            )
+        ):
+            self.storage_exit_tof_coarse_heading_aligned = True
+            self.get_logger().info(
+                "Storage-exit coarse west heading acquired; "
+                "ToF angle is now authoritative"
+            )
         command = make_storage_exit_tof_command(
             distance_m=distance_m,
             wall_angle_rad=wall_angle_rad,
@@ -1666,6 +1706,9 @@ class DeterministicMissionControllerNode(Node):
             angle_gain=self.get_float("storage_heading_gain"),
             max_angular_speed=self.get_float("storage_max_angular_speed"),
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
+            coarse_heading_aligned=(
+                self.storage_exit_tof_coarse_heading_aligned
+            ),
         )
         self.storage_exit_tof_angle_alignment_active = (
             command.angle_alignment_active
@@ -1726,6 +1769,7 @@ class DeterministicMissionControllerNode(Node):
             )
         self.storage_exit_tof_missing_started_at = None
         self.storage_exit_tof_angle_alignment_active = False
+        self.storage_exit_tof_coarse_heading_aligned = False
         self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
         self.mission_waypoint = (
             self.get_float("storage_exit_x"),
@@ -1801,6 +1845,7 @@ class DeterministicMissionControllerNode(Node):
         self.pending_pose_y_correction_time = correction_time
 
     def begin_storage_entry_open(self, now_s):
+        self.storage_tof_coarse_heading_aligned = False
         self.publish_cmd(0.0, 0.0)
         self.command_gripper(open_gripper=True)
         self.mission.set_phase(MissionPhase.OPEN_STORAGE_ENTRY, now_s)
@@ -1911,7 +1956,7 @@ class DeterministicMissionControllerNode(Node):
         self.coverage_controller = self.create_coverage_controller(reverse_order=True)
         self.reset_lane_tof_alignment()
         self.reset_main_road_tof_alignment()
-        self.storage_exit_tof_angle_alignment_active = False
+        self.reset_storage_tof_alignment()
         self.coverage_command = None
         self.latest_target = None
         self.latest_target_time = None
@@ -2941,6 +2986,12 @@ class DeterministicMissionControllerNode(Node):
                     ),
                     "exit_angle_alignment_active": (
                         self.storage_exit_tof_angle_alignment_active
+                    ),
+                    "coarse_heading_aligned": (
+                        self.storage_tof_coarse_heading_aligned
+                    ),
+                    "exit_coarse_heading_aligned": (
+                        self.storage_exit_tof_coarse_heading_aligned
                     ),
                     "active_axis": (
                         "x"

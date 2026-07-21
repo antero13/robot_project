@@ -39,6 +39,7 @@ def make_storage_exit_tof_command(
     angle_gain,
     max_angular_speed,
     heading_tolerance,
+    coarse_heading_aligned=False,
 ):
     """Correct storage-exit x first, then conditionally square to west wall."""
     angle_trigger_rad = float(angle_trigger_rad)
@@ -47,7 +48,10 @@ def make_storage_exit_tof_command(
         raise ValueError("angle thresholds must satisfy 0 <= release < trigger")
 
     heading_error = normalize_angle(math.pi - float(robot_yaw))
-    if abs(heading_error) > float(heading_tolerance):
+    if (
+        not bool(coarse_heading_aligned)
+        and abs(heading_error) > float(heading_tolerance)
+    ):
         return StorageExitTofCommand(
             linear_x=0.0,
             angular_z=clamp(
