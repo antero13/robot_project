@@ -8,6 +8,7 @@ from rl_model_policy.mission_coordinator import (
     ReturnReason,
     reverse_storage_x_exit_command,
     storage_dash_heading,
+    storage_phase_after_staging_x,
     storage_return_start_phase,
     waypoint_avoidance_required,
     waypoint_command,
@@ -96,6 +97,24 @@ class MissionCoordinatorTest(unittest.TestCase):
             MissionPhase.RETURN_MAIN_ROAD,
         )
 
+    def test_only_lanes_one_and_two_repeat_y_alignment_at_storage(self):
+        self.assertEqual(
+            storage_phase_after_staging_x(1),
+            MissionPhase.CORRECT_STORAGE_STAGING_Y,
+        )
+        self.assertEqual(
+            storage_phase_after_staging_x(2),
+            MissionPhase.CORRECT_STORAGE_STAGING_Y,
+        )
+        self.assertEqual(
+            storage_phase_after_staging_x(3),
+            MissionPhase.OPEN_STORAGE_ENTRY,
+        )
+        self.assertEqual(
+            storage_phase_after_staging_x(4),
+            MissionPhase.OPEN_STORAGE_ENTRY,
+        )
+
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)
         self.assertEqual(reason, ReturnReason.TIME_LIMIT)
@@ -112,6 +131,9 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertTrue(self.mission.is_storage_phase())
 
         self.mission.set_phase(MissionPhase.CORRECT_STORAGE_STAGING_X, 20.5)
+        self.assertTrue(self.mission.is_storage_phase())
+
+        self.mission.set_phase(MissionPhase.CORRECT_STORAGE_STAGING_Y, 20.8)
         self.assertTrue(self.mission.is_storage_phase())
 
         self.mission.set_phase(MissionPhase.CORRECT_STORAGE_Y, 21.0)

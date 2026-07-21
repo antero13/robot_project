@@ -10,6 +10,7 @@ class MissionPhase:
     REJOIN_STORAGE_LANE = "REJOIN_STORAGE_LANE"
     RETURN_STAGING = "RETURN_STAGING"
     CORRECT_STORAGE_STAGING_X = "CORRECT_STORAGE_STAGING_X"
+    CORRECT_STORAGE_STAGING_Y = "CORRECT_STORAGE_STAGING_Y"
     MOVE_TO_STORAGE_Y = "MOVE_TO_STORAGE_Y"
     CORRECT_STORAGE_X = "CORRECT_STORAGE_X"
     CORRECT_STORAGE_Y = "CORRECT_STORAGE_Y"
@@ -33,6 +34,7 @@ class MissionPhase:
             CORRECT_MAIN_ROAD_SOUTH,
             RETURN_STAGING,
             CORRECT_STORAGE_STAGING_X,
+            CORRECT_STORAGE_STAGING_Y,
             MOVE_TO_STORAGE_Y,
             CORRECT_STORAGE_X,
             CORRECT_STORAGE_Y,
@@ -59,6 +61,13 @@ class ReturnReason:
 def storage_return_start_phase():
     """Return to the southern main road before approaching storage."""
     return MissionPhase.RETURN_MAIN_ROAD
+
+
+def storage_phase_after_staging_x(lane_number):
+    """Choose the final storage staging step for the return lane."""
+    if int(lane_number) in (1, 2):
+        return MissionPhase.CORRECT_STORAGE_STAGING_Y
+    return MissionPhase.OPEN_STORAGE_ENTRY
 
 
 @dataclass(frozen=True)

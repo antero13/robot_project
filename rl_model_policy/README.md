@@ -445,6 +445,7 @@ COLLECTING
   -> RETURN_MAIN_ROAD
   -> RETURN_STAGING
   -> CORRECT_STORAGE_STAGING_X
+  -> CORRECT_STORAGE_STAGING_Y (1·2번 레인에서 복귀할 때만)
   -> OPEN_STORAGE_ENTRY
   -> ENTER_STORAGE
   -> EXIT_STORAGE
@@ -488,7 +489,7 @@ COLLECTING
    - 4개 적재, 일곱 번째 물체 수거, 종료 30초 전 또는 수동 복귀도 먼저
      `REJOIN_STORAGE_LANE`을 끝낸 뒤 보관소 이동을 시작한다.
 
-3. **주도로 복귀와 보관소 입구 x 보정**
+3. **주도로 복귀와 보관소 입구 x/y 보정**
    - 현재 레인 x를 유지한 채 남쪽으로 내려가 `y=-1.3343 m` 주도로에
      복귀한다.
    - 남쪽 벽 ToF 거리로 주도로 y를 먼저 보정한다. 그다음 벽 각도가 10도
@@ -497,9 +498,12 @@ COLLECTING
    - 도착 뒤 서쪽 벽 ToF 각도를 0도 근처로 정렬하고 `x=-1.25 m`를
      3 cm 이내로 보정한다. yaw는 변경하지 않는다. 예상 ToF 거리는 66 cm이며,
      값이 없거나 오래되면 정지해서 기다린다.
+   - 1·2번 레인에서 복귀한 경우에는 x 보정 뒤 남쪽 벽을 바라보고 주도로
+     `y=-1.3343 m`를 한 번 더 보정한다. 3·4번 레인은 이 최종 y 보정을
+     생략하고 바로 보관소 진입을 시작한다.
 
 4. **서보 개방과 보관소 진입**
-   - 입구 x 보정이 끝난 뒤 서보를 열고 기본 0.5초 기다린다.
+   - 필요한 입구 x/y 보정이 끝난 뒤 서보를 열고 기본 0.5초 기다린다.
    - 입구 `(-1.25, -1.3343) m`에서 보관소 중심 `(-1.75, -1.75) m`까지
      향하는 고정 yaw로 먼저 정렬한 뒤 `0.40 m/s`로 2.50초 연속 진입한다.
      이 구간에서는 pose x/y로 방향을 다시 계산하거나 ToF로 중단하지 않는다.
@@ -525,6 +529,8 @@ COLLECTING
    - 동·서쪽 벽 보정 완료 시 `/robot_pose/correct_x`만 발행한다.
    - 남쪽 주도로 보정 완료 시 `/robot_pose/correct_y`와 yaw `-90도`를
      `/robot_pose/correct_yaw`로 발행한다.
+   - 1·2번 레인의 최종 입구 y 보정 완료 시 `/robot_pose/correct_y`를 다시
+     발행한다.
    - Pose tracker는 해당 위치 축과 yaw 기준값만 바꾸고 누적 이동량을 유지한다.
    - GUI의 `mission.waypoint`는 노란색 `W` 목표 마커이고, 로봇 마커는
      보정된 pose를 사용한다. 경기장 표시에는 centered-frame x/y에
@@ -585,6 +591,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 각도가 10도 이상일 때만 회전을 시작하고, 시작된 회전은 5도 이하까지 계속한
 다음 pose yaw를 180도로 재설정한다.
 
-`storage_tof_correction_enabled:=false`를 사용하면 진입 전·후의 입구 x ToF
-보정만 생략한다. 고정 yaw 시간 기반 진입·후진과 보관소 접촉 pose x/y 보정은
-그대로 수행한다. `storage_tof_xy_tolerance_m` 기본값은 `0.03 m`이다.
+`storage_tof_correction_enabled:=false`를 사용하면 진입 전·후의 입구 x ToF와
+1·2번 레인의 최종 y ToF 보정을 생략한다. 고정 yaw 시간 기반 진입·후진과
+보관소 접촉 pose x/y 보정은 그대로 수행한다. `storage_tof_xy_tolerance_m`
+기본값은 `0.03 m`이다.

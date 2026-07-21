@@ -26,6 +26,7 @@ from rl_model_policy.mission_coordinator import (
     MissionPhase,
     ReturnReason,
     storage_dash_heading,
+    storage_phase_after_staging_x,
     storage_return_start_phase,
     waypoint_avoidance_required,
     waypoint_command,
@@ -385,6 +386,7 @@ class DeterministicMissionControllerNode(Node):
         self.storage_dash_last_update_s = None
         self.mission_waypoint = None
         self.return_lane_x = 0.0
+        self.return_lane_number = 0
 
         self.mission = MissionCoordinator(
             storage_capacity=int(self.get_parameter("storage_capacity").value),
@@ -924,6 +926,9 @@ class DeterministicMissionControllerNode(Node):
             self.get_float("coverage_max_x"),
             self.get_float("storage_staging_x"),
         )
+        self.return_lane_number = int(
+            self.coverage_controller.current_leg.lane_number
+        )
         self.return_lane_x = self.clamp(
             self.robot_x,
             return_min_x,
@@ -1271,6 +1276,9 @@ class DeterministicMissionControllerNode(Node):
         if phase == MissionPhase.CORRECT_STORAGE_STAGING_X:
             return self.storage_tof_axis_command("x", now_s)
 
+        if phase == MissionPhase.CORRECT_STORAGE_STAGING_Y:
+            return self.storage_tof_axis_command("y", now_s)
+
         if phase == MissionPhase.MOVE_TO_STORAGE_Y:
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
             command = self.storage_waypoint_command(
@@ -1491,6 +1499,10 @@ class DeterministicMissionControllerNode(Node):
 
     def storage_tof_axis_command(self, axis, now_s):
         axis = str(axis).strip().lower()
+        staging_y_alignment = (
+            axis == "y"
+            and self.mission.phase == MissionPhase.CORRECT_STORAGE_STAGING_Y
+        )
         if self.mission.phase_age_s(now_s) >= self.get_float(
             "tof_alignment_watchdog_s"
         ):
@@ -1499,13 +1511,18 @@ class DeterministicMissionControllerNode(Node):
                 "without applying a pose correction"
             )
             if axis == "x":
+                return self.complete_storage_staging_x_alignment(now_s)
+            if staging_y_alignment:
                 return self.begin_storage_entry_open(now_s)
             self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
             return (0.0, 0.0)
 
-        target_coordinate = self.get_float(
-            "storage_staging_x" if axis == "x" else "storage_staging_y"
-        )
+        if axis == "x":
+            target_coordinate = self.get_float("storage_staging_x")
+        elif staging_y_alignment:
+            target_coordinate = self.get_float("storage_main_road_y")
+        else:
+            target_coordinate = self.get_float("storage_staging_y")
         wall_coordinate = self.get_float(
             "storage_tof_left_wall_x_m"
             if axis == "x"
@@ -1541,9 +1558,15 @@ class DeterministicMissionControllerNode(Node):
             ),
         )
         self.mission_waypoint = (
-            (self.get_float("storage_staging_x") if axis == "x" else self.return_lane_x),
+            (
+                self.get_float("storage_staging_x")
+                if axis == "x" or staging_y_alignment
+                else self.return_lane_x
+            ),
             self.get_float(
-                "storage_main_road_y" if axis == "x" else "storage_staging_y"
+                "storage_main_road_y"
+                if axis == "x" or staging_y_alignment
+                else "storage_staging_y"
             ),
         )
         self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
@@ -1562,7 +1585,7 @@ class DeterministicMissionControllerNode(Node):
                 self.pending_pose_y_correction = correction.data
                 self.pending_pose_y_correction_time = self.get_clock().now()
 
-        if axis == "y":
+        if axis == "y" and not staging_y_alignment:
             self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
         self.get_logger().info(
             f"Storage ToF {axis} alignment complete: "
@@ -1571,8 +1594,25 @@ class DeterministicMissionControllerNode(Node):
             f"pose_{axis}->{correction.data:.3f}"
         )
         if axis == "x":
+            return self.complete_storage_staging_x_alignment(now_s)
+        if staging_y_alignment:
             return self.begin_storage_entry_open(now_s)
         return (0.0, 0.0)
+
+    def complete_storage_staging_x_alignment(self, now_s):
+        next_phase = storage_phase_after_staging_x(self.return_lane_number)
+        if next_phase == MissionPhase.CORRECT_STORAGE_STAGING_Y:
+            self.mission.set_phase(MissionPhase.CORRECT_STORAGE_STAGING_Y, now_s)
+            self.mission_waypoint = (
+                self.get_float("storage_staging_x"),
+                self.get_float("storage_main_road_y"),
+            )
+            self.get_logger().info(
+                f"Lane {self.return_lane_number} storage return: starting "
+                "final south-wall ToF y alignment"
+            )
+            return (0.0, 0.0)
+        return self.begin_storage_entry_open(now_s)
 
     def storage_exit_tof_command(self, now_s):
         target_coordinate = self.get_float("storage_exit_x")
@@ -2900,7 +2940,11 @@ class DeterministicMissionControllerNode(Node):
                         )
                         else (
                             "y"
-                            if self.mission.phase == MissionPhase.CORRECT_STORAGE_Y
+                            if self.mission.phase
+                            in (
+                                MissionPhase.CORRECT_STORAGE_STAGING_Y,
+                                MissionPhase.CORRECT_STORAGE_Y,
+                            )
                             else None
                         )
                     ),

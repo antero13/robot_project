@@ -967,7 +967,10 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "storage_tof_correction_enabled",
                 default_value="true",
-                description="Correct storage entrance x with ToF before and after entry.",
+                description=(
+                    "Correct storage entrance x with ToF, plus final y for "
+                    "returns from lanes 1 and 2."
+                ),
             ),
             DeclareLaunchArgument("storage_tof_left_wall_x_m", default_value="-2.0"),
             DeclareLaunchArgument("storage_tof_bottom_wall_y_m", default_value="-2.0"),
