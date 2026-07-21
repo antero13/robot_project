@@ -60,6 +60,21 @@ class MissionCoordinatorTest(unittest.TestCase):
                 target_x=-1.25,
                 target_y=-1.3343,
                 waypoint_tolerance=0.10,
+                linear_x=0.0,
+                avoid_center=0.70,
+                danger_threshold=0.20,
+            )
+        )
+
+    def test_waypoint_avoidance_is_disabled_during_in_place_heading_alignment(self):
+        self.assertFalse(
+            waypoint_avoidance_required(
+                robot_x=-1.25,
+                robot_y=0.0,
+                target_x=-1.25,
+                target_y=-1.3343,
+                waypoint_tolerance=0.10,
+                linear_x=0.0,
                 avoid_center=0.70,
                 danger_threshold=0.20,
             )
@@ -73,6 +88,7 @@ class MissionCoordinatorTest(unittest.TestCase):
                 target_x=-1.25,
                 target_y=-1.3343,
                 waypoint_tolerance=0.10,
+                linear_x=0.25,
                 avoid_center=0.70,
                 danger_threshold=0.20,
             )

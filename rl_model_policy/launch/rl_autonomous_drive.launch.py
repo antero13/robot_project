@@ -120,6 +120,9 @@ def generate_launch_description():
         "coverage_turn_in_place_threshold"
     )
     coverage_max_angular_speed = LaunchConfiguration("coverage_max_angular_speed")
+    coverage_avoid_heading_tolerance = LaunchConfiguration(
+        "coverage_avoid_heading_tolerance"
+    )
     coverage_avoid_angular_speed = LaunchConfiguration("coverage_avoid_angular_speed")
     coverage_avoid_linear_scale = LaunchConfiguration("coverage_avoid_linear_scale")
     coverage_rejoin_speed = LaunchConfiguration("coverage_rejoin_speed")
@@ -404,6 +407,9 @@ def generate_launch_description():
             "coverage_waypoint_tolerance": coverage_waypoint_tolerance,
             "coverage_turn_in_place_threshold": (coverage_turn_in_place_threshold),
             "coverage_max_angular_speed": coverage_max_angular_speed,
+            "coverage_avoid_heading_tolerance": (
+                coverage_avoid_heading_tolerance
+            ),
             "coverage_avoid_angular_speed": coverage_avoid_angular_speed,
             "coverage_avoid_linear_scale": coverage_avoid_linear_scale,
             "coverage_rejoin_speed": coverage_rejoin_speed,
@@ -819,6 +825,14 @@ def generate_launch_description():
             default_value="0.65",
         ),
         DeclareLaunchArgument("coverage_max_angular_speed", default_value="1.00"),
+        DeclareLaunchArgument(
+            "coverage_avoid_heading_tolerance",
+            default_value="0.14",
+            description=(
+                "Allow lane obstacle avoidance only after heading error is "
+                "within this tolerance in radians."
+            ),
+        ),
         DeclareLaunchArgument("coverage_avoid_angular_speed", default_value="0.45"),
         DeclareLaunchArgument("coverage_avoid_linear_scale", default_value="0.70"),
         DeclareLaunchArgument("coverage_rejoin_speed", default_value="0.20"),

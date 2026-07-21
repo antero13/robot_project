@@ -152,6 +152,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("coverage_max_angular_speed", 1.00)
         self.declare_parameter("coverage_turn_in_place_threshold", 0.65)
         self.declare_parameter("coverage_avoid_danger_threshold", 0.20)
+        self.declare_parameter("coverage_avoid_heading_tolerance", 0.14)
         self.declare_parameter("coverage_avoid_angular_speed", 0.45)
         self.declare_parameter("coverage_avoid_linear_scale", 0.70)
         self.declare_parameter("coverage_rejoin_speed", 0.20)
@@ -257,8 +258,8 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_entry_tolerance", 0.04)
         self.declare_parameter("storage_heading_tolerance", 0.14)
         self.declare_parameter("storage_final_yaw_tolerance", 0.12)
-        self.declare_parameter("storage_heading_gain", 1.5)
-        self.declare_parameter("storage_max_angular_speed", 0.60)
+        self.declare_parameter("storage_heading_gain", 2.4)
+        self.declare_parameter("storage_max_angular_speed", 1.00)
         self.declare_parameter("storage_avoid_danger_threshold", 0.20)
         self.declare_parameter("storage_tof_correction_enabled", True)
         self.declare_parameter("storage_tof_left_wall_x_m", -2.0)
@@ -1857,22 +1858,7 @@ class DeterministicMissionControllerNode(Node):
             if waypoint_tolerance is None
             else float(waypoint_tolerance)
         )
-        if waypoint_avoidance_required(
-            robot_x=self.robot_x,
-            robot_y=self.robot_y,
-            target_x=target_x,
-            target_y=target_y,
-            waypoint_tolerance=tolerance,
-            avoid_center=bins[1],
-            danger_threshold=self.get_float("storage_avoid_danger_threshold"),
-        ):
-            direction = 1.0 if float(bins[0]) <= float(bins[2]) else -1.0
-            return SimpleNamespace(
-                linear_x=0.0,
-                angular_z=direction * self.get_float("coverage_avoid_angular_speed"),
-                reached=False,
-            )
-        return waypoint_command(
+        command = waypoint_command(
             robot_x=self.robot_x,
             robot_y=self.robot_y,
             robot_yaw=self.robot_yaw,
@@ -1886,6 +1872,23 @@ class DeterministicMissionControllerNode(Node):
             final_yaw=final_yaw,
             final_yaw_tolerance=self.get_float("storage_final_yaw_tolerance"),
         )
+        if waypoint_avoidance_required(
+            robot_x=self.robot_x,
+            robot_y=self.robot_y,
+            target_x=target_x,
+            target_y=target_y,
+            waypoint_tolerance=tolerance,
+            linear_x=command.linear_x,
+            avoid_center=bins[1],
+            danger_threshold=self.get_float("storage_avoid_danger_threshold"),
+        ):
+            direction = 1.0 if float(bins[0]) <= float(bins[2]) else -1.0
+            return SimpleNamespace(
+                linear_x=0.0,
+                angular_z=direction * self.get_float("coverage_avoid_angular_speed"),
+                reached=False,
+            )
+        return command
 
     def storage_pose_is_valid(self):
         return self.is_fresh(
@@ -1937,6 +1940,9 @@ class DeterministicMissionControllerNode(Node):
             max_angular_speed=self.get_float("coverage_max_angular_speed"),
             turn_in_place_threshold=self.get_float("coverage_turn_in_place_threshold"),
             avoid_danger_threshold=self.get_float("coverage_avoid_danger_threshold"),
+            avoid_heading_tolerance=self.get_float(
+                "coverage_avoid_heading_tolerance"
+            ),
             avoid_angular_speed=self.get_float("coverage_avoid_angular_speed"),
             avoid_linear_scale=self.get_float("coverage_avoid_linear_scale"),
             rejoin_speed=self.get_float("coverage_rejoin_speed"),

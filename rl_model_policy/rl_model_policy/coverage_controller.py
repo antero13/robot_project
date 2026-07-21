@@ -125,6 +125,7 @@ class CoverageController:
         max_angular_speed=0.40,
         turn_in_place_threshold=0.65,
         avoid_danger_threshold=0.20,
+        avoid_heading_tolerance=0.14,
         avoid_angular_speed=0.35,
         avoid_linear_scale=0.65,
         rejoin_speed=0.20,
@@ -142,6 +143,7 @@ class CoverageController:
         self.max_angular_speed = float(max_angular_speed)
         self.turn_in_place_threshold = float(turn_in_place_threshold)
         self.avoid_danger_threshold = float(avoid_danger_threshold)
+        self.avoid_heading_tolerance = float(avoid_heading_tolerance)
         self.avoid_angular_speed = float(avoid_angular_speed)
         self.avoid_linear_scale = float(avoid_linear_scale)
         self.rejoin_speed = float(rejoin_speed)
@@ -159,6 +161,10 @@ class CoverageController:
             raise ValueError("turn_in_place_threshold must exceed heading_tolerance")
         if self.avoid_danger_threshold < 0.0 or self.avoid_angular_speed <= 0.0:
             raise ValueError("avoidance controller values are invalid")
+        if not 0.0 < self.avoid_heading_tolerance <= self.turn_in_place_threshold:
+            raise ValueError(
+                "avoid_heading_tolerance must be in (0, turn_in_place_threshold]"
+            )
         if not 0.0 < self.avoid_linear_scale <= 1.0:
             raise ValueError("avoid_linear_scale must be in (0, 1]")
         if self.rejoin_speed <= 0.0:
@@ -296,7 +302,9 @@ class CoverageController:
             float(avoid_right),
         )
         if (
-            leg.phase.startswith("SCAN_LANE")
+            abs(linear_x) > 1e-9
+            and abs(heading_error) <= self.avoid_heading_tolerance
+            and leg.phase.startswith("SCAN_LANE")
             and avoid_danger >= self.avoid_danger_threshold
         ):
             direction = self._avoid_direction(

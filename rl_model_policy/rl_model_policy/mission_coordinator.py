@@ -264,6 +264,7 @@ def waypoint_avoidance_required(
     target_x,
     target_y,
     waypoint_tolerance,
+    linear_x,
     avoid_center,
     danger_threshold,
 ):
@@ -273,7 +274,8 @@ def waypoint_avoidance_required(
         float(target_y) - float(robot_y),
     )
     return (
-        distance > float(waypoint_tolerance)
+        abs(float(linear_x)) > 1e-9
+        and distance > float(waypoint_tolerance)
         and float(avoid_center) >= float(danger_threshold)
     )
 

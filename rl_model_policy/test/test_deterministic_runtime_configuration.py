@@ -69,6 +69,17 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             self.policy_launch_source,
         )
 
+    def test_launches_expose_lane_avoidance_heading_tolerance(self):
+        required = {"coverage_avoid_heading_tolerance"}
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

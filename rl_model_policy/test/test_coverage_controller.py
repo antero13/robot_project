@@ -285,6 +285,26 @@ class CoverageControllerTest(unittest.TestCase):
         self.assertGreater(command.linear_x, 0.0)
         self.assertGreater(command.angular_z, 0.0)
 
+    def test_lane_avoidance_waits_until_heading_error_is_within_tolerance(self):
+        controller = CoverageController(
+            make_legs(),
+            avoid_heading_tolerance=0.14,
+        )
+        controller.leg_index = 1
+
+        command = controller.command(
+            1.25,
+            -0.5,
+            math.pi / 2.0 - 0.20,
+            avoid_left=0.8,
+            avoid_center=0.9,
+            avoid_right=0.1,
+        )
+
+        self.assertEqual(command.phase, "SCAN_LANE_UP")
+        self.assertGreater(command.linear_x, 0.0)
+        self.assertGreater(command.angular_z, 0.0)
+
     def test_close_side_object_also_triggers_moving_correction(self):
         controller = CoverageController(make_legs())
         controller.leg_index = 1
@@ -310,7 +330,14 @@ class CoverageControllerTest(unittest.TestCase):
         )
         controller.leg_index = 1
 
-        command = controller.command(1.25, 1.0, math.pi / 2.0)
+        command = controller.command(
+            1.25,
+            1.0,
+            math.pi / 2.0,
+            avoid_left=0.8,
+            avoid_center=0.9,
+            avoid_right=0.1,
+        )
 
         self.assertEqual(command.phase, "ALIGN_SCAN_LANE_DOWN")
         self.assertEqual(command.linear_x, 0.0)
