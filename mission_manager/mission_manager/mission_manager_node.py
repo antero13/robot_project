@@ -20,6 +20,7 @@ class MissionState(str, Enum):
     FINAL_FORWARD = 'FINAL_FORWARD'
     AVOID_TURN = 'AVOID_TURN'
     AVOID_FORWARD = 'AVOID_FORWARD'
+    AVOID_ESCAPE = 'AVOID_ESCAPE'
     REACQUIRE_TARGET = 'REACQUIRE_TARGET'
     GRAB_OBJECT = 'GRAB_OBJECT'
     BACK_OUT = 'BACK_OUT'
@@ -92,6 +93,9 @@ class MissionManager(Node):
         self.declare_parameter('avoid_forward_duration_s', 0.85)
         self.declare_parameter('avoid_forward_linear_x', 0.05)
         self.declare_parameter('avoid_forward_angular_z', 0.25)
+        self.declare_parameter('avoid_escape_duration_s', 0.70)
+        self.declare_parameter('avoid_escape_linear_x', 0.06)
+        self.declare_parameter('avoid_escape_angular_z', 0.20)
         self.declare_parameter('avoid_turn_direction_sign', 1.0)
         self.declare_parameter('avoid_vfh_center_weight', 2.0)
         self.declare_parameter('avoid_vfh_target_weight', 0.60)
@@ -290,6 +294,8 @@ class MissionManager(Node):
             self.run_avoid_turn()
         elif self.state == MissionState.AVOID_FORWARD:
             self.run_avoid_forward()
+        elif self.state == MissionState.AVOID_ESCAPE:
+            self.run_avoid_escape()
         elif self.state == MissionState.REACQUIRE_TARGET:
             self.run_reacquire_target()
         elif self.state == MissionState.GRAB_OBJECT:
@@ -406,7 +412,14 @@ class MissionManager(Node):
             linear_x=self.get_float('avoid_forward_linear_x'),
             angular_z=self.avoid_turn_direction * self.get_float('avoid_forward_angular_z'),
         )
-        self.advance_after('avoid_forward_duration_s', MissionState.REACQUIRE_TARGET)
+        self.advance_after('avoid_forward_duration_s', MissionState.AVOID_ESCAPE)
+
+    def run_avoid_escape(self):
+        self.publish_cmd_vel(
+            linear_x=self.get_float('avoid_escape_linear_x'),
+            angular_z=self.avoid_turn_direction * self.get_float('avoid_escape_angular_z'),
+        )
+        self.advance_after('avoid_escape_duration_s', MissionState.REACQUIRE_TARGET)
 
     def run_reacquire_target(self):
         if self.begin_avoid_if_needed():

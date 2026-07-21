@@ -208,6 +208,9 @@ avoid_turn_duration_s: first turn-only avoidance duration, default 0.55
 avoid_turn_angular_z: first turn-only avoidance angular speed, default 0.65
 avoid_forward_duration_s: curved forward avoidance duration, default 0.85
 avoid_forward_angular_z: curved forward avoidance angular speed, default 0.25
+avoid_escape_duration_s: extra post-avoidance escape time before target reacquisition, default 0.70
+avoid_escape_linear_x: forward speed during the escape segment, default 0.06
+avoid_escape_angular_z: angular speed during the escape segment, default 0.20
 avoid_center_band: width used only for VFH center danger weighting, default 0.75
 avoid_vfh_center_weight: extra danger for obstacles near the gripper center line, default 2.0
 avoid_vfh_target_weight: small bias toward the target side when both avoid sides are similar, default 0.60
@@ -223,4 +226,6 @@ avoid_ignore_target_y_margin: max y gap between close target and duplicate avoid
 Lower `avoid_area_ratio` to avoid earlier. Widen the ROI x points if the robot
 misses obstacles near the gripper path, or narrow them if side objects still
 interrupt target pickup. Raise `avoid_vfh_switch_penalty` or
-`avoid_direction_hold_s` if the robot oscillates between left and right.
+`avoid_direction_hold_s` if the robot oscillates between left and right. Raise
+`avoid_escape_duration_s` if the robot re-enters avoidance immediately after an
+obstacle and target are aligned in the camera.
