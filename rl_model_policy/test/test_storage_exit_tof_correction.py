@@ -25,6 +25,8 @@ def make_command(**overrides):
         "angle_release_rad": math.radians(5.0),
         "angle_gain": 1.5,
         "max_angular_speed": 0.60,
+        "coarse_heading_gain": 2.4,
+        "coarse_max_angular_speed": 1.00,
         "heading_tolerance": 0.12,
     }
     values.update(overrides)
@@ -37,7 +39,7 @@ class StorageExitTofCorrectionTest(unittest.TestCase):
 
         self.assertEqual(command.phase, "ALIGN_STORAGE_EXIT_WEST_ODOMETRY")
         self.assertEqual(command.linear_x, 0.0)
-        self.assertNotEqual(command.angular_z, 0.0)
+        self.assertAlmostEqual(command.angular_z, -1.0)
 
     def test_latched_tof_alignment_does_not_return_to_odometry(self):
         command = make_command(
@@ -83,7 +85,14 @@ class StorageExitTofCorrectionTest(unittest.TestCase):
 
         self.assertEqual(command.phase, "ALIGN_STORAGE_EXIT_WEST_WALL_ANGLE")
         self.assertGreater(command.angular_z, 0.0)
+        self.assertAlmostEqual(command.angular_z, math.radians(15.0))
         self.assertTrue(command.angle_alignment_active)
+
+    def test_tof_wall_angle_uses_reduced_maximum_speed(self):
+        command = make_command(wall_angle_rad=math.radians(30.0))
+
+        self.assertEqual(command.phase, "ALIGN_STORAGE_EXIT_WEST_WALL_ANGLE")
+        self.assertAlmostEqual(command.angular_z, 0.60)
 
     def test_active_alignment_continues_until_five_degrees(self):
         command = make_command(

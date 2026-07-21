@@ -86,6 +86,8 @@ def make_storage_tof_command(
     heading_gain,
     max_angular_speed,
     heading_tolerance,
+    wall_angle_gain=None,
+    wall_angle_max_angular_speed=None,
     advance_without_measurement=False,
     wall_angle_rad=None,
     wall_angle_tolerance_rad=0.05,
@@ -100,6 +102,10 @@ def make_storage_tof_command(
     else:
         raise ValueError("axis must be 'x' or 'y'")
     desired_yaw = desired_yaw_for_storage_axis(axis)
+    if wall_angle_gain is None:
+        wall_angle_gain = heading_gain
+    if wall_angle_max_angular_speed is None:
+        wall_angle_max_angular_speed = max_angular_speed
 
     heading_error = normalize_angle(desired_yaw - float(robot_yaw))
     angular_z = clamp(
@@ -161,9 +167,9 @@ def make_storage_tof_command(
         return StorageTofCommand(
             linear_x=0.0,
             angular_z=clamp(
-                float(heading_gain) * float(wall_angle_rad),
-                -float(max_angular_speed),
-                float(max_angular_speed),
+                float(wall_angle_gain) * float(wall_angle_rad),
+                -float(wall_angle_max_angular_speed),
+                float(wall_angle_max_angular_speed),
             ),
             phase=f"ALIGN_STORAGE_WALL_ANGLE_{axis_name}",
             measured_coordinate=None,
@@ -175,9 +181,9 @@ def make_storage_tof_command(
         (0.0 if coarse_heading_aligned else angular_z)
         if wall_angle_rad is None
         else clamp(
-            float(heading_gain) * float(wall_angle_rad),
-            -float(max_angular_speed),
-            float(max_angular_speed),
+            float(wall_angle_gain) * float(wall_angle_rad),
+            -float(wall_angle_max_angular_speed),
+            float(wall_angle_max_angular_speed),
         )
     )
 

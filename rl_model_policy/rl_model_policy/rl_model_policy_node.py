@@ -264,6 +264,8 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_final_yaw_tolerance", 0.12)
         self.declare_parameter("storage_heading_gain", 2.4)
         self.declare_parameter("storage_max_angular_speed", 1.00)
+        self.declare_parameter("storage_tof_angle_gain", 1.5)
+        self.declare_parameter("storage_tof_max_angular_speed", 0.60)
         self.declare_parameter("storage_avoid_danger_threshold", 0.20)
         self.declare_parameter("storage_tof_correction_enabled", True)
         self.declare_parameter("storage_tof_left_wall_x_m", -2.0)
@@ -1582,6 +1584,10 @@ class DeterministicMissionControllerNode(Node):
             measurement_timeout_s=self.get_float("storage_tof_measurement_timeout_s"),
             heading_gain=self.get_float("storage_heading_gain"),
             max_angular_speed=self.get_float("storage_max_angular_speed"),
+            wall_angle_gain=self.get_float("storage_tof_angle_gain"),
+            wall_angle_max_angular_speed=self.get_float(
+                "storage_tof_max_angular_speed"
+            ),
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
             advance_without_measurement=False,
             wall_angle_rad=wall_angle_rad,
@@ -1703,8 +1709,12 @@ class DeterministicMissionControllerNode(Node):
             angle_release_rad=self.get_float(
                 "storage_exit_tof_angle_release_rad"
             ),
-            angle_gain=self.get_float("storage_heading_gain"),
-            max_angular_speed=self.get_float("storage_max_angular_speed"),
+            angle_gain=self.get_float("storage_tof_angle_gain"),
+            max_angular_speed=self.get_float("storage_tof_max_angular_speed"),
+            coarse_heading_gain=self.get_float("storage_heading_gain"),
+            coarse_max_angular_speed=self.get_float(
+                "storage_max_angular_speed"
+            ),
             heading_tolerance=self.get_float("storage_final_yaw_tolerance"),
             coarse_heading_aligned=(
                 self.storage_exit_tof_coarse_heading_aligned

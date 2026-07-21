@@ -23,8 +23,10 @@ def make_command(**overrides):
         "slowdown_distance_m": 0.20,
         "coordinate_tolerance_m": 0.03,
         "measurement_timeout_s": 0.25,
-        "heading_gain": 1.5,
-        "max_angular_speed": 0.60,
+        "heading_gain": 2.4,
+        "max_angular_speed": 1.00,
+        "wall_angle_gain": 1.5,
+        "wall_angle_max_angular_speed": 0.60,
         "heading_tolerance": 0.12,
         "wall_angle_rad": 0.0,
         "wall_angle_tolerance_rad": 0.05,
@@ -88,6 +90,19 @@ class StorageTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.linear_x, 0.0)
         self.assertLess(command.angular_z, 0.0)
         self.assertFalse(command.reached)
+
+    def test_tof_wall_angle_uses_separate_reduced_speed_limits(self):
+        proportional = make_command(wall_angle_rad=math.radians(20.0))
+        limited = make_command(wall_angle_rad=math.radians(30.0))
+
+        self.assertAlmostEqual(proportional.angular_z, math.radians(30.0))
+        self.assertAlmostEqual(limited.angular_z, 0.60)
+
+    def test_coarse_odometry_keeps_original_speed_limit(self):
+        command = make_command(robot_yaw=math.pi / 2.0)
+
+        self.assertEqual(command.phase, "ALIGN_STORAGE_TOF_X")
+        self.assertAlmostEqual(command.angular_z, 1.0)
 
     def test_fresh_wall_angle_does_not_override_coarse_odometry_alignment(self):
         command = make_command(robot_yaw=-math.pi / 2.0, wall_angle_rad=-0.10)
