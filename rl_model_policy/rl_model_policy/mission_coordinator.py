@@ -249,6 +249,26 @@ def waypoint_command(
     return NavigationCommand(linear_x, angular_z, False)
 
 
+def waypoint_avoidance_required(
+    robot_x,
+    robot_y,
+    target_x,
+    target_y,
+    waypoint_tolerance,
+    avoid_center,
+    danger_threshold,
+):
+    """Use obstacle avoidance only while translating toward a waypoint."""
+    distance = math.hypot(
+        float(target_x) - float(robot_x),
+        float(target_y) - float(robot_y),
+    )
+    return (
+        distance > float(waypoint_tolerance)
+        and float(avoid_center) >= float(danger_threshold)
+    )
+
+
 def storage_dash_heading(heading_deg):
     """Convert the configured fixed storage-dash IMU heading to radians."""
     return normalize_angle(math.radians(float(heading_deg)))

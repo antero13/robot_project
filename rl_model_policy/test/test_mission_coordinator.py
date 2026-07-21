@@ -9,6 +9,7 @@ from rl_model_policy.mission_coordinator import (
     reverse_storage_x_exit_command,
     storage_dash_heading,
     storage_return_start_phase,
+    waypoint_avoidance_required,
     waypoint_command,
 )
 
@@ -49,6 +50,32 @@ class MissionCoordinatorTest(unittest.TestCase):
             force_return_remaining_s=30.0,
         )
         self.mission.start(10.0)
+
+    def test_waypoint_avoidance_is_disabled_during_final_yaw_alignment(self):
+        self.assertFalse(
+            waypoint_avoidance_required(
+                robot_x=-1.25,
+                robot_y=-1.3343,
+                target_x=-1.25,
+                target_y=-1.3343,
+                waypoint_tolerance=0.10,
+                avoid_center=0.70,
+                danger_threshold=0.20,
+            )
+        )
+
+    def test_waypoint_avoidance_remains_enabled_during_translation(self):
+        self.assertTrue(
+            waypoint_avoidance_required(
+                robot_x=-1.25,
+                robot_y=0.0,
+                target_x=-1.25,
+                target_y=-1.3343,
+                waypoint_tolerance=0.10,
+                avoid_center=0.70,
+                danger_threshold=0.20,
+            )
+        )
 
     def test_fourth_pickup_triggers_capacity_return(self):
         for index in range(3):

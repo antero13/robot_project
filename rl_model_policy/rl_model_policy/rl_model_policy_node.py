@@ -27,6 +27,7 @@ from rl_model_policy.mission_coordinator import (
     ReturnReason,
     storage_dash_heading,
     storage_return_start_phase,
+    waypoint_avoidance_required,
     waypoint_command,
 )
 from rl_model_policy.observation import (
@@ -1811,7 +1812,20 @@ class DeterministicMissionControllerNode(Node):
         waypoint_tolerance=None,
     ):
         self.mission_waypoint = (float(target_x), float(target_y))
-        if float(bins[1]) >= self.get_float("storage_avoid_danger_threshold"):
+        tolerance = (
+            self.get_float("storage_waypoint_tolerance")
+            if waypoint_tolerance is None
+            else float(waypoint_tolerance)
+        )
+        if waypoint_avoidance_required(
+            robot_x=self.robot_x,
+            robot_y=self.robot_y,
+            target_x=target_x,
+            target_y=target_y,
+            waypoint_tolerance=tolerance,
+            avoid_center=bins[1],
+            danger_threshold=self.get_float("storage_avoid_danger_threshold"),
+        ):
             direction = 1.0 if float(bins[0]) <= float(bins[2]) else -1.0
             return SimpleNamespace(
                 linear_x=0.0,
@@ -1825,11 +1839,7 @@ class DeterministicMissionControllerNode(Node):
             target_x=target_x,
             target_y=target_y,
             speed=speed,
-            waypoint_tolerance=(
-                self.get_float("storage_waypoint_tolerance")
-                if waypoint_tolerance is None
-                else float(waypoint_tolerance)
-            ),
+            waypoint_tolerance=tolerance,
             heading_tolerance=self.get_float("storage_heading_tolerance"),
             heading_gain=self.get_float("storage_heading_gain"),
             max_angular_speed=self.get_float("storage_max_angular_speed"),
