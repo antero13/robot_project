@@ -16,7 +16,7 @@ def make_legs():
         min_x=-0.75,
         max_x=1.25,
         main_road_y=-1.33,
-        scan_end_y=1.0,
+        scan_end_y=1.1,
         lane_spacing=1.0,
         scan_speed=0.10,
         transit_speed=0.20,
@@ -33,10 +33,10 @@ class CoverageControllerTest(unittest.TestCase):
             [(leg.target_x, leg.target_y, leg.phase) for leg in legs[:5]],
             [
                 (1.25, -1.33, "ENTER_FIRST_LANE"),
-                (1.25, 1.0, "SCAN_LANE_UP"),
+                (1.25, 1.1, "SCAN_LANE_UP"),
                 (1.25, -1.33, "SCAN_LANE_DOWN"),
                 (0.25, -1.33, "SHIFT_TO_NEXT_LANE"),
-                (0.25, 1.0, "SCAN_LANE_UP"),
+                (0.25, 1.1, "SCAN_LANE_UP"),
             ],
         )
         shift_legs = [leg for leg in legs if leg.phase == "SHIFT_TO_NEXT_LANE"]
@@ -50,7 +50,7 @@ class CoverageControllerTest(unittest.TestCase):
             min_x=-1.25,
             max_x=1.25,
             main_road_y=-1.3343,
-            scan_end_y=1.0,
+            scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
             transit_speed=0.30,
@@ -91,7 +91,7 @@ class CoverageControllerTest(unittest.TestCase):
             min_x=-1.25,
             max_x=1.25,
             main_road_y=-1.3343,
-            scan_end_y=1.0,
+            scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
             transit_speed=0.30,
@@ -112,7 +112,7 @@ class CoverageControllerTest(unittest.TestCase):
             min_x=-1.25,
             max_x=1.25,
             main_road_y=-1.3343,
-            scan_end_y=1.0,
+            scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
             transit_speed=0.30,
@@ -143,7 +143,7 @@ class CoverageControllerTest(unittest.TestCase):
             min_x=-0.75,
             max_x=1.25,
             main_road_y=-1.33,
-            scan_end_y=1.0,
+            scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
             transit_speed=0.40,
@@ -332,7 +332,7 @@ class CoverageControllerTest(unittest.TestCase):
 
         command = controller.command(
             1.25,
-            1.0,
+            1.1,
             math.pi / 2.0,
             avoid_left=0.8,
             avoid_center=0.9,
@@ -355,10 +355,10 @@ class CoverageControllerTest(unittest.TestCase):
         self.assertTrue(
             controller.prefer_lane_end_turn_after_pickup(
                 target_x=0.40,
-                robot_y=1.0,
+                robot_y=1.1,
             )
         )
-        command = controller.command(1.25, 1.0, math.pi / 2.0)
+        command = controller.command(1.25, 1.1, math.pi / 2.0)
 
         self.assertEqual(command.phase, "ALIGN_SCAN_LANE_DOWN")
         self.assertGreater(command.angular_z, 0.0)
@@ -375,10 +375,10 @@ class CoverageControllerTest(unittest.TestCase):
         self.assertTrue(
             controller.prefer_lane_end_turn_after_pickup(
                 target_x=-0.40,
-                robot_y=1.0,
+                robot_y=1.1,
             )
         )
-        command = controller.command(1.25, 1.0, math.pi / 2.0)
+        command = controller.command(1.25, 1.1, math.pi / 2.0)
 
         self.assertEqual(command.phase, "ALIGN_SCAN_LANE_DOWN")
         self.assertLess(command.angular_z, 0.0)
@@ -393,11 +393,11 @@ class CoverageControllerTest(unittest.TestCase):
         controller.leg_index = 1
         controller.prefer_lane_end_turn_after_pickup(
             target_x=0.40,
-            robot_y=1.0,
+            robot_y=1.1,
         )
-        controller.begin_rejoin(robot_y=1.0)
+        controller.begin_rejoin(robot_y=1.1)
 
-        command = controller.command(1.25, 1.0, math.pi / 2.0)
+        command = controller.command(1.25, 1.1, math.pi / 2.0)
 
         self.assertFalse(controller.rejoin_active)
         self.assertEqual(command.phase, "ALIGN_SCAN_LANE_DOWN")
@@ -573,7 +573,7 @@ class CoverageControllerTest(unittest.TestCase):
             min_x=-1.25,
             max_x=1.25,
             main_road_y=-1.3343,
-            scan_end_y=1.0,
+            scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
             transit_speed=0.30,

@@ -109,6 +109,21 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_launches_expose_second_storage_visit_route(self):
+        required = {
+            "storage_second_staging_x",
+            "storage_second_staging_y",
+            "storage_second_exit_dash_duration_s",
+        }
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
+
     def test_launches_expose_pickup_vfh_motion_parameters(self):
         required = {
             "avoid_forward_linear_x",

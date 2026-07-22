@@ -490,28 +490,26 @@ COLLECTING
      `REJOIN_STORAGE_LANE`을 끝낸 뒤 보관소 이동을 시작한다.
 
 3. **주도로 복귀와 보관소 입구 x/y 보정**
-   - 현재 레인 x를 유지한 채 남쪽으로 내려가 `y=-1.3343 m` 주도로에
-     복귀한다.
-   - 남쪽 벽 ToF 거리로 주도로 y를 먼저 보정한다. 그다음 벽 각도가 10도
+   - 현재 레인 x를 유지한 채 1차 방문은 `y=-1.70 m`, 2차 방문은
+     `y=-1.40 m`까지 남쪽으로 이동한다.
+   - 남쪽 벽 ToF 거리로 방문별 y를 먼저 보정한다. 그다음 벽 각도가 10도
      이상이면 5도 이하까지 정렬하고 yaw를 `-90도`로 재설정한다.
-   - 주도로에서 서쪽을 바라보고 `(-1.25, -1.3343) m`까지 이동한다.
-   - 도착 뒤 서쪽 벽 ToF 각도를 0도 근처로 정렬하고 `x=-1.25 m`를
-     3 cm 이내로 보정한다. yaw는 변경하지 않는다. 예상 ToF 거리는 66 cm이며,
-     값이 없거나 오래되면 정지해서 기다린다.
-   - 1·2번 레인에서 복귀한 경우에는 x 보정 뒤 남쪽 벽을 바라보고 주도로
-     `y=-1.3343 m`를 한 번 더 보정한다. 3·4번 레인은 이 최종 y 보정을
+   - 서쪽을 바라보고 1차는 `x=-1.25 m`, 2차는 `x=-1.70 m`까지 이동한 뒤
+     서쪽 벽 ToF로 x를 3 cm 이내로 보정한다. yaw는 변경하지 않는다.
+   - 1·2번 레인에서 복귀한 경우에는 x 보정 뒤 남쪽 벽을 바라보고 방문별
+     y를 한 번 더 보정한다. 3·4번 레인은 이 최종 y 보정을
      생략하고 바로 보관소 진입을 시작한다.
 
 4. **서보 개방과 보관소 진입**
    - 필요한 입구 x/y 보정이 끝난 뒤 서보를 열고 기본 0.5초 기다린다.
-   - 입구 `(-1.25, -1.3343) m`에서 보관소 중심 `(-1.75, -1.75) m`까지
-     향하는 고정 yaw로 먼저 정렬한 뒤 `0.40 m/s`로 2.50초 연속 진입한다.
+   - 방문별 진입 기준점에서 보관소 접촉점 `(-1.80, -1.80) m`을 향하는
+     yaw로 먼저 정렬한 뒤 `0.40 m/s`로 2.50초 연속 진입한다.
      이 구간에서는 pose x/y로 방향을 다시 계산하거나 ToF로 중단하지 않는다.
    - 진입 정지 후 0.20초 안정화하고 pose를 `storage_center_x/y`로 보정한다.
 
 5. **같은 경로 후진과 출구 x 재보정**
    - pose 보정 반영을 확인한 뒤 서보를 연 상태로 같은 IMU yaw를 유지하며
-     `-0.40 m/s`로 기본 1.50초 후진한다.
+     `-0.40 m/s`로 1차 1.50초, 2차 1.10초 후진한다.
    - 후진이 끝나면 서보를 연 상태로 odometry yaw를 사용해 서쪽 180도로
      제자리 회전한다. 서쪽 정렬이 끝난 뒤 서보를 닫고 기본 0.5초 기다린다.
    - 서쪽 벽 ToF 거리로 `x=-1.25 m`를 먼저 보정한다. 거리 완료 후 벽 각도가
@@ -520,7 +518,8 @@ COLLECTING
      간주하되 yaw는 변경하지 않는 fallback을 사용한다.
 
 6. **역순 탐색 재개**
-   - 이미 주도로에 있으므로 북쪽으로 회전한 뒤 바로 역순 탐색을 시작한다.
+   - 출구 x 보정 뒤 `(-1.25, -1.3343) m`로 이동해 북쪽으로 회전한 다음
+     역순 탐색을 시작한다.
    - Coverage를 4→3→2→1번 역순으로 다시 시작한다. 4→3은 서쪽을 보고
      후진하며, 3→2와 2→1은 동쪽을 보고 전진한다. 각 이동은 waypoint 도착
      뒤 현재 바라보는 벽의 ToF로 벽 각도를 0도 근처로 정렬하고 x만 보정한다.
@@ -547,28 +546,38 @@ COLLECTING
 
 ```text
 주도로 y:          -1.3343 m
-보관소 입구:       (-1.25, -1.3343) m
-보관소 중심:       (-1.75, -1.75) m
+1차 진입 기준점:   (-1.25, -1.70) m
+2차 진입 기준점:   (-1.70, -1.40) m
+보관소 접촉점:     (-1.80, -1.80) m
 출구 ToF yaw:      180도(서쪽)
-고속 진입:         입구 -> 보관소 중심, 0.40 m/s, 2.50초
-후진:              보관소 중심 -> 입구, -0.40 m/s, 1.50초
+고속 진입:         진입 기준점 -> 보관소 접촉점, 0.40 m/s, 2.50초
+1차 후진:          접촉점 -> 1차 기준점, -0.40 m/s, 1.50초
+2차 후진:          접촉점 -> 2차 기준점, -0.40 m/s, 1.10초
 역순 탐색 yaw:     90도(북쪽)
 ```
+
+각 방문은 먼저 남쪽 벽 ToF로 기준점 y를 맞춘 뒤 서쪽 벽 ToF로 기준점 x를
+맞춘다. 1·2번 레인에서 돌아왔을 때만 남쪽 벽 ToF로 y를 한 번 더 보정하고,
+3·4번 레인에서는 앞의 y/x 보정 두 개만 수행한 뒤 바로 시간 기반 진입을 시작한다.
+시간 기반 후진이 끝나면 두 방문 모두 서쪽을 보고 `x=-1.25 m`로 ToF 보정한
+뒤 기존 역순 탐색 복귀 절차를 수행한다.
 
 실제 차체 중심이 40 cm 보관소 영역 안에 들어오지 않으면 통합 launch에서
 다음 값을 조정한다.
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
-  storage_main_road_y:=-1.3343 storage_staging_x:=-1.25 \
-  storage_center_x:=-1.75 storage_center_y:=-1.75 \
+  storage_main_road_y:=-1.3343 \
+  storage_staging_x:=-1.25 storage_staging_y:=-1.70 \
+  storage_second_staging_x:=-1.70 storage_second_staging_y:=-1.40 \
+  storage_center_x:=-1.80 storage_center_y:=-1.80 \
   storage_exit_x:=-1.25 \
   storage_x_entry_speed:=0.40 \
   storage_entry_dash_duration_s:=2.50 \
   storage_exit_reverse_speed:=0.40 \
   storage_exit_dash_duration_s:=1.50 \
+  storage_second_exit_dash_duration_s:=1.10 \
   storage_contact_settle_duration_s:=0.20 \
-  storage_dash_heading_deg:=-139.26 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_sensor_forward_offset_m:=0.09 \
   storage_exit_tof_fallback_timeout_s:=1.0 \
@@ -576,22 +585,23 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_tof_angle_release_rad:=0.0872664626
 ```
 
-보관소 진입 방향은 입구 `(-1.25, -1.3343)`에서 접촉 기준점
-`(-1.75, -1.75)` 쪽의 고정각 `storage_dash_heading_deg`(기본 `-139.26 deg`)로
-한 번 정렬한다.
+보관소 진입 방향은 방문 차수에 맞는 진입 기준점에서 접촉점 `(-1.80, -1.80)`을
+향하도록 한 번 계산해 정렬한다. 기본 진입각은 1차 약 `-169.7 deg`, 2차 약
+`-104.0 deg`이다.
 그 뒤에는 pose x/y로 목표 방향을 다시 계산하지 않고 IMU yaw만 유지하면서
 `storage_entry_dash_duration_s` 동안 연속 전진한다. 정지 및 접촉 안정화 후
 `storage_center_x/y`를 `/robot_pose/correct_x`, `/robot_pose/correct_y`로 동시에
 발행하며, 보정 반영을 확인한 다음 같은 yaw로
-`storage_exit_dash_duration_s` 동안 후진한다. 실제 로봇 속도에 따라 두 시간은
-현장에서 조정한다.
+1차는 `storage_exit_dash_duration_s`, 2차는
+`storage_second_exit_dash_duration_s` 동안 후진한다. 실제 로봇 속도에 따라
+두 시간을 현장에서 조정한다.
 
 후진이 끝나면 먼저 odometry yaw로 서쪽 180도를 바라보도록 제자리 회전하고,
 회전 완료 후 서보를 닫는다. 그다음 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
 각도가 10도 이상일 때만 회전을 시작하고, 시작된 회전은 5도 이하까지 계속한
 다음 pose yaw를 180도로 재설정한다.
 
-`storage_tof_correction_enabled:=false`를 사용하면 진입 전·후의 입구 x ToF와
+`storage_tof_correction_enabled:=false`를 사용하면 진입 전·후의 x ToF와
 1·2번 레인의 최종 y ToF 보정을 생략한다. 고정 yaw 시간 기반 진입·후진과
 보관소 접촉 pose x/y 보정은 그대로 수행한다. `storage_tof_xy_tolerance_m`
 기본값은 `0.03 m`이다.

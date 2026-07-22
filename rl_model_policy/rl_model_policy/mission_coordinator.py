@@ -70,6 +70,37 @@ def storage_phase_after_staging_x(lane_number):
     return MissionPhase.OPEN_STORAGE_ENTRY
 
 
+def storage_visit_number(delivered_count):
+    """Use the first route before any deposit and the second route afterward."""
+    if int(delivered_count) < 0:
+        raise ValueError("delivered_count cannot be negative")
+    return 1 if int(delivered_count) == 0 else 2
+
+
+def storage_staging_coordinates(
+    visit_number,
+    first_x,
+    first_y,
+    second_x,
+    second_y,
+):
+    """Return the configured pre-dash staging point for a storage visit."""
+    if int(visit_number) <= 0:
+        raise ValueError("storage visit number must be positive")
+    if int(visit_number) == 1:
+        return (float(first_x), float(first_y))
+    return (float(second_x), float(second_y))
+
+
+def storage_dash_heading_between(staging_x, staging_y, center_x, center_y):
+    """Point the timed storage dash from its corrected staging point to storage."""
+    dx = float(center_x) - float(staging_x)
+    dy = float(center_y) - float(staging_y)
+    if math.hypot(dx, dy) <= 1e-9:
+        raise ValueError("storage staging and center coordinates must differ")
+    return math.atan2(dy, dx)
+
+
 @dataclass(frozen=True)
 class NavigationCommand:
     linear_x: float

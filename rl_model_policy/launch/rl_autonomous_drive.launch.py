@@ -218,6 +218,8 @@ def generate_launch_description():
     storage_main_road_y = LaunchConfiguration("storage_main_road_y")
     storage_staging_x = LaunchConfiguration("storage_staging_x")
     storage_staging_y = LaunchConfiguration("storage_staging_y")
+    storage_second_staging_x = LaunchConfiguration("storage_second_staging_x")
+    storage_second_staging_y = LaunchConfiguration("storage_second_staging_y")
     storage_exit_x = LaunchConfiguration("storage_exit_x")
     storage_center_x = LaunchConfiguration("storage_center_x")
     storage_center_y = LaunchConfiguration("storage_center_y")
@@ -232,10 +234,12 @@ def generate_launch_description():
     storage_exit_dash_duration_s = LaunchConfiguration(
         "storage_exit_dash_duration_s"
     )
+    storage_second_exit_dash_duration_s = LaunchConfiguration(
+        "storage_second_exit_dash_duration_s"
+    )
     storage_contact_settle_duration_s = LaunchConfiguration(
         "storage_contact_settle_duration_s"
     )
-    storage_dash_heading_deg = LaunchConfiguration("storage_dash_heading_deg")
     storage_dash_heading_tolerance = LaunchConfiguration(
         "storage_dash_heading_tolerance"
     )
@@ -506,6 +510,8 @@ def generate_launch_description():
             "storage_main_road_y": storage_main_road_y,
             "storage_staging_x": storage_staging_x,
             "storage_staging_y": storage_staging_y,
+            "storage_second_staging_x": storage_second_staging_x,
+            "storage_second_staging_y": storage_second_staging_y,
             "storage_exit_x": storage_exit_x,
             "storage_center_x": storage_center_x,
             "storage_center_y": storage_center_y,
@@ -516,10 +522,12 @@ def generate_launch_description():
             "storage_exit_reverse_speed": storage_exit_reverse_speed,
             "storage_entry_dash_duration_s": storage_entry_dash_duration_s,
             "storage_exit_dash_duration_s": storage_exit_dash_duration_s,
+            "storage_second_exit_dash_duration_s": (
+                storage_second_exit_dash_duration_s
+            ),
             "storage_contact_settle_duration_s": (
                 storage_contact_settle_duration_s
             ),
-            "storage_dash_heading_deg": storage_dash_heading_deg,
             "storage_dash_heading_tolerance": storage_dash_heading_tolerance,
             "storage_dash_max_angular_speed": storage_dash_max_angular_speed,
             "storage_entry_tolerance": storage_entry_tolerance,
@@ -856,7 +864,7 @@ def generate_launch_description():
             DeclareLaunchArgument("coverage_min_x", default_value="-1.25"),
         DeclareLaunchArgument("coverage_max_x", default_value="1.25"),
         DeclareLaunchArgument("coverage_main_road_y", default_value="-1.3343"),
-        DeclareLaunchArgument("coverage_scan_end_y", default_value="1.0"),
+        DeclareLaunchArgument("coverage_scan_end_y", default_value="1.1"),
         DeclareLaunchArgument("coverage_lane_spacing", default_value="1.0"),
         DeclareLaunchArgument("coverage_scan_speed", default_value="0.24"),
         DeclareLaunchArgument("coverage_transit_speed", default_value="0.40"),
@@ -1006,10 +1014,18 @@ def generate_launch_description():
         DeclareLaunchArgument("target_object_count", default_value="7"),
         DeclareLaunchArgument("storage_main_road_y", default_value="-1.3343"),
             DeclareLaunchArgument("storage_staging_x", default_value="-1.25"),
-            DeclareLaunchArgument("storage_staging_y", default_value="-1.75"),
+            DeclareLaunchArgument("storage_staging_y", default_value="-1.70"),
+            DeclareLaunchArgument(
+                "storage_second_staging_x",
+                default_value="-1.70",
+            ),
+            DeclareLaunchArgument(
+                "storage_second_staging_y",
+                default_value="-1.40",
+            ),
             DeclareLaunchArgument("storage_exit_x", default_value="-1.25"),
-        DeclareLaunchArgument("storage_center_x", default_value="-1.75"),
-        DeclareLaunchArgument("storage_center_y", default_value="-1.75"),
+        DeclareLaunchArgument("storage_center_x", default_value="-1.80"),
+        DeclareLaunchArgument("storage_center_y", default_value="-1.80"),
         DeclareLaunchArgument("storage_entry_yaw_deg", default_value="-90.0"),
         DeclareLaunchArgument("storage_return_speed", default_value="0.25"),
             DeclareLaunchArgument("storage_entry_speed", default_value="0.30"),
@@ -1021,10 +1037,13 @@ def generate_launch_description():
         DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="2.50"),
         DeclareLaunchArgument("storage_exit_dash_duration_s", default_value="1.50"),
         DeclareLaunchArgument(
+            "storage_second_exit_dash_duration_s",
+            default_value="1.10",
+        ),
+        DeclareLaunchArgument(
             "storage_contact_settle_duration_s",
             default_value="0.20",
         ),
-        DeclareLaunchArgument("storage_dash_heading_deg", default_value="-139.26"),
         DeclareLaunchArgument(
             "storage_dash_heading_tolerance",
             default_value="0.05",

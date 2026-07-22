@@ -8,8 +8,11 @@ from rl_model_policy.mission_coordinator import (
     ReturnReason,
     reverse_storage_x_exit_command,
     storage_dash_heading,
+    storage_dash_heading_between,
     storage_phase_after_staging_x,
     storage_return_start_phase,
+    storage_staging_coordinates,
+    storage_visit_number,
     waypoint_avoidance_required,
     waypoint_command,
 )
@@ -130,6 +133,35 @@ class MissionCoordinatorTest(unittest.TestCase):
             storage_phase_after_staging_x(4),
             MissionPhase.OPEN_STORAGE_ENTRY,
         )
+
+    def test_storage_visit_routes_use_distinct_staging_coordinates(self):
+        self.assertEqual(storage_visit_number(0), 1)
+        self.assertEqual(storage_visit_number(4), 2)
+        self.assertEqual(
+            storage_staging_coordinates(1, -1.25, -1.70, -1.70, -1.40),
+            (-1.25, -1.70),
+        )
+        self.assertEqual(
+            storage_staging_coordinates(2, -1.25, -1.70, -1.70, -1.40),
+            (-1.70, -1.40),
+        )
+
+    def test_storage_dash_headings_point_from_each_staging_to_center(self):
+        first_heading = storage_dash_heading_between(
+            -1.25,
+            -1.70,
+            -1.80,
+            -1.80,
+        )
+        second_heading = storage_dash_heading_between(
+            -1.70,
+            -1.40,
+            -1.80,
+            -1.80,
+        )
+
+        self.assertAlmostEqual(math.degrees(first_heading), -169.695, places=3)
+        self.assertAlmostEqual(math.degrees(second_heading), -104.036, places=3)
 
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)

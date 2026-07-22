@@ -100,7 +100,7 @@ When no target has ever been seen, the node immediately enters
 a zero velocity command.
 
 The default coverage route scans `x = 1.25, 0.25, -0.75 m` from the
-lower main road at `y = -1.3343 m` up to `y = 1.0 m`. Tune it from the launch
+lower main road at `y = -1.3343 m` up to `y = 1.1 m`. Tune it from the launch
 command when the real arena alignment differs:
 
 ```bash
@@ -108,7 +108,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   coverage_min_x:=-1.75 \
   coverage_max_x:=1.25 \
   coverage_main_road_y:=-1.3343 \
-  coverage_scan_end_y:=1.0 \
+  coverage_scan_end_y:=1.1 \
   coverage_lane_spacing:=1.0
 ```
 
