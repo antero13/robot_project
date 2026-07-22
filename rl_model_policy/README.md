@@ -331,6 +331,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   target_timeout_s:=1.0 \
   target_bearing_prediction_enabled:=true \
   coverage_reacquire_duration_s:=1.5 \
+  coverage_reacquire_single_detection_duration_s:=0.4 \
+  coverage_reacquire_two_detection_duration_s:=0.7 \
   coverage_min_x:=-1.25 coverage_max_x:=1.25 \
   coverage_avoid_linear_scale:=0.70 \
   coverage_rejoin_speed:=0.20 \

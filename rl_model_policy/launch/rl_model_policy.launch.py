@@ -75,6 +75,12 @@ def generate_launch_description():
         'coverage_rejoin_coordinate_limit'
     )
     coverage_reacquire_duration_s = LaunchConfiguration('coverage_reacquire_duration_s')
+    coverage_reacquire_single_detection_duration_s = LaunchConfiguration(
+        'coverage_reacquire_single_detection_duration_s'
+    )
+    coverage_reacquire_two_detection_duration_s = LaunchConfiguration(
+        'coverage_reacquire_two_detection_duration_s'
+    )
     coverage_reacquire_reverse_after_s = LaunchConfiguration(
         'coverage_reacquire_reverse_after_s'
     )
@@ -344,6 +350,14 @@ def generate_launch_description():
             default_value='1.80',
         ),
         DeclareLaunchArgument('coverage_reacquire_duration_s', default_value='1.5'),
+        DeclareLaunchArgument(
+            'coverage_reacquire_single_detection_duration_s',
+            default_value='0.4',
+        ),
+        DeclareLaunchArgument(
+            'coverage_reacquire_two_detection_duration_s',
+            default_value='0.7',
+        ),
         DeclareLaunchArgument(
             'coverage_reacquire_reverse_after_s',
             default_value='0.75',
@@ -717,6 +731,14 @@ def generate_launch_description():
                 ),
                 'coverage_reacquire_duration_s': ParameterValue(
                     coverage_reacquire_duration_s,
+                    value_type=float,
+                ),
+                'coverage_reacquire_single_detection_duration_s': ParameterValue(
+                    coverage_reacquire_single_detection_duration_s,
+                    value_type=float,
+                ),
+                'coverage_reacquire_two_detection_duration_s': ParameterValue(
+                    coverage_reacquire_two_detection_duration_s,
                     value_type=float,
                 ),
                 'coverage_reacquire_reverse_after_s': ParameterValue(

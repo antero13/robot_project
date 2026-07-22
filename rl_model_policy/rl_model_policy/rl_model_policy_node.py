@@ -64,7 +64,10 @@ from rl_model_policy.storage_tof_correction import (
 from rl_model_policy.storage_exit_tof_correction import (
     make_storage_exit_tof_command,
 )
-from rl_model_policy.target_reacquisition import reacquire_angular_velocity
+from rl_model_policy.target_reacquisition import (
+    reacquire_angular_velocity,
+    reacquire_duration_for_evidence,
+)
 from rl_model_policy.target_confirmation import target_is_confirmed
 from rl_model_policy.target_activation import (
     coverage_phase_allows_target_search,
@@ -168,6 +171,14 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("coverage_reacquire_duration_s", 1.5)
         self.declare_parameter("coverage_reacquire_reverse_after_s", 0.75)
         self.declare_parameter("coverage_reacquire_angular_z", 0.35)
+        self.declare_parameter(
+            "coverage_reacquire_single_detection_duration_s",
+            0.4,
+        )
+        self.declare_parameter(
+            "coverage_reacquire_two_detection_duration_s",
+            0.7,
+        )
         self.declare_parameter("storage_repickup_guard_enabled", True)
         self.declare_parameter("storage_repickup_guard_start_y", -0.95)
         self.declare_parameter("lane_tof_correction_enabled", True)
@@ -394,6 +405,8 @@ class DeterministicMissionControllerNode(Node):
             self.control_mode = self.MODE_LEAVE_START
         self.had_visible_target = False
         self.target_lost_started_at = None
+        self.target_reacquire_detection_count = 0
+        self.target_reacquire_confirmed = False
         self.coverage_command = None
         self.latest_wall_distance_m = None
         self.latest_wall_angle_rad = None
@@ -696,8 +709,7 @@ class DeterministicMissionControllerNode(Node):
             self.reset_lane_tof_alignment()
             self.reset_storage_tof_alignment()
             self.mission_waypoint = None
-            self.had_visible_target = False
-            self.target_lost_started_at = None
+            self.reset_target_reacquisition()
             self.target_visibility_history.clear()
             self.clear_near_target_candidate()
             self.pickup_target_x = None
@@ -748,8 +760,7 @@ class DeterministicMissionControllerNode(Node):
             self.reset_main_road_tof_alignment()
             self.reset_lane_tof_alignment()
             self.reset_storage_tof_alignment()
-            self.had_visible_target = False
-            self.target_lost_started_at = None
+            self.reset_target_reacquisition()
             self.target_visibility_history.clear()
             self.clear_near_target_candidate()
             self.motion_paused = False
@@ -814,6 +825,8 @@ class DeterministicMissionControllerNode(Node):
             and (tracking_target or self.target_confirmation_is_met())
         )
         confirmed_target = target if target_control_ready else None
+        if confirmed_target is not None:
+            self.target_reacquire_confirmed = True
         self.update_near_target_candidate(confirmed_target)
         near_target_loss_ready = self.near_target_loss_pickup_ready()
         pickup_avoid_required = (
@@ -909,6 +922,7 @@ class DeterministicMissionControllerNode(Node):
                 elapsed_s=self.target_lost_age_s(),
                 reverse_after_s=self.get_float("coverage_reacquire_reverse_after_s"),
                 angular_speed=self.get_float("coverage_reacquire_angular_z"),
+                reverse_enabled=self.target_reacquire_confirmed,
             )
         elif self.active and self.coverage_is_enabled():
             linear_x, angular_z = self.coverage_search_command(bins)
@@ -1013,8 +1027,7 @@ class DeterministicMissionControllerNode(Node):
         self.latest_target_center_y = None
         self.latest_target_center_y_time = None
         self.target_visibility_history.clear()
-        self.had_visible_target = False
-        self.target_lost_started_at = None
+        self.reset_target_reacquisition()
         self.filtered_action = [0.0, 0.0]
         self.get_logger().info(
             "Returning to storage: "
@@ -2194,8 +2207,7 @@ class DeterministicMissionControllerNode(Node):
         self.latest_target_time = None
         self.latest_target_label = None
         self.latest_target_label_time = None
-        self.had_visible_target = False
-        self.target_lost_started_at = None
+        self.reset_target_reacquisition()
         self.change_grab_state(self.GRAB_TRACKING)
         self.set_control_mode(self.MODE_COVERAGE_SEARCH)
         self.get_logger().info(
@@ -2242,6 +2254,16 @@ class DeterministicMissionControllerNode(Node):
 
     def update_target_history(self, target):
         if target is not None:
+            detections = max(1, sum(self.target_visibility_history))
+            self.target_reacquire_detection_count = max(
+                self.target_reacquire_detection_count,
+                detections,
+            )
+            if (
+                self.control_mode == self.MODE_TRACK_TARGET
+                or self.target_confirmation_is_met()
+            ):
+                self.target_reacquire_confirmed = True
             self.had_visible_target = True
             self.target_lost_started_at = None
             return
@@ -2252,11 +2274,26 @@ class DeterministicMissionControllerNode(Node):
         if not self.had_visible_target or self.target_lost_started_at is None:
             return False
         elapsed_s = self.target_lost_age_s()
-        if elapsed_s <= self.get_float("coverage_reacquire_duration_s"):
+        duration_s = self.target_reacquire_duration_s()
+        if duration_s > 0.0 and elapsed_s <= duration_s:
             return True
+        self.reset_target_reacquisition()
+        return False
+
+    def target_reacquire_duration_s(self):
+        return reacquire_duration_for_evidence(
+            self.target_reacquire_detection_count,
+            self.target_reacquire_confirmed,
+            self.get_float("coverage_reacquire_single_detection_duration_s"),
+            self.get_float("coverage_reacquire_two_detection_duration_s"),
+            self.get_float("coverage_reacquire_duration_s"),
+        )
+
+    def reset_target_reacquisition(self):
         self.had_visible_target = False
         self.target_lost_started_at = None
-        return False
+        self.target_reacquire_detection_count = 0
+        self.target_reacquire_confirmed = False
 
     def target_confirmation_is_met(self):
         return target_is_confirmed(
@@ -2887,8 +2924,7 @@ class DeterministicMissionControllerNode(Node):
         self.latest_target_center_y = None
         self.latest_target_center_y_time = None
         self.target_visibility_history.clear()
-        self.had_visible_target = False
-        self.target_lost_started_at = None
+        self.reset_target_reacquisition()
         self.clear_near_target_candidate()
 
     def resume_coverage_after_pickup(self):
@@ -3119,6 +3155,12 @@ class DeterministicMissionControllerNode(Node):
                     "window": self.target_confirmation_window,
                     "required": self.target_confirmation_min_detections,
                     "confirmed": self.target_confirmation_is_met(),
+                },
+                "target_reacquisition": {
+                    "detection_count": self.target_reacquire_detection_count,
+                    "confirmed": self.target_reacquire_confirmed,
+                    "duration_s": self.target_reacquire_duration_s(),
+                    "reverse_enabled": self.target_reacquire_confirmed,
                 },
                 "target_activation": {
                     "center_y": self.current_target_center_y(),

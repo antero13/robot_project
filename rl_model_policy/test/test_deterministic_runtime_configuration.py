@@ -74,6 +74,21 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
         self.assertTrue(
             required.issubset(self.declared_launch_arguments(self.policy_launch_source))
         )
+
+    def test_launches_expose_candidate_reacquisition_durations(self):
+        required = {
+            "coverage_reacquire_single_detection_duration_s",
+            "coverage_reacquire_two_detection_duration_s",
+            "coverage_reacquire_duration_s",
+        }
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
         self.assertTrue(
             required.issubset(
                 self.declared_launch_arguments(self.autonomous_launch_source)
