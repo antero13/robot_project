@@ -301,20 +301,20 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertEqual(storage_visit_number(0), 1)
         self.assertEqual(storage_visit_number(4), 2)
         self.assertEqual(
-            storage_staging_coordinates(1, -1.25, -1.70, -1.70, -1.40),
+            storage_staging_coordinates(1, -1.25, -1.70, -1.60, -1.40),
             (-1.25, -1.70),
         )
         self.assertEqual(
-            storage_staging_coordinates(2, -1.25, -1.70, -1.70, -1.40),
-            (-1.70, -1.40),
+            storage_staging_coordinates(2, -1.25, -1.70, -1.60, -1.40),
+            (-1.60, -1.40),
         )
 
     def test_storage_dash_headings_are_selected_by_visit(self):
-        first_heading = storage_visit_dash_heading(1, -165.0, -108.0)
-        second_heading = storage_visit_dash_heading(2, -165.0, -108.0)
+        first_heading = storage_visit_dash_heading(1, -165.0, -113.0)
+        second_heading = storage_visit_dash_heading(2, -165.0, -113.0)
 
         self.assertAlmostEqual(math.degrees(first_heading), -165.0)
-        self.assertAlmostEqual(math.degrees(second_heading), -108.0)
+        self.assertAlmostEqual(math.degrees(second_heading), -113.0)
 
     def test_timed_storage_motion_does_not_require_bounded_xy(self):
         self.assertFalse(storage_pose_bounds_required(MissionPhase.ENTER_STORAGE))

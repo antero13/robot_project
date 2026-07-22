@@ -1033,7 +1033,7 @@ def generate_launch_description():
             DeclareLaunchArgument("storage_staging_y", default_value="-1.70"),
             DeclareLaunchArgument(
                 "storage_second_staging_x",
-                default_value="-1.70",
+                default_value="-1.60",
             ),
             DeclareLaunchArgument(
                 "storage_second_staging_y",
@@ -1050,7 +1050,7 @@ def generate_launch_description():
             "storage_exit_reverse_speed",
             default_value="0.40",
         ),
-        DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="1.80"),
+        DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="1.70"),
         DeclareLaunchArgument(
             "storage_second_entry_dash_duration_s",
             default_value="1.40",
@@ -1061,7 +1061,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "storage_second_entry_dash_heading_deg",
-            default_value="-108.0",
+            default_value="-113.0",
         ),
         DeclareLaunchArgument("storage_exit_dash_duration_s", default_value="1.50"),
         DeclareLaunchArgument(

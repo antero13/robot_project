@@ -547,10 +547,11 @@ COLLECTING
 ```text
 주도로 y:          -1.3343 m
 1차 진입 기준점:   (-1.25, -1.70) m
-2차 진입 기준점:   (-1.70, -1.40) m
+2차 진입 기준점:   (-1.60, -1.40) m
 보관소 접촉점:     (-1.80, -1.80) m
 출구 ToF yaw:      180도(서쪽)
-고속 진입:         진입 기준점 -> 보관소 접촉점, 0.40 m/s, 2.50초
+1차 고속 진입:     1차 기준점에서 -165도, 0.40 m/s, 1.70초
+2차 고속 진입:     2차 기준점에서 -113도, 0.40 m/s, 1.40초
 1차 후진:          접촉점 -> 1차 기준점, -0.40 m/s, 1.50초
 2차 후진:          접촉점 -> 2차 기준점, -0.40 m/s, 1.10초
 역순 탐색 yaw:     90도(북쪽)
@@ -569,14 +570,14 @@ COLLECTING
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_main_road_y:=-1.3343 \
   storage_staging_x:=-1.25 storage_staging_y:=-1.70 \
-  storage_second_staging_x:=-1.70 storage_second_staging_y:=-1.40 \
+  storage_second_staging_x:=-1.60 storage_second_staging_y:=-1.40 \
   storage_center_x:=-1.80 storage_center_y:=-1.80 \
   storage_exit_x:=-1.25 \
   storage_x_entry_speed:=0.40 \
-  storage_entry_dash_duration_s:=1.80 \
+  storage_entry_dash_duration_s:=1.70 \
   storage_second_entry_dash_duration_s:=1.40 \
   storage_entry_dash_heading_deg:=-165.0 \
-  storage_second_entry_dash_heading_deg:=-108.0 \
+  storage_second_entry_dash_heading_deg:=-113.0 \
   storage_exit_reverse_speed:=0.40 \
   storage_exit_dash_duration_s:=1.50 \
   storage_second_exit_dash_duration_s:=1.10 \
@@ -589,12 +590,12 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 ```
 
 보관소 시간제 진입 중에도 pose tracker는 `cmd_vel`과 IMU를 이용해 x/y와 yaw를
-계속 갱신한다. 1차는 1.8초, 2차는 1.4초 전진한 뒤 pose x/y를
+계속 갱신한다. 1차는 1.7초, 2차는 1.4초 전진한 뒤 pose x/y를
 `(-1.80, -1.80)`으로 보정하고, 보정 반영을 확인한 다음 후진한다.
 
 보관소 진입 방향은 방문 차수별 고정값을 사용한다. 1차는
 `storage_entry_dash_heading_deg=-165 deg`, 2차는
-`storage_second_entry_dash_heading_deg=-108 deg`로 정렬한다.
+`storage_second_entry_dash_heading_deg=-113 deg`로 정렬한다.
 그 뒤에는 pose x/y로 목표 방향을 다시 계산하지 않고 IMU yaw만 유지하면서
 1차는 `storage_entry_dash_duration_s`, 2차는
 `storage_second_entry_dash_duration_s` 동안 연속 전진한다. 정지 및 접촉 안정화 후
