@@ -374,11 +374,12 @@ class CoverageControllerTest(unittest.TestCase):
         controller.leg_index = 1
 
         self.assertTrue(
-            controller.prefer_lane_end_turn_after_pickup(
+            controller.prepare_resume_after_pickup(
                 target_x=0.40,
                 robot_y=1.1,
             )
         )
+        self.assertEqual(controller.current_leg.phase, "SCAN_LANE_DOWN")
         command = controller.command(1.25, 1.1, math.pi / 2.0)
 
         self.assertEqual(command.phase, "ALIGN_SCAN_LANE_DOWN")
@@ -394,11 +395,12 @@ class CoverageControllerTest(unittest.TestCase):
         controller.leg_index = 1
 
         self.assertTrue(
-            controller.prefer_lane_end_turn_after_pickup(
+            controller.prepare_resume_after_pickup(
                 target_x=-0.40,
                 robot_y=1.1,
             )
         )
+        self.assertEqual(controller.current_leg.phase, "SCAN_LANE_DOWN")
         command = controller.command(1.25, 1.1, math.pi / 2.0)
 
         self.assertEqual(command.phase, "ALIGN_SCAN_LANE_DOWN")
@@ -412,7 +414,7 @@ class CoverageControllerTest(unittest.TestCase):
             turn_in_place_threshold=0.65,
         )
         controller.leg_index = 1
-        controller.prefer_lane_end_turn_after_pickup(
+        controller.prepare_resume_after_pickup(
             target_x=0.40,
             robot_y=1.1,
         )
@@ -433,7 +435,7 @@ class CoverageControllerTest(unittest.TestCase):
         )
         controller.leg_index = 1
         self.assertTrue(
-            controller.prefer_lane_end_turn_after_pickup(
+            controller.prepare_resume_after_pickup(
                 target_x=0.40,
                 robot_y=1.46,
             )
@@ -443,8 +445,101 @@ class CoverageControllerTest(unittest.TestCase):
         command = controller.command(1.25, 1.46, math.pi / 2.0)
 
         self.assertFalse(controller.rejoin_active)
-        self.assertEqual(command.phase, "ALIGN_SCAN_LANE_UP")
+        self.assertEqual(controller.current_leg.phase, "SCAN_LANE_DOWN")
+        self.assertEqual(command.phase, "ALIGN_SCAN_LANE_DOWN")
         self.assertGreater(command.angular_z, 0.0)
+
+    def test_ten_hz_lane_end_turn_hands_off_without_extra_revolution(self):
+        controller = CoverageController(
+            make_legs(),
+            heading_gain=2.4,
+            max_angular_speed=1.2,
+            turn_in_place_threshold=0.65,
+        )
+        controller.leg_index = 1
+        controller.prepare_resume_after_pickup(target_x=0.40, robot_y=1.46)
+
+        x = 1.25
+        y = 1.46
+        yaw = math.pi / 2.0
+        total_rotation = 0.0
+        phases = []
+        for _ in range(80):
+            command = controller.command(x, y, yaw)
+            phases.append(command.phase)
+            yaw_step = command.angular_z * 0.1
+            total_rotation += abs(yaw_step)
+            yaw = normalize_angle(yaw + yaw_step)
+            if command.linear_x > 0.0:
+                break
+
+        self.assertNotIn("ALIGN_SCAN_LANE_UP", phases)
+        self.assertEqual(controller.current_leg.phase, "SCAN_LANE_DOWN")
+        self.assertLess(total_rotation, math.radians(210.0))
+        self.assertGreater(command.linear_x, 0.0)
+
+    def test_second_top_pickup_does_not_rearm_lane_end_sweep(self):
+        controller = CoverageController(make_legs())
+        controller.leg_index = 2
+
+        preferred = controller.prepare_resume_after_pickup(
+            target_x=0.35,
+            robot_y=1.46,
+        )
+
+        self.assertFalse(preferred)
+        self.assertEqual(controller.current_leg.phase, "SCAN_LANE_DOWN")
+        self.assertIsNone(controller.preferred_lane_end_turn_direction)
+
+    def test_recorded_second_pickup_pose_rejoins_without_overrotation(self):
+        controller = CoverageController(
+            make_legs(),
+            heading_tolerance=0.08,
+            heading_gain=2.4,
+            max_angular_speed=1.2,
+            turn_in_place_threshold=0.65,
+            rejoin_speed=0.42,
+        )
+        controller.leg_index = 2
+        self.assertFalse(
+            controller.prepare_resume_after_pickup(
+                target_x=0.35,
+                robot_y=1.4525,
+            )
+        )
+        controller.begin_rejoin(robot_y=1.4525)
+
+        x = 0.9073
+        y = 1.4525
+        yaw = math.radians(174.7)
+        stationary_rotation = 0.0
+        max_stationary_rotation = 0.0
+        phases = []
+        for _ in range(300):
+            command = controller.command(x, y, yaw)
+            phases.append(command.phase)
+            yaw_step = command.angular_z * 0.1
+            if abs(command.linear_x) < 1e-9 and abs(command.angular_z) > 1e-9:
+                stationary_rotation += abs(yaw_step)
+            else:
+                max_stationary_rotation = max(
+                    max_stationary_rotation,
+                    stationary_rotation,
+                )
+                stationary_rotation = 0.0
+            yaw = normalize_angle(yaw + yaw_step)
+            x += command.linear_x * math.cos(yaw) * 0.1
+            y += command.linear_x * math.sin(yaw) * 0.1
+            if y < 0.80 and command.phase == "SCAN_LANE_DOWN":
+                break
+
+        max_stationary_rotation = max(
+            max_stationary_rotation,
+            stationary_rotation,
+        )
+        self.assertNotIn("ALIGN_SCAN_LANE_UP", phases)
+        self.assertLess(max_stationary_rotation, math.radians(180.0))
+        self.assertLess(y, 0.80)
 
     def test_pickup_away_from_lane_end_does_not_override_turn(self):
         controller = CoverageController(make_legs())

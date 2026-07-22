@@ -241,6 +241,17 @@ class CoverageController:
         self.preferred_lane_end_turn_direction = 1.0 if target_x > 0.0 else -1.0
         return True
 
+    def prepare_resume_after_pickup(self, target_x, robot_y):
+        """Advance a completed upward scan before rejoining the active lane."""
+        preferred_turn = self.prefer_lane_end_turn_after_pickup(target_x, robot_y)
+        if preferred_turn:
+            # Target approach may carry the robot beyond the top waypoint. The
+            # upward leg is complete even when Euclidean waypoint tolerance was
+            # missed, so resume on the downward leg instead of driving back to
+            # the stale upper waypoint.
+            self.complete_current_leg("SCAN_LANE_UP")
+        return preferred_turn
+
     def cancel_preferred_lane_end_turn(self):
         self.preferred_lane_end_turn_direction = None
 
@@ -382,12 +393,19 @@ class CoverageController:
         )
         if direction is None or not turning_back_from_top:
             return heading_error
-        if abs(heading_error) <= self.heading_tolerance:
+        directed_error = (
+            (float(desired_yaw) - float(robot_yaw)) % (2.0 * math.pi)
+            if direction > 0.0
+            else -((float(robot_yaw) - float(desired_yaw)) % (2.0 * math.pi))
+        )
+        # The preference only selects which side of the lane-end U-turn to
+        # sweep. Hand control back to the normal signed PD error before the
+        # target heading so an overshoot can reverse instead of wrapping to a
+        # nearly complete extra revolution.
+        if abs(directed_error) <= self.turn_in_place_threshold:
             self.preferred_lane_end_turn_direction = None
             return heading_error
-        if direction > 0.0:
-            return (float(desired_yaw) - float(robot_yaw)) % (2.0 * math.pi)
-        return -((float(robot_yaw) - float(desired_yaw)) % (2.0 * math.pi))
+        return directed_error
 
     def _rejoin_command(self, robot_x, robot_y, robot_yaw):
         target_x = self.current_leg.target_x

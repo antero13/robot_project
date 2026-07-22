@@ -325,6 +325,8 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("gripper_open_position", 1000)
         self.declare_parameter("gripper_closed_position", 300)
         self.declare_parameter("gripper_move_duration_s", 0.5)
+        self.declare_parameter("gripper_open_before_start", True)
+        self.declare_parameter("start_gripper_close_delay_s", 0.5)
         self.declare_parameter("grab_center_tolerance", 0.18)
         self.declare_parameter("grab_area_ratio", 0.70)
         self.declare_parameter("grab_detection_timeout_s", 0.25)
@@ -397,6 +399,7 @@ class DeterministicMissionControllerNode(Node):
         self.grab_state_started_at = self.get_clock().now()
         self.grab_state_elapsed_offset_s = 0.0
         self.motion_paused = False
+        self.start_motion_not_before_s = None
         self.pickup_label = None
         self.pickup_target_x = None
         self.control_mode = self.MODE_IDLE
@@ -564,6 +567,23 @@ class DeterministicMissionControllerNode(Node):
             10,
         )
 
+        self.idle_gripper_timer = None
+        if self.active:
+            self.command_gripper(open_gripper=False)
+            self.start_motion_not_before_s = (
+                self.now_s() + self.get_float("start_gripper_close_delay_s")
+            )
+        elif (
+            bool(self.get_parameter("gripper_enabled").value)
+            and bool(self.get_parameter("gripper_open_before_start").value)
+        ):
+            # Delay the first command briefly so the servo controller has time
+            # to match this publisher after all launch processes start.
+            self.idle_gripper_timer = self.create_timer(
+                0.75,
+                self.open_gripper_before_start,
+            )
+
         timer_rate_hz = self.get_float("timer_rate_hz")
         self.timer = self.create_timer(1.0 / timer_rate_hz, self.tick)
 
@@ -721,6 +741,9 @@ class DeterministicMissionControllerNode(Node):
             self.motion_paused = False
             self.change_grab_state(self.GRAB_TRACKING)
             self.command_gripper(open_gripper=False)
+            self.start_motion_not_before_s = (
+                self.now_s() + self.get_float("start_gripper_close_delay_s")
+            )
             self.active = True
             self.begin_leave_start()
             self.get_logger().info("Deterministic mission controller started")
@@ -730,6 +753,7 @@ class DeterministicMissionControllerNode(Node):
             self.set_motion_paused(False)
         elif command == "stop":
             self.active = False
+            self.start_motion_not_before_s = None
             self.mission.stop(self.now_s())
             self.motion_paused = False
             self.raw_action = [0.0, 0.0]
@@ -742,6 +766,7 @@ class DeterministicMissionControllerNode(Node):
             self.get_logger().info("Deterministic mission controller stopped")
         elif command == "reset":
             self.active = False
+            self.start_motion_not_before_s = None
             self.mission.reset()
             self.storage_visit_number = 1
             self.latest_target = None
@@ -775,7 +800,11 @@ class DeterministicMissionControllerNode(Node):
             self.cancel_leave_start()
             self.set_control_mode(self.MODE_IDLE)
             self.change_grab_state(self.GRAB_TRACKING)
-            self.command_gripper(open_gripper=False)
+            self.command_gripper(
+                open_gripper=bool(
+                    self.get_parameter("gripper_open_before_start").value
+                )
+            )
             self.publish_cmd(0.0, 0.0)
             self.get_logger().info("Deterministic mission controller reset")
         elif command in ("return", "return_storage"):
@@ -854,7 +883,12 @@ class DeterministicMissionControllerNode(Node):
             )
             else None
         )
-        if self.active and self.motion_paused:
+        if self.active and self.start_motion_is_held(now_s):
+            linear_x, angular_z = (0.0, 0.0)
+            self.raw_action = [0.0, 0.0]
+            self.filtered_action = [0.0, 0.0]
+            self.coverage_command = None
+        elif self.active and self.motion_paused:
             self.pause_storage_dash_timer()
             if self.grab_state != self.GRAB_TRACKING:
                 self.set_control_mode(self.MODE_GRAB_SEQUENCE)
@@ -979,6 +1013,35 @@ class DeterministicMissionControllerNode(Node):
         self.motion_paused = False
         self.grab_state_started_at = self.get_clock().now()
         self.get_logger().info("Base motion resumed")
+
+    def open_gripper_before_start(self):
+        if (
+            self.active
+            or not bool(self.get_parameter("gripper_enabled").value)
+            or not bool(self.get_parameter("gripper_open_before_start").value)
+        ):
+            self.cancel_idle_gripper_timer()
+            return
+        self.command_gripper(open_gripper=True)
+        gripper_type = str(self.get_parameter("gripper_type").value).strip().lower()
+        publisher = (
+            self.bus_servo_pub if gripper_type == "bus" else self.pwm_servo_pub
+        )
+        if publisher.get_subscription_count() > 0:
+            self.cancel_idle_gripper_timer()
+
+    def cancel_idle_gripper_timer(self):
+        if self.idle_gripper_timer is not None:
+            self.idle_gripper_timer.cancel()
+            self.idle_gripper_timer = None
+
+    def start_motion_is_held(self, now_s):
+        if self.start_motion_not_before_s is None:
+            return False
+        if float(now_s) < float(self.start_motion_not_before_s):
+            return True
+        self.start_motion_not_before_s = None
+        return False
 
     def prepare_storage_return(self):
         self.cancel_leave_start()
@@ -2934,7 +2997,7 @@ class DeterministicMissionControllerNode(Node):
         self.clear_near_target_candidate()
 
     def resume_coverage_after_pickup(self):
-        preferred_turn = self.coverage_controller.prefer_lane_end_turn_after_pickup(
+        preferred_turn = self.coverage_controller.prepare_resume_after_pickup(
             self.pickup_target_x,
             self.robot_y,
         )

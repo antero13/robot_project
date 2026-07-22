@@ -274,6 +274,22 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_launches_expose_prestart_gripper_controls(self):
+        required = {
+            "gripper_open_before_start",
+            "start_gripper_close_delay_s",
+        }
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
+        self.assertIn("def open_gripper_before_start", self.node_source)
+        self.assertIn("def start_motion_is_held", self.node_source)
+
 
 if __name__ == "__main__":
     unittest.main()

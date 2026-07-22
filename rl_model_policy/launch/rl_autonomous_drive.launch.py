@@ -210,6 +210,10 @@ def generate_launch_description():
     gripper_open_position = LaunchConfiguration("gripper_open_position")
     gripper_closed_position = LaunchConfiguration("gripper_closed_position")
     gripper_move_duration_s = LaunchConfiguration("gripper_move_duration_s")
+    gripper_open_before_start = LaunchConfiguration("gripper_open_before_start")
+    start_gripper_close_delay_s = LaunchConfiguration(
+        "start_gripper_close_delay_s"
+    )
     grab_center_tolerance = LaunchConfiguration("grab_center_tolerance")
     grab_area_ratio = LaunchConfiguration("grab_area_ratio")
     grab_detection_timeout_s = LaunchConfiguration("grab_detection_timeout_s")
@@ -524,6 +528,8 @@ def generate_launch_description():
             "gripper_open_position": gripper_open_position,
             "gripper_closed_position": gripper_closed_position,
             "gripper_move_duration_s": gripper_move_duration_s,
+            "gripper_open_before_start": gripper_open_before_start,
+            "start_gripper_close_delay_s": start_gripper_close_delay_s,
             "grab_center_tolerance": grab_center_tolerance,
             "grab_area_ratio": grab_area_ratio,
             "grab_detection_timeout_s": grab_detection_timeout_s,
@@ -1171,6 +1177,8 @@ def generate_launch_description():
         DeclareLaunchArgument("gripper_open_position", default_value="1000"),
         DeclareLaunchArgument("gripper_closed_position", default_value="300"),
         DeclareLaunchArgument("gripper_move_duration_s", default_value="0.5"),
+        DeclareLaunchArgument("gripper_open_before_start", default_value="true"),
+        DeclareLaunchArgument("start_gripper_close_delay_s", default_value="0.5"),
         DeclareLaunchArgument("grab_center_tolerance", default_value="0.18"),
         DeclareLaunchArgument("grab_area_ratio", default_value="0.70"),
         DeclareLaunchArgument("grab_detection_timeout_s", default_value="0.25"),
