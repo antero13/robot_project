@@ -58,13 +58,13 @@ def make_main_road_tof_command(
 ):
     """Correct main-road y first, then conditionally square to the south wall.
 
-    Angle alignment uses hysteresis: it starts only at ``angle_trigger_rad``
-    and, once started, continues until ``angle_release_rad`` is reached.
+    Separate trigger/release values can provide hysteresis. Equal values use
+    one fixed angle tolerance: correction runs above it and completes within it.
     """
     angle_trigger_rad = float(angle_trigger_rad)
     angle_release_rad = float(angle_release_rad)
-    if not 0.0 <= angle_release_rad < angle_trigger_rad:
-        raise ValueError("angle thresholds must satisfy 0 <= release < trigger")
+    if not 0.0 <= angle_release_rad <= angle_trigger_rad:
+        raise ValueError("angle thresholds must satisfy 0 <= release <= trigger")
 
     desired_yaw = -math.pi / 2.0
     heading_error = normalize_angle(desired_yaw - float(robot_yaw))

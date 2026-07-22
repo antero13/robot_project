@@ -30,6 +30,33 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             and node.args
         }
 
+    @staticmethod
+    def declared_launch_defaults(source):
+        tree = ast.parse(source)
+        defaults = {}
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "DeclareLaunchArgument"
+                and node.args
+            ):
+                name = ast.literal_eval(node.args[0])
+                default_node = next(
+                    (
+                        keyword.value
+                        for keyword in node.keywords
+                        if keyword.arg == "default_value"
+                    ),
+                    None,
+                )
+                if default_node is not None:
+                    try:
+                        defaults[name] = ast.literal_eval(default_node)
+                    except (TypeError, ValueError):
+                        pass
+        return defaults
+
     def test_runtime_has_no_rl_model_loading_or_inference(self):
         for forbidden in (
             "import torch",
@@ -160,6 +187,56 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             "self.publish_pose_yaw_correction(corrected_yaw)",
             self.node_source,
         )
+
+    def test_storage_rotation_limit_is_reduced_to_point_eight(self):
+        self.assertIn(
+            'declare_parameter("storage_max_angular_speed", 0.80)',
+            self.node_source,
+        )
+
+    def test_all_tof_alignment_thresholds_are_four_degrees(self):
+        names = (
+            "lane_tof_wall_angle_tolerance_rad",
+            "main_road_tof_angle_trigger_rad",
+            "main_road_tof_angle_release_rad",
+            "storage_tof_wall_angle_tolerance_rad",
+            "storage_exit_tof_angle_trigger_rad",
+            "storage_exit_tof_angle_release_rad",
+        )
+        for name in names:
+            self.assertIn(f'"{name}", math.radians(4.0)', self.node_source)
+        for source in (self.policy_launch_source, self.autonomous_launch_source):
+            defaults = self.declared_launch_defaults(source)
+            for name in names:
+                self.assertEqual(defaults[name], "0.0698131701")
+
+    def test_second_storage_repush_speed_is_point_thirteen(self):
+        self.assertIn(
+            'declare_parameter("storage_second_repush_speed", 0.13)',
+            self.node_source,
+        )
+        for source in (
+            self.policy_launch_source,
+            self.autonomous_launch_source,
+        ):
+            tree = ast.parse(source)
+            declarations = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "DeclareLaunchArgument"
+                and node.args
+                and ast.literal_eval(node.args[0])
+                == "storage_second_repush_speed"
+            ]
+            self.assertEqual(len(declarations), 1)
+            default_value = next(
+                keyword.value
+                for keyword in declarations[0].keywords
+                if keyword.arg == "default_value"
+            )
+            self.assertEqual(ast.literal_eval(default_value), "0.13")
 
     def test_launches_expose_second_storage_visit_route(self):
         required = {

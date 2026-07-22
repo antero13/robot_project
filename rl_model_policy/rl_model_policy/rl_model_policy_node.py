@@ -196,7 +196,9 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("lane_tof_x_tolerance_m", 0.03)
         self.declare_parameter("lane_tof_min_speed", 0.08)
         self.declare_parameter("lane_tof_slowdown_distance_m", 0.20)
-        self.declare_parameter("lane_tof_wall_angle_tolerance_rad", 0.05)
+        self.declare_parameter(
+            "lane_tof_wall_angle_tolerance_rad", math.radians(4.0)
+        )
         self.declare_parameter("lane_tof_angle_kp", 1.2)
         self.declare_parameter("lane_tof_angle_kd", 0.08)
         self.declare_parameter("lane_tof_angle_max_angular_speed", 0.30)
@@ -216,10 +218,10 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("main_road_tof_min_speed", 0.05)
         self.declare_parameter("main_road_tof_slowdown_distance_m", 0.20)
         self.declare_parameter(
-            "main_road_tof_angle_trigger_rad", math.radians(10.0)
+            "main_road_tof_angle_trigger_rad", math.radians(4.0)
         )
         self.declare_parameter(
-            "main_road_tof_angle_release_rad", math.radians(5.0)
+            "main_road_tof_angle_release_rad", math.radians(4.0)
         )
 
         self.declare_parameter("avoid_enabled", True)
@@ -284,7 +286,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_second_entry_dash_heading_deg", -113.0)
         self.declare_parameter("storage_exit_dash_duration_s", 1.50)
         self.declare_parameter("storage_second_exit_dash_duration_s", 1.10)
-        self.declare_parameter("storage_second_repush_speed", 0.25)
+        self.declare_parameter("storage_second_repush_speed", 0.13)
         self.declare_parameter("storage_second_repush_duration_s", 1.00)
         self.declare_parameter("storage_contact_settle_duration_s", 0.20)
         self.declare_parameter("storage_dash_heading_tolerance", 0.05)
@@ -294,7 +296,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_heading_tolerance", 0.14)
         self.declare_parameter("storage_final_yaw_tolerance", 0.12)
         self.declare_parameter("storage_heading_gain", 2.4)
-        self.declare_parameter("storage_max_angular_speed", 1.00)
+        self.declare_parameter("storage_max_angular_speed", 0.80)
         self.declare_parameter("storage_tof_angle_gain", 1.5)
         self.declare_parameter("storage_tof_max_angular_speed", 0.60)
         self.declare_parameter("storage_avoid_danger_threshold", 0.20)
@@ -307,12 +309,14 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_tof_xy_tolerance_m", 0.03)
         self.declare_parameter("storage_tof_min_speed", 0.05)
         self.declare_parameter("storage_tof_slowdown_distance_m", 0.20)
-        self.declare_parameter("storage_tof_wall_angle_tolerance_rad", 0.05)
         self.declare_parameter(
-            "storage_exit_tof_angle_trigger_rad", math.radians(10.0)
+            "storage_tof_wall_angle_tolerance_rad", math.radians(4.0)
         )
         self.declare_parameter(
-            "storage_exit_tof_angle_release_rad", math.radians(5.0)
+            "storage_exit_tof_angle_trigger_rad", math.radians(4.0)
+        )
+        self.declare_parameter(
+            "storage_exit_tof_angle_release_rad", math.radians(4.0)
         )
 
         self.declare_parameter("gripper_enabled", True)

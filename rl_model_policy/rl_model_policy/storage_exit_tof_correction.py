@@ -43,11 +43,14 @@ def make_storage_exit_tof_command(
     coarse_heading_gain=None,
     coarse_max_angular_speed=None,
 ):
-    """Correct storage-exit x first, then conditionally square to west wall."""
+    """Correct storage-exit x first, then conditionally square to west wall.
+
+    Equal trigger/release values provide one fixed angle tolerance.
+    """
     angle_trigger_rad = float(angle_trigger_rad)
     angle_release_rad = float(angle_release_rad)
-    if not 0.0 <= angle_release_rad < angle_trigger_rad:
-        raise ValueError("angle thresholds must satisfy 0 <= release < trigger")
+    if not 0.0 <= angle_release_rad <= angle_trigger_rad:
+        raise ValueError("angle thresholds must satisfy 0 <= release <= trigger")
     if coarse_heading_gain is None:
         coarse_heading_gain = angle_gain
     if coarse_max_angular_speed is None:

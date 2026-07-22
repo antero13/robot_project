@@ -30,7 +30,7 @@ def make_command(**overrides):
         "wall_angle_max_angular_speed": 0.60,
         "heading_tolerance": 0.12,
         "wall_angle_rad": 0.0,
-        "wall_angle_tolerance_rad": 0.05,
+        "wall_angle_tolerance_rad": math.radians(4.0),
     }
     values.update(overrides)
     return make_storage_tof_command(**values)

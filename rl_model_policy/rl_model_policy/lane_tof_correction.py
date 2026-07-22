@@ -140,7 +140,7 @@ def make_lane_tof_command(
     wall_side="left",
     right_wall_x_m=2.0,
     wall_angle_rad=None,
-    wall_angle_tolerance_rad=0.05,
+    wall_angle_tolerance_rad=math.radians(4.0),
     coarse_heading_aligned=False,
     wall_angle_previous_rad=None,
     wall_angle_dt_s=None,

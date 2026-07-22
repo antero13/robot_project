@@ -22,8 +22,8 @@ def make_command(**overrides):
         "y_tolerance_m": 0.03,
         "measurement_timeout_s": 0.25,
         "angle_alignment_active": False,
-        "angle_trigger_rad": math.radians(10.0),
-        "angle_release_rad": math.radians(5.0),
+        "angle_trigger_rad": math.radians(4.0),
+        "angle_release_rad": math.radians(4.0),
         "angle_gain": 2.4,
         "max_angular_speed": 1.0,
         "heading_tolerance": 0.08,
@@ -63,22 +63,22 @@ class MainRoadTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.angular_z, 0.0)
         self.assertFalse(command.angle_alignment_active)
 
-    def test_angle_below_ten_degrees_does_not_start_alignment(self):
-        command = make_command(wall_angle_rad=math.radians(9.0))
+    def test_angle_within_four_degrees_does_not_start_alignment(self):
+        command = make_command(wall_angle_rad=math.radians(3.9))
 
         self.assertEqual(command.phase, "MAIN_ROAD_SOUTH_TOF_ALIGNED")
         self.assertTrue(command.reached)
 
-    def test_ten_degrees_starts_alignment(self):
-        command = make_command(wall_angle_rad=math.radians(10.0))
+    def test_angle_above_four_degrees_starts_alignment(self):
+        command = make_command(wall_angle_rad=math.radians(4.1))
 
         self.assertEqual(command.phase, "ALIGN_MAIN_ROAD_SOUTH_WALL_ANGLE")
         self.assertGreater(command.angular_z, 0.0)
         self.assertTrue(command.angle_alignment_active)
 
-    def test_active_alignment_continues_below_trigger(self):
+    def test_active_alignment_continues_above_four_degrees(self):
         command = make_command(
-            wall_angle_rad=math.radians(-7.0),
+            wall_angle_rad=math.radians(-4.1),
             angle_alignment_active=True,
         )
 
@@ -86,9 +86,9 @@ class MainRoadTofCorrectionTest(unittest.TestCase):
         self.assertLess(command.angular_z, 0.0)
         self.assertTrue(command.angle_alignment_active)
 
-    def test_active_alignment_finishes_at_five_degrees(self):
+    def test_active_alignment_finishes_at_four_degrees(self):
         command = make_command(
-            wall_angle_rad=math.radians(5.0),
+            wall_angle_rad=math.radians(4.0),
             angle_alignment_active=True,
         )
 
@@ -100,8 +100,8 @@ class MainRoadTofCorrectionTest(unittest.TestCase):
     def test_rejects_reversed_angle_thresholds(self):
         with self.assertRaises(ValueError):
             make_command(
-                angle_trigger_rad=math.radians(5.0),
-                angle_release_rad=math.radians(10.0),
+                angle_trigger_rad=math.radians(4.0),
+                angle_release_rad=math.radians(5.0),
             )
 
 

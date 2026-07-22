@@ -31,7 +31,7 @@ def make_command(**overrides):
         "max_angular_speed": 1.0,
         "heading_tolerance": 0.08,
         "wall_angle_rad": 0.0,
-        "wall_angle_tolerance_rad": 0.05,
+        "wall_angle_tolerance_rad": math.radians(4.0),
     }
     values.update(overrides)
     return make_lane_tof_command(**values)

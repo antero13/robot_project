@@ -414,7 +414,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'lane_tof_wall_angle_tolerance_rad',
-            default_value='0.05',
+            default_value='0.0698131701',
         ),
         DeclareLaunchArgument('lane_tof_angle_kp', default_value='1.2'),
         DeclareLaunchArgument('lane_tof_angle_kd', default_value='0.08'),
@@ -446,11 +446,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'main_road_tof_angle_trigger_rad',
-            default_value='0.1745329252',
+            default_value='0.0698131701',
         ),
         DeclareLaunchArgument(
             'main_road_tof_angle_release_rad',
-            default_value='0.0872664626',
+            default_value='0.0698131701',
         ),
         DeclareLaunchArgument('leave_start_enabled', default_value='true'),
         DeclareLaunchArgument('leave_start_distance_m', default_value='0.55'),
@@ -500,7 +500,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'storage_second_repush_speed',
-            default_value='0.25',
+            default_value='0.13',
         ),
         DeclareLaunchArgument(
             'storage_second_repush_duration_s',
@@ -545,15 +545,15 @@ def generate_launch_description():
             ),
         DeclareLaunchArgument(
             'storage_tof_wall_angle_tolerance_rad',
-            default_value='0.05',
+            default_value='0.0698131701',
         ),
         DeclareLaunchArgument(
             'storage_exit_tof_angle_trigger_rad',
-            default_value='0.1745329252',
+            default_value='0.0698131701',
         ),
         DeclareLaunchArgument(
             'storage_exit_tof_angle_release_rad',
-            default_value='0.0872664626',
+            default_value='0.0698131701',
         ),
         DeclareLaunchArgument('gripper_enabled', default_value='true'),
         DeclareLaunchArgument('gripper_type', default_value='bus'),

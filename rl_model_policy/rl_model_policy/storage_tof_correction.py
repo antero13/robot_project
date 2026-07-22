@@ -90,7 +90,7 @@ def make_storage_tof_command(
     wall_angle_max_angular_speed=None,
     advance_without_measurement=False,
     wall_angle_rad=None,
-    wall_angle_tolerance_rad=0.05,
+    wall_angle_tolerance_rad=math.radians(4.0),
     coarse_heading_aligned=False,
 ):
     """Align one storage-staging axis using the left or bottom arena wall."""

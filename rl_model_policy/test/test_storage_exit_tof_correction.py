@@ -21,8 +21,8 @@ def make_command(**overrides):
         "x_tolerance_m": 0.03,
         "measurement_timeout_s": 0.25,
         "angle_alignment_active": False,
-        "angle_trigger_rad": math.radians(10.0),
-        "angle_release_rad": math.radians(5.0),
+        "angle_trigger_rad": math.radians(4.0),
+        "angle_release_rad": math.radians(4.0),
         "angle_gain": 1.5,
         "max_angular_speed": 0.60,
         "coarse_heading_gain": 2.4,
@@ -74,18 +74,18 @@ class StorageExitTofCorrectionTest(unittest.TestCase):
         self.assertLess(command.linear_x, 0.0)
         self.assertEqual(command.angular_z, 0.0)
 
-    def test_angle_below_ten_degrees_does_not_start_alignment(self):
-        command = make_command(wall_angle_rad=math.radians(9.0))
+    def test_angle_within_four_degrees_does_not_start_alignment(self):
+        command = make_command(wall_angle_rad=math.radians(3.9))
 
         self.assertEqual(command.phase, "STORAGE_EXIT_TOF_ALIGNED")
         self.assertTrue(command.reached)
 
-    def test_ten_degrees_starts_alignment(self):
-        command = make_command(wall_angle_rad=math.radians(10.0))
+    def test_angle_above_four_degrees_starts_alignment(self):
+        command = make_command(wall_angle_rad=math.radians(4.1))
 
         self.assertEqual(command.phase, "ALIGN_STORAGE_EXIT_WEST_WALL_ANGLE")
         self.assertGreater(command.angular_z, 0.0)
-        self.assertAlmostEqual(command.angular_z, math.radians(15.0))
+        self.assertAlmostEqual(command.angular_z, 1.5 * math.radians(4.1))
         self.assertTrue(command.angle_alignment_active)
 
     def test_tof_wall_angle_uses_reduced_maximum_speed(self):
@@ -94,9 +94,9 @@ class StorageExitTofCorrectionTest(unittest.TestCase):
         self.assertEqual(command.phase, "ALIGN_STORAGE_EXIT_WEST_WALL_ANGLE")
         self.assertAlmostEqual(command.angular_z, 0.60)
 
-    def test_active_alignment_continues_until_five_degrees(self):
+    def test_active_alignment_continues_above_four_degrees(self):
         command = make_command(
-            wall_angle_rad=math.radians(-7.0),
+            wall_angle_rad=math.radians(-4.1),
             angle_alignment_active=True,
         )
 
@@ -104,9 +104,9 @@ class StorageExitTofCorrectionTest(unittest.TestCase):
         self.assertLess(command.angular_z, 0.0)
         self.assertTrue(command.angle_alignment_active)
 
-    def test_active_alignment_finishes_at_five_degrees(self):
+    def test_active_alignment_finishes_at_four_degrees(self):
         command = make_command(
-            wall_angle_rad=math.radians(5.0),
+            wall_angle_rad=math.radians(4.0),
             angle_alignment_active=True,
         )
 

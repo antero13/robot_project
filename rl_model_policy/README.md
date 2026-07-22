@@ -273,14 +273,14 @@ left/right wall은 경기장의 서쪽/동쪽 벽 좌표이며, 차체에 달린
 
 Coverage와 보관소 waypoint, `robot_x/y`, pose correction 토픽은 모두 차체의
 기하학적 중심을 좌표 원점으로 사용한다. 동·서쪽 벽 보정은 `vector.y` 벽
-각도를 기본 `0.05 rad` 이내로 맞춘 뒤 목표 차체 중심 x와 벽 방향 yaw를
+각도를 기본 `0.0698131701 rad`(4도) 이내로 맞춘 뒤 목표 차체 중심 x와 벽 방향 yaw를
 `/robot_pose/correct_x`, `/robot_pose/correct_yaw`로 발행한다. odometry로
 벽을 대략 바라보는 단계가 끝나면 ToF 정렬을 고정하여 odometry 기준으로
 되돌아가지 않는다.
 
 각 레인에서 남쪽 주도로로 내려온 직후에는 남쪽 벽 ToF 거리로 y를 먼저
-3 cm 이내로 보정한다. 거리 보정이 끝난 뒤 벽 각도가 10도 이상일 때만 각도
-보정을 시작하고, 시작된 보정은 5도 이하까지 계속한다. 완료 시
+3 cm 이내로 보정한다. 거리 보정이 끝난 뒤 벽 각도가 4도를 초과할 때 각도
+보정을 시작하고, 시작된 보정은 4도 이내까지 계속한다. 완료 시
 `/robot_pose/correct_y`, `/robot_pose/correct_yaw`로 주도로 y와 yaw `-90도`를
 설정한다. 이후 IMU gyro 적분은 이 기준에서 계속된다. ToF가 오래되면 정지해서
 새 측정값을 기다린다.
@@ -294,13 +294,13 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   lane_tof_sensor_forward_offset_m:=0.09
 ```
 
-남쪽 주도로 보정의 기본 시작/종료 각도는 각각 10도와 5도이며 rad 단위 launch
+남쪽 주도로 보정의 기본 시작/종료 각도는 모두 4도이며 rad 단위 launch
 인자로 조정할 수 있다.
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
-  main_road_tof_angle_trigger_rad:=0.1745329252 \
-  main_road_tof_angle_release_rad:=0.0872664626
+  main_road_tof_angle_trigger_rad:=0.0698131701 \
+  main_road_tof_angle_release_rad:=0.0698131701
 ```
 
 `lane_tof_sensor_forward_offset_m`은 차체 중심에서 ToF 센서 평면까지의
@@ -474,8 +474,8 @@ COLLECTING
    - 각 레인을 북쪽으로 탐색한 뒤 제자리로 180도 선회하고 남쪽으로
      내려오면서 같은 레인을 다시 탐색한다.
    - 주도로 도착 직후 남쪽 벽을 본 상태에서 ToF 거리로 `y=-1.40 m`를
-     먼저 보정한다. 거리 보정 후 벽 각도가 10도 이상이면 회전을 시작하고
-     5도 이하가 되면 멈춘 뒤 pose yaw를 `-90도`로 재설정한다.
+     먼저 보정한다. 거리 보정 후 벽 각도가 4도를 초과하면 회전을 시작하고
+     4도 이내가 되면 멈춘 뒤 pose yaw를 `-90도`로 재설정한다.
    - 다음 레인 이동은 도착 레인이 1·2번이면 동쪽 벽, 3·4번이면 서쪽 벽을
      바라본 상태로 odometry waypoint까지 먼저 수행한다. 10 cm 허용 오차에
      들어온 뒤 같은 벽의 ToF 각도를 0도 근처로 맞추고 남은 x 오차를
@@ -497,8 +497,8 @@ COLLECTING
 3. **주도로 복귀와 보관소 입구 x/y 보정**
    - 현재 레인 x를 유지한 채 1차 방문은 `y=-1.70 m`, 2차 방문은
      `y=-1.40 m`까지 남쪽으로 이동한다.
-   - 남쪽 벽 ToF 거리로 방문별 y를 먼저 보정한다. 그다음 벽 각도가 10도
-     이상이면 5도 이하까지 정렬하고 yaw를 `-90도`로 재설정한다.
+   - 남쪽 벽 ToF 거리로 방문별 y를 먼저 보정한다. 그다음 벽 각도가 4도를
+     초과하면 4도 이내까지 정렬하고 yaw를 `-90도`로 재설정한다.
    - 서쪽을 바라보고 1차는 `x=-1.25 m`, 2차는 `x=-1.70 m`까지 이동한 뒤
      서쪽 벽 ToF로 x를 3 cm 이내로 보정한다. yaw는 변경하지 않는다.
    - 1·2번 레인에서 복귀한 경우에는 x 보정 뒤 남쪽 벽을 바라보고 방문별
@@ -518,7 +518,7 @@ COLLECTING
    - 후진이 끝나면 서보를 연 상태로 odometry yaw를 사용해 서쪽 180도로
      제자리 회전한다. 서쪽 정렬이 끝난 뒤 서보를 닫고 기본 0.5초 기다린다.
    - 서쪽 벽 ToF 거리로 `x=-1.25 m`를 먼저 보정한다. 거리 완료 후 벽 각도가
-     10도 이상이면 정렬을 시작하고 5도 이하에서 멈춘 뒤 yaw를 180도로
+     4도를 초과하면 정렬을 시작하고 4도 이내에서 멈춘 뒤 yaw를 180도로
      재설정한다. 신선한 ToF 값이 연속 1초 동안 없으면 x를 `-1.25 m`로
      간주하되 yaw는 변경하지 않는 fallback을 사용한다.
 
@@ -587,14 +587,14 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_reverse_speed:=0.40 \
   storage_exit_dash_duration_s:=1.50 \
   storage_second_exit_dash_duration_s:=1.10 \
-  storage_second_repush_speed:=0.25 \
+  storage_second_repush_speed:=0.13 \
   storage_second_repush_duration_s:=1.00 \
   storage_contact_settle_duration_s:=0.20 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_sensor_forward_offset_m:=0.09 \
   storage_exit_tof_fallback_timeout_s:=1.0 \
-  storage_exit_tof_angle_trigger_rad:=0.1745329252 \
-  storage_exit_tof_angle_release_rad:=0.0872664626
+  storage_exit_tof_angle_trigger_rad:=0.0698131701 \
+  storage_exit_tof_angle_release_rad:=0.0698131701
 ```
 
 보관소 시간제 진입 중에도 pose tracker는 `cmd_vel`과 IMU를 이용해 x/y와 yaw를
@@ -621,7 +621,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 1차 후진이나 2차 재밀기 왕복이 끝나면 odometry yaw로 서쪽 180도를 바라보도록
 제자리 회전한다. 1차는 회전 완료 후 서보를 닫고, 2차는 이미 닫힌 상태를 유지한다.
 그다음 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
-각도가 10도 이상일 때만 회전을 시작하고, 시작된 회전은 5도 이하까지 계속한
+각도가 4도를 초과할 때 회전을 시작하고, 시작된 회전은 4도 이내까지 계속한
 다음 pose yaw를 180도로 재설정한다.
 
 `storage_tof_correction_enabled:=false`를 사용하면 진입 전·후의 x ToF와
