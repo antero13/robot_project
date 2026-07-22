@@ -99,15 +99,17 @@ When no target has ever been seen, the node immediately enters
 10-value observation contract; stale odometry produces `WAITING_FOR_POSE` and
 a zero velocity command.
 
-The default coverage route scans `x = 1.25, 0.25, -0.75 m` from the
-lower main road at `y = -1.3343 m` up to `y = 1.1 m`. Tune it from the launch
-command when the real arena alignment differs:
+The initial lane-1 entry keeps the legacy waypoint at `y = -1.3343 m`.
+After that entry, the default coverage route scans from the lower main road at
+`y = -1.40 m` up to `y = 1.1 m`. Tune both values from the launch command when
+the real arena alignment differs:
 
 ```bash
 ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   coverage_min_x:=-1.75 \
   coverage_max_x:=1.25 \
-  coverage_main_road_y:=-1.3343 \
+  coverage_first_entry_y:=-1.3343 \
+  coverage_main_road_y:=-1.40 \
   coverage_scan_end_y:=1.1 \
   coverage_lane_spacing:=1.0
 ```

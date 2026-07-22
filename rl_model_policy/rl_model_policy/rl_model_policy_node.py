@@ -151,7 +151,8 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("coverage_enabled", True)
         self.declare_parameter("coverage_min_x", -1.25)
         self.declare_parameter("coverage_max_x", 1.25)
-        self.declare_parameter("coverage_main_road_y", -1.3343)
+        self.declare_parameter("coverage_first_entry_y", -1.3343)
+        self.declare_parameter("coverage_main_road_y", -1.40)
         self.declare_parameter("coverage_scan_end_y", 1.1)
         self.declare_parameter("coverage_lane_spacing", 1.0)
         self.declare_parameter("coverage_scan_speed", 0.24)
@@ -264,7 +265,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("force_return_remaining_s", 30.0)
         self.declare_parameter("storage_capacity", 4)
         self.declare_parameter("target_object_count", 7)
-        self.declare_parameter("storage_main_road_y", -1.3343)
+        self.declare_parameter("storage_main_road_y", -1.40)
         self.declare_parameter("storage_staging_x", -1.25)
         self.declare_parameter("storage_staging_y", -1.70)
         self.declare_parameter("storage_second_staging_x", -1.60)
@@ -2226,6 +2227,7 @@ class DeterministicMissionControllerNode(Node):
             transit_speed=self.get_float("coverage_transit_speed"),
             return_speed=self.get_float("coverage_return_speed"),
             reverse_order=reverse_order,
+            first_entry_y=self.get_float("coverage_first_entry_y"),
         )
         controller = CoverageController(
             legs=legs,

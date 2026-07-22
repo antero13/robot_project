@@ -95,6 +95,33 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_launches_split_initial_entry_y_from_the_main_road(self):
+        required = {
+            "coverage_first_entry_y",
+            "coverage_main_road_y",
+            "storage_main_road_y",
+        }
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
+        self.assertIn(
+            'declare_parameter("coverage_first_entry_y", -1.3343)',
+            self.node_source,
+        )
+        self.assertIn(
+            'declare_parameter("coverage_main_road_y", -1.40)',
+            self.node_source,
+        )
+        self.assertIn(
+            'declare_parameter("storage_main_road_y", -1.40)',
+            self.node_source,
+        )
+
     def test_launches_expose_lane_tof_angle_pd_controls(self):
         required = {
             "lane_tof_angle_kp",

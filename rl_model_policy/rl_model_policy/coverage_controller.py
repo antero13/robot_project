@@ -33,6 +33,7 @@ def generate_coverage_legs(
     transit_speed,
     return_speed,
     reverse_order=False,
+    first_entry_y=None,
 ):
     min_x = float(min_x)
     max_x = float(max_x)
@@ -42,6 +43,9 @@ def generate_coverage_legs(
     scan_speed = float(scan_speed)
     transit_speed = float(transit_speed)
     return_speed = float(return_speed)
+    first_entry_y = (
+        main_road_y if first_entry_y is None else float(first_entry_y)
+    )
 
     if min_x > max_x:
         raise ValueError("coverage min_x cannot be greater than max_x")
@@ -62,6 +66,7 @@ def generate_coverage_legs(
     numbered_lane_positions = list(enumerate(lane_x_positions, start=1))
     if bool(reverse_order):
         numbered_lane_positions.reverse()
+    entry_y = main_road_y if bool(reverse_order) else first_entry_y
 
     # Each lane is centered between two object columns. The robot scans north,
     # turns around, scans south with its front camera, then shifts to the next
@@ -69,7 +74,7 @@ def generate_coverage_legs(
     legs = [
         CoverageLeg(
             numbered_lane_positions[0][1],
-            main_road_y,
+            entry_y,
             transit_speed,
             "ENTER_FIRST_LANE",
             lane_number=numbered_lane_positions[0][0],

@@ -49,7 +49,7 @@ class CoverageControllerTest(unittest.TestCase):
         legs = generate_coverage_legs(
             min_x=-1.25,
             max_x=1.25,
-            main_road_y=-1.3343,
+            main_road_y=-1.40,
             scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
@@ -64,6 +64,27 @@ class CoverageControllerTest(unittest.TestCase):
 
         self.assertEqual(len(legs), 12)
         self.assertEqual(scan_lane_x_positions, [-1.25, -0.75, 0.25, 1.25])
+
+    def test_legacy_first_entry_y_is_used_only_before_initial_lane_one(self):
+        common = {
+            "min_x": -1.25,
+            "max_x": 1.25,
+            "main_road_y": -1.40,
+            "scan_end_y": 1.1,
+            "lane_spacing": 1.0,
+            "scan_speed": 0.24,
+            "transit_speed": 0.40,
+            "return_speed": 0.24,
+            "first_entry_y": -1.3343,
+        }
+        initial_legs = generate_coverage_legs(**common)
+        reverse_legs = generate_coverage_legs(**common, reverse_order=True)
+
+        self.assertEqual(initial_legs[0].phase, "ENTER_FIRST_LANE")
+        self.assertAlmostEqual(initial_legs[0].target_y, -1.3343)
+        self.assertAlmostEqual(initial_legs[2].target_y, -1.40)
+        self.assertAlmostEqual(initial_legs[3].target_y, -1.40)
+        self.assertAlmostEqual(reverse_legs[0].target_y, -1.40)
 
     def test_normal_route_lane_1_to_2_faces_east_wall_and_reverses(self):
         controller = CoverageController(make_legs())
@@ -90,7 +111,7 @@ class CoverageControllerTest(unittest.TestCase):
         legs = generate_coverage_legs(
             min_x=-1.25,
             max_x=1.25,
-            main_road_y=-1.3343,
+            main_road_y=-1.40,
             scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
@@ -101,7 +122,7 @@ class CoverageControllerTest(unittest.TestCase):
         controller = CoverageController(legs)
         controller.leg_index = 3
 
-        command = controller.command(-1.0, -1.3343, math.pi)
+        command = controller.command(-1.0, -1.40, math.pi)
 
         self.assertEqual(controller.current_leg.lane_number, 3)
         self.assertEqual(controller.current_shift_wall_side(), "left")
@@ -111,7 +132,7 @@ class CoverageControllerTest(unittest.TestCase):
         legs = generate_coverage_legs(
             min_x=-1.25,
             max_x=1.25,
-            main_road_y=-1.3343,
+            main_road_y=-1.40,
             scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,
@@ -122,7 +143,7 @@ class CoverageControllerTest(unittest.TestCase):
         controller = CoverageController(legs)
         controller.leg_index = 6
 
-        command = controller.command(-0.25, -1.3343, 0.0)
+        command = controller.command(-0.25, -1.40, 0.0)
 
         self.assertEqual(controller.current_leg.lane_number, 2)
         self.assertEqual(controller.current_shift_wall_side(), "right")
@@ -572,7 +593,7 @@ class CoverageControllerTest(unittest.TestCase):
         legs = generate_coverage_legs(
             min_x=-1.25,
             max_x=1.25,
-            main_road_y=-1.3343,
+            main_road_y=-1.40,
             scan_end_y=1.1,
             lane_spacing=1.0,
             scan_speed=0.24,

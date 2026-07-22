@@ -62,9 +62,9 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertFalse(
             waypoint_avoidance_required(
                 robot_x=-1.25,
-                robot_y=-1.3343,
+                robot_y=-1.40,
                 target_x=-1.25,
-                target_y=-1.3343,
+                target_y=-1.40,
                 waypoint_tolerance=0.10,
                 linear_x=0.0,
                 avoid_center=0.70,
@@ -78,7 +78,7 @@ class MissionCoordinatorTest(unittest.TestCase):
                 robot_x=-1.25,
                 robot_y=0.0,
                 target_x=-1.25,
-                target_y=-1.3343,
+                target_y=-1.40,
                 waypoint_tolerance=0.10,
                 linear_x=0.0,
                 avoid_center=0.70,
@@ -92,7 +92,7 @@ class MissionCoordinatorTest(unittest.TestCase):
                 robot_x=-1.25,
                 robot_y=0.0,
                 target_x=-1.25,
-                target_y=-1.3343,
+                target_y=-1.40,
                 waypoint_tolerance=0.10,
                 linear_x=0.25,
                 avoid_center=0.70,
@@ -424,7 +424,7 @@ class MissionCoordinatorTest(unittest.TestCase):
         west = waypoint_command(
             -1.25, -1.75, -math.pi / 2.0, -1.25, -1.75, 0.0, final_yaw=math.pi
         )
-        north = waypoint_command(-1.25, -1.75, math.pi, -1.25, -1.3343, 0.25)
+        north = waypoint_command(-1.25, -1.75, math.pi, -1.25, -1.40, 0.25)
 
         self.assertEqual((west.linear_x, north.linear_x), (0.0, 0.0))
         self.assertLess(west.angular_z, 0.0)
@@ -443,13 +443,13 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertTrue(stopped.reached)
 
     def test_negative_waypoint_speed_reverses_along_the_entry_path(self):
-        entry_heading = math.atan2(-1.75 + 1.3343, -1.75 + 1.25)
+        entry_heading = math.atan2(-1.75 + 1.40, -1.75 + 1.25)
         command = waypoint_command(
             robot_x=-1.75,
             robot_y=-1.75,
             robot_yaw=entry_heading,
             target_x=-1.25,
-            target_y=-1.3343,
+            target_y=-1.40,
             speed=-0.40,
         )
 
@@ -458,7 +458,7 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertFalse(command.reached)
 
     def test_fast_diagonal_entry_and_reverse_return_to_main_road_staging(self):
-        staging = (-1.25, -1.3343)
+        staging = (-1.25, -1.40)
         center = (-1.75, -1.75)
         entered = simulate_waypoint(
             (staging[0], staging[1], math.pi),
@@ -505,10 +505,10 @@ class MissionCoordinatorTest(unittest.TestCase):
         dash_yaw = storage_dash_heading(-139.26)
         command = waypoint_command(
             robot_x=-1.25,
-            robot_y=-1.3343,
+            robot_y=-1.40,
             robot_yaw=dash_yaw,
             target_x=-1.25,
-            target_y=-1.3343,
+            target_y=-1.40,
             speed=0.0,
             waypoint_tolerance=0.04,
             heading_tolerance=0.14,
@@ -524,10 +524,10 @@ class MissionCoordinatorTest(unittest.TestCase):
 
         aligned = waypoint_command(
             robot_x=-1.25,
-            robot_y=-1.3343,
+            robot_y=-1.40,
             robot_yaw=math.pi,
             target_x=-1.25,
-            target_y=-1.3343,
+            target_y=-1.40,
             speed=0.0,
             waypoint_tolerance=0.04,
             final_yaw=math.pi,

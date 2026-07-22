@@ -113,6 +113,7 @@ def generate_launch_description():
     coverage_enabled = LaunchConfiguration("coverage_enabled")
     coverage_min_x = LaunchConfiguration("coverage_min_x")
     coverage_max_x = LaunchConfiguration("coverage_max_x")
+    coverage_first_entry_y = LaunchConfiguration("coverage_first_entry_y")
     coverage_main_road_y = LaunchConfiguration("coverage_main_road_y")
     coverage_scan_end_y = LaunchConfiguration("coverage_scan_end_y")
     coverage_lane_spacing = LaunchConfiguration("coverage_lane_spacing")
@@ -442,6 +443,7 @@ def generate_launch_description():
             "coverage_enabled": coverage_enabled,
             "coverage_min_x": coverage_min_x,
             "coverage_max_x": coverage_max_x,
+            "coverage_first_entry_y": coverage_first_entry_y,
             "coverage_main_road_y": coverage_main_road_y,
             "coverage_scan_end_y": coverage_scan_end_y,
             "coverage_lane_spacing": coverage_lane_spacing,
@@ -901,7 +903,8 @@ def generate_launch_description():
         ),
             DeclareLaunchArgument("coverage_min_x", default_value="-1.25"),
         DeclareLaunchArgument("coverage_max_x", default_value="1.25"),
-        DeclareLaunchArgument("coverage_main_road_y", default_value="-1.3343"),
+        DeclareLaunchArgument("coverage_first_entry_y", default_value="-1.3343"),
+        DeclareLaunchArgument("coverage_main_road_y", default_value="-1.40"),
         DeclareLaunchArgument("coverage_scan_end_y", default_value="1.1"),
         DeclareLaunchArgument("coverage_lane_spacing", default_value="1.0"),
         DeclareLaunchArgument("coverage_scan_speed", default_value="0.24"),
@@ -1058,7 +1061,7 @@ def generate_launch_description():
         DeclareLaunchArgument("force_return_remaining_s", default_value="30.0"),
         DeclareLaunchArgument("storage_capacity", default_value="4"),
         DeclareLaunchArgument("target_object_count", default_value="7"),
-        DeclareLaunchArgument("storage_main_road_y", default_value="-1.3343"),
+        DeclareLaunchArgument("storage_main_road_y", default_value="-1.40"),
             DeclareLaunchArgument("storage_staging_x", default_value="-1.25"),
             DeclareLaunchArgument("storage_staging_y", default_value="-1.70"),
             DeclareLaunchArgument(

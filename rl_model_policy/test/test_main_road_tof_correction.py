@@ -9,11 +9,11 @@ from rl_model_policy.main_road_tof_correction import (
 
 def make_command(**overrides):
     values = {
-        "distance_m": 0.5757,
+        "distance_m": 0.51,
         "wall_angle_rad": 0.0,
         "measurement_age_s": 0.02,
         "robot_yaw": -math.pi / 2.0,
-        "target_y": -1.3343,
+        "target_y": -1.40,
         "south_wall_y_m": -2.0,
         "sensor_forward_offset_m": 0.09,
         "transit_speed": 0.24,
@@ -42,8 +42,8 @@ class MainRoadTofCorrectionTest(unittest.TestCase):
 
     def test_converts_south_wall_range_to_robot_center_y(self):
         self.assertAlmostEqual(
-            robot_y_from_south_wall_distance(0.5757, -2.0, 0.09),
-            -1.3343,
+            robot_y_from_south_wall_distance(0.51, -2.0, 0.09),
+            -1.40,
         )
 
     def test_waits_for_a_fresh_measurement(self):

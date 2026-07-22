@@ -65,7 +65,7 @@ ToF 같은 외부 기준으로 pose 일부를 절대 보정할 수 있습니다.
 
 ```bash
 ros2 topic pub --once /robot_pose/correct_x std_msgs/msg/Float64 "{data: -1.25}"
-ros2 topic pub --once /robot_pose/correct_y std_msgs/msg/Float64 "{data: -1.3343}"
+ros2 topic pub --once /robot_pose/correct_y std_msgs/msg/Float64 "{data: -1.40}"
 ros2 topic pub --once /robot_pose/correct_yaw std_msgs/msg/Float64 "{data: 3.14159265}"
 ```
 
