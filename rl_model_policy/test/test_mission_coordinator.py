@@ -9,6 +9,7 @@ from rl_model_policy.mission_coordinator import (
     reverse_storage_x_exit_command,
     storage_dash_heading,
     storage_dash_heading_between,
+    storage_pose_bounds_required,
     storage_phase_after_staging_x,
     storage_return_start_phase,
     storage_staging_coordinates,
@@ -162,6 +163,16 @@ class MissionCoordinatorTest(unittest.TestCase):
 
         self.assertAlmostEqual(math.degrees(first_heading), -169.695, places=3)
         self.assertAlmostEqual(math.degrees(second_heading), -104.036, places=3)
+
+    def test_timed_storage_motion_does_not_require_bounded_xy(self):
+        self.assertFalse(storage_pose_bounds_required(MissionPhase.ENTER_STORAGE))
+        self.assertFalse(storage_pose_bounds_required(MissionPhase.EXIT_STORAGE))
+        self.assertTrue(
+            storage_pose_bounds_required(MissionPhase.ALIGN_STORAGE_DASH)
+        )
+        self.assertTrue(
+            storage_pose_bounds_required(MissionPhase.RETURN_STAGING)
+        )
 
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)

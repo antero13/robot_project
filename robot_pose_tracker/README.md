@@ -69,6 +69,10 @@ ros2 topic pub --once /robot_pose/correct_y std_msgs/msg/Float64 "{data: -1.3343
 ros2 topic pub --once /robot_pose/correct_yaw std_msgs/msg/Float64 "{data: 3.14159265}"
 ```
 
+위치 적분만 일시 정지하려면 `/robot_pose/lock_position`에 `true`를 발행한다.
+잠긴 동안 x/y는 유지되고 IMU 기반 yaw는 계속 갱신된다. `false`를 발행하면
+x/y 적분을 다시 시작한다.
+
 Yaw 보정값은 rad 단위이며 `3.14159265`는 서쪽 180도, `0.0`은 동쪽 0도다.
 보정 후에도 IMU gyro 적분은 새 yaw 기준에서 계속된다.
 

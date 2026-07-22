@@ -40,7 +40,13 @@ class PoseEstimator:
             raise ValueError('corrected yaw must be finite')
         self.yaw = normalize_angle(yaw)
 
-    def step(self, dt, linear_velocity, angular_velocity):
+    def step(
+        self,
+        dt,
+        linear_velocity,
+        angular_velocity,
+        integrate_position=True,
+    ):
         if dt <= 0.0:
             return
 
@@ -50,7 +56,7 @@ class PoseEstimator:
 
         # Midpoint integration is more accurate than using only the old heading on arcs.
         midpoint_yaw = self.yaw + 0.5 * delta_yaw
-        distance = linear_velocity * dt
+        distance = linear_velocity * dt if integrate_position else 0.0
         self.x += distance * math.cos(midpoint_yaw)
         self.y += distance * math.sin(midpoint_yaw)
         self.yaw = normalize_angle(self.yaw + delta_yaw)

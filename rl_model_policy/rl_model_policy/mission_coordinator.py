@@ -101,6 +101,14 @@ def storage_dash_heading_between(staging_x, staging_y, center_x, center_y):
     return math.atan2(dy, dx)
 
 
+def storage_pose_bounds_required(phase):
+    """Only require bounded x/y while storage motion depends on waypoints."""
+    return phase not in {
+        MissionPhase.ENTER_STORAGE,
+        MissionPhase.EXIT_STORAGE,
+    }
+
+
 @dataclass(frozen=True)
 class NavigationCommand:
     linear_x: float

@@ -118,6 +118,22 @@ class PoseEstimatorTest(unittest.TestCase):
 
         self.assertAlmostEqual(estimator.yaw, 0.7)
 
+    def test_step_can_lock_position_while_integrating_yaw(self):
+        estimator = PoseEstimator(x=-1.25, y=-1.70, yaw=0.0)
+
+        estimator.step(
+            dt=2.0,
+            linear_velocity=0.4,
+            angular_velocity=0.2,
+            integrate_position=False,
+        )
+
+        self.assertAlmostEqual(estimator.x, -1.25)
+        self.assertAlmostEqual(estimator.y, -1.70)
+        self.assertAlmostEqual(estimator.yaw, 0.4)
+        self.assertAlmostEqual(estimator.distance_travelled, 0.0)
+        self.assertAlmostEqual(estimator.rotation_travelled, 0.4)
+
     def test_normalize_angle_uses_ros_yaw_range(self):
         self.assertAlmostEqual(normalize_angle(3.0 * math.pi), -math.pi)
 

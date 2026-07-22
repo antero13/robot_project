@@ -573,7 +573,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_center_x:=-1.80 storage_center_y:=-1.80 \
   storage_exit_x:=-1.25 \
   storage_x_entry_speed:=0.40 \
-  storage_entry_dash_duration_s:=2.50 \
+  storage_entry_dash_duration_s:=2.00 \
   storage_exit_reverse_speed:=0.40 \
   storage_exit_dash_duration_s:=1.50 \
   storage_second_exit_dash_duration_s:=1.10 \
@@ -584,6 +584,10 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_tof_angle_trigger_rad:=0.1745329252 \
   storage_exit_tof_angle_release_rad:=0.0872664626
 ```
+
+보관소 시간제 진입 중에는 `/robot_pose/lock_position`을 켜서 x/y 적분을
+정지한다. yaw는 IMU로 계속 갱신한다. 2초 전진이 끝나면 pose x/y를
+`(-1.80, -1.80)`으로 보정한 뒤 위치 적분을 다시 켜고 후진한다.
 
 보관소 진입 방향은 방문 차수에 맞는 진입 기준점에서 접촉점 `(-1.80, -1.80)`을
 향하도록 한 번 계산해 정렬한다. 기본 진입각은 1차 약 `-169.7 deg`, 2차 약

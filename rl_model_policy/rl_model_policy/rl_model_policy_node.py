@@ -26,6 +26,7 @@ from rl_model_policy.mission_coordinator import (
     MissionPhase,
     ReturnReason,
     storage_dash_heading_between,
+    storage_pose_bounds_required,
     storage_phase_after_staging_x,
     storage_return_start_phase,
     storage_staging_coordinates,
@@ -173,6 +174,9 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter(
             "pose_yaw_correction_topic", "/robot_pose/correct_yaw"
         )
+        self.declare_parameter(
+            "pose_position_lock_topic", "/robot_pose/lock_position"
+        )
         self.declare_parameter("lane_tof_left_wall_x_m", -2.0)
         self.declare_parameter("lane_tof_right_wall_x_m", 2.0)
         self.declare_parameter("lane_tof_sensor_forward_offset_m", 0.09)
@@ -262,7 +266,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_entry_speed", 0.30)
         self.declare_parameter("storage_x_entry_speed", 0.40)
         self.declare_parameter("storage_exit_reverse_speed", 0.40)
-        self.declare_parameter("storage_entry_dash_duration_s", 2.50)
+        self.declare_parameter("storage_entry_dash_duration_s", 2.00)
         self.declare_parameter("storage_exit_dash_duration_s", 1.50)
         self.declare_parameter("storage_second_exit_dash_duration_s", 1.10)
         self.declare_parameter("storage_contact_settle_duration_s", 0.20)
@@ -409,6 +413,7 @@ class DeterministicMissionControllerNode(Node):
         self.storage_dash_timer_phase = None
         self.storage_dash_elapsed_s = 0.0
         self.storage_dash_last_update_s = None
+        self.storage_position_locked = False
         self.mission_waypoint = None
         self.return_lane_x = 0.0
         self.return_lane_number = 0
@@ -450,6 +455,12 @@ class DeterministicMissionControllerNode(Node):
             self.get_parameter("pose_yaw_correction_topic").value,
             10,
         )
+        self.pose_position_lock_pub = self.create_publisher(
+            Bool,
+            self.get_parameter("pose_position_lock_topic").value,
+            10,
+        )
+        self.set_storage_position_lock(False, force=True)
         self.pwm_servo_pub = self.create_publisher(
             SetPWMServoState,
             self.get_parameter("pwm_servo_topic").value,
@@ -660,6 +671,7 @@ class DeterministicMissionControllerNode(Node):
     def control_callback(self, msg):
         command = msg.data.strip().lower()
         if command in ("start", "run", "demo"):
+            self.set_storage_position_lock(False, force=True)
             self.mission.start(self.now_s())
             self.storage_visit_number = 1
             self.coverage_controller.reset()
@@ -691,6 +703,7 @@ class DeterministicMissionControllerNode(Node):
         elif command in ("resume", "resume_motion"):
             self.set_motion_paused(False)
         elif command == "stop":
+            self.set_storage_position_lock(False, force=True)
             self.active = False
             self.mission.stop(self.now_s())
             self.motion_paused = False
@@ -703,6 +716,7 @@ class DeterministicMissionControllerNode(Node):
             self.publish_cmd(0.0, 0.0)
             self.get_logger().info("Deterministic mission controller stopped")
         elif command == "reset":
+            self.set_storage_position_lock(False, force=True)
             self.active = False
             self.mission.reset()
             self.storage_visit_number = 1
@@ -770,6 +784,7 @@ class DeterministicMissionControllerNode(Node):
             ):
                 self.prepare_storage_return()
             if self.mission.phase == MissionPhase.TIMEOUT:
+                self.set_storage_position_lock(False, force=True)
                 self.active = False
                 self.set_control_mode(self.MODE_MISSION_TIMEOUT)
                 self.get_logger().warning("Mission time expired; stopping the robot")
@@ -1436,6 +1451,7 @@ class DeterministicMissionControllerNode(Node):
                 ),
             )
             if command.reached:
+                self.set_storage_position_lock(True)
                 self.reset_storage_dash_timer()
                 self.mission.set_phase(MissionPhase.ENTER_STORAGE, now_s)
                 return (0.0, 0.0)
@@ -1906,6 +1922,20 @@ class DeterministicMissionControllerNode(Node):
         self.pending_pose_y_correction = corrected_y
         self.pending_pose_y_correction_time = correction_time
 
+    def set_storage_position_lock(self, locked, force=False):
+        locked = bool(locked)
+        if locked == self.storage_position_locked and not force:
+            return
+        message = Bool()
+        message.data = locked
+        self.pose_position_lock_pub.publish(message)
+        self.storage_position_locked = locked
+        self.get_logger().info(
+            "Storage entry pose x/y integration locked"
+            if locked
+            else "Storage entry pose x/y integration resumed"
+        )
+
     def begin_storage_entry_open(self, now_s):
         self.storage_tof_coarse_heading_aligned = False
         self.publish_cmd(0.0, 0.0)
@@ -1943,6 +1973,7 @@ class DeterministicMissionControllerNode(Node):
         self.publish_cmd(0.0, 0.0)
         self.reset_storage_dash_timer()
         self.correct_pose_at_storage_contact()
+        self.set_storage_position_lock(False)
         deposited_count = self.mission.onboard_count
         self.mission.record_deposit(now_s)
         self.mission_waypoint = (staging_x, staging_y)
@@ -2003,10 +2034,21 @@ class DeterministicMissionControllerNode(Node):
         return command
 
     def storage_pose_is_valid(self):
-        return self.is_fresh(
+        pose_is_fresh = self.is_fresh(
             self.latest_pose_time,
             "pose_timeout_s",
-        ) and pose_is_usable(
+        )
+        if not pose_is_fresh:
+            return False
+
+        # Command-integrated odometry can continue through the physical storage
+        # wall while the robot deliberately presses against it. The entry and
+        # reverse motions are timed and only need a fresh yaw, so an out-of-bounds
+        # x/y estimate must not freeze their timer before the contact correction.
+        if not storage_pose_bounds_required(self.mission.phase):
+            return True
+
+        return pose_is_usable(
             self.robot_x,
             self.robot_y,
             self.get_float("arena_half_extent_m"),
@@ -3216,6 +3258,7 @@ def main(args=None):
     try:
         rclpy.spin(node)
     finally:
+        node.set_storage_position_lock(False, force=True)
         node.publish_cmd(0.0, 0.0)
         node.destroy_node()
         rclpy.shutdown()
