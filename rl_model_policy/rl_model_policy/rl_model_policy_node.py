@@ -26,6 +26,7 @@ from rl_model_policy.mission_coordinator import (
     MissionPhase,
     ReturnReason,
     storage_pose_bounds_required,
+    StorageCurveAvoidanceController,
     storage_phase_after_staging_x,
     storage_return_start_phase,
     storage_staging_coordinates,
@@ -417,6 +418,18 @@ class DeterministicMissionControllerNode(Node):
         self.return_lane_x = 0.0
         self.return_lane_number = 0
         self.storage_visit_number = 1
+        storage_avoid_threshold = self.get_float(
+            "storage_avoid_danger_threshold"
+        )
+        self.storage_curve_avoidance = StorageCurveAvoidanceController(
+            danger_threshold=storage_avoid_threshold,
+            release_threshold=storage_avoid_threshold * 0.60,
+            linear_scale=self.get_float("coverage_avoid_linear_scale"),
+            angular_speed=self.get_float("coverage_avoid_angular_speed"),
+            direction_hold_s=self.get_float("avoid_direction_hold_s"),
+            clear_samples=3,
+            max_angular_speed=self.get_float("storage_max_angular_speed"),
+        )
 
         self.mission = MissionCoordinator(
             storage_capacity=int(self.get_parameter("storage_capacity").value),
@@ -1995,7 +2008,15 @@ class DeterministicMissionControllerNode(Node):
             final_yaw=final_yaw,
             final_yaw_tolerance=self.get_float("storage_final_yaw_tolerance"),
         )
-        if waypoint_avoidance_required(
+        distance = math.hypot(
+            float(target_x) - self.robot_x,
+            float(target_y) - self.robot_y,
+        )
+        if distance <= tolerance:
+            self.storage_curve_avoidance.reset()
+            return command
+
+        avoidance_required = waypoint_avoidance_required(
             robot_x=self.robot_x,
             robot_y=self.robot_y,
             target_x=target_x,
@@ -2004,12 +2025,26 @@ class DeterministicMissionControllerNode(Node):
             linear_x=command.linear_x,
             avoid_center=bins[1],
             danger_threshold=self.get_float("storage_avoid_danger_threshold"),
-        ):
-            direction = 1.0 if float(bins[0]) <= float(bins[2]) else -1.0
-            return SimpleNamespace(
-                linear_x=0.0,
-                angular_z=direction * self.get_float("coverage_avoid_angular_speed"),
-                reached=False,
+        )
+        was_active = self.storage_curve_avoidance.active
+        command = self.storage_curve_avoidance.command(
+            now_s=self.now_s(),
+            base_command=command,
+            nominal_speed=speed,
+            avoid_left=bins[0],
+            avoid_center=bins[1],
+            avoid_right=bins[2],
+            allow_start=avoidance_required,
+        )
+        if not was_active and self.storage_curve_avoidance.active:
+            side = "left" if self.storage_curve_avoidance.direction > 0.0 else "right"
+            self.get_logger().info(
+                "Storage-route obstacle detected; curving forward to the "
+                f"{side} with the direction latched"
+            )
+        elif was_active and not self.storage_curve_avoidance.active:
+            self.get_logger().info(
+                "Storage-route obstacle cleared; resuming waypoint navigation"
             )
         return command
 
@@ -3062,6 +3097,7 @@ class DeterministicMissionControllerNode(Node):
                         }
                     ),
                 },
+                "storage_avoidance": self.storage_curve_avoidance.status(now_s),
                 "obs": [round(v, 4) for v in obs[: self.model_observation_dim]],
                 "raw_action": [round(v, 4) for v in self.raw_action],
                 "filtered_action": [round(v, 4) for v in self.filtered_action],

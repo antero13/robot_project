@@ -117,6 +117,104 @@ class NavigationCommand:
     reached: bool
 
 
+class StorageCurveAvoidanceController:
+    """Latch one steering direction while curving around a storage-route obstacle."""
+
+    def __init__(
+        self,
+        danger_threshold,
+        release_threshold,
+        linear_scale,
+        angular_speed,
+        direction_hold_s,
+        max_duration_s=1.5,
+        clear_samples=3,
+        max_angular_speed=1.0,
+    ):
+        self.danger_threshold = float(danger_threshold)
+        self.release_threshold = float(release_threshold)
+        self.linear_scale = float(linear_scale)
+        self.angular_speed = abs(float(angular_speed))
+        self.direction_hold_s = max(0.0, float(direction_hold_s))
+        self.max_duration_s = max(
+            self.direction_hold_s,
+            float(max_duration_s),
+        )
+        self.clear_samples = max(1, int(clear_samples))
+        self.max_angular_speed = abs(float(max_angular_speed))
+        self.reset()
+
+    def reset(self):
+        self.active = False
+        self.direction = 0.0
+        self.started_at_s = None
+        self.clear_count = 0
+
+    def command(
+        self,
+        *,
+        now_s,
+        base_command,
+        nominal_speed,
+        avoid_left,
+        avoid_center,
+        avoid_right,
+        allow_start,
+    ):
+        now_s = float(now_s)
+        avoid_left = float(avoid_left)
+        avoid_center = float(avoid_center)
+        avoid_right = float(avoid_right)
+
+        if base_command.reached:
+            self.reset()
+            return base_command
+
+        if not self.active:
+            if not allow_start or avoid_center < self.danger_threshold:
+                return base_command
+            self.active = True
+            self.direction = 1.0 if avoid_left <= avoid_right else -1.0
+            self.started_at_s = now_s
+            self.clear_count = 0
+
+        remaining_danger = max(avoid_left, avoid_center, avoid_right)
+        if remaining_danger <= self.release_threshold:
+            self.clear_count += 1
+        else:
+            self.clear_count = 0
+
+        elapsed_s = max(0.0, now_s - self.started_at_s)
+        if elapsed_s >= self.max_duration_s:
+            self.reset()
+            return base_command
+        if (
+            elapsed_s >= self.direction_hold_s
+            and self.clear_count >= self.clear_samples
+        ):
+            self.reset()
+            return base_command
+
+        linear_x = float(nominal_speed) * self.linear_scale
+        angular_z = self.direction * self.angular_speed
+        angular_z = max(
+            -self.max_angular_speed,
+            min(self.max_angular_speed, angular_z),
+        )
+        return NavigationCommand(linear_x, angular_z, False)
+
+    def status(self, now_s):
+        age_s = None
+        if self.active and self.started_at_s is not None:
+            age_s = max(0.0, float(now_s) - self.started_at_s)
+        return {
+            "active": self.active,
+            "direction": self.direction,
+            "age_s": age_s,
+            "clear_count": self.clear_count,
+        }
+
+
 class MissionCoordinator:
     def __init__(
         self,

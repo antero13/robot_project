@@ -6,6 +6,7 @@ from rl_model_policy.mission_coordinator import (
     MissionCoordinator,
     MissionPhase,
     ReturnReason,
+    StorageCurveAvoidanceController,
     reverse_storage_x_exit_command,
     storage_dash_heading,
     storage_pose_bounds_required,
@@ -97,6 +98,142 @@ class MissionCoordinatorTest(unittest.TestCase):
                 danger_threshold=0.20,
             )
         )
+
+    def test_storage_avoidance_curves_forward_away_from_left_obstacle(self):
+        controller = StorageCurveAvoidanceController(
+            danger_threshold=0.20,
+            release_threshold=0.12,
+            linear_scale=0.70,
+            angular_speed=0.45,
+            direction_hold_s=0.8,
+        )
+        base = waypoint_command(0.0, 0.0, -math.pi / 2.0, 0.0, -1.0, 0.40)
+
+        command = controller.command(
+            now_s=1.0,
+            base_command=base,
+            nominal_speed=0.40,
+            avoid_left=0.80,
+            avoid_center=0.80,
+            avoid_right=0.0,
+            allow_start=True,
+        )
+
+        self.assertAlmostEqual(command.linear_x, 0.28)
+        self.assertAlmostEqual(command.angular_z, -0.45)
+        self.assertTrue(controller.active)
+
+    def test_storage_avoidance_direction_stays_latched_during_heading_error(self):
+        controller = StorageCurveAvoidanceController(
+            danger_threshold=0.20,
+            release_threshold=0.12,
+            linear_scale=0.70,
+            angular_speed=0.45,
+            direction_hold_s=0.8,
+        )
+        translating = waypoint_command(
+            0.0, 0.0, -math.pi / 2.0, 0.0, -1.0, 0.40
+        )
+        controller.command(
+            now_s=1.0,
+            base_command=translating,
+            nominal_speed=0.40,
+            avoid_left=0.80,
+            avoid_center=0.80,
+            avoid_right=0.0,
+            allow_start=True,
+        )
+        aligning = waypoint_command(0.0, 0.0, -2.0, 0.0, -1.0, 0.40)
+
+        command = controller.command(
+            now_s=1.2,
+            base_command=aligning,
+            nominal_speed=0.40,
+            avoid_left=0.0,
+            avoid_center=0.0,
+            avoid_right=0.80,
+            allow_start=False,
+        )
+
+        self.assertAlmostEqual(command.linear_x, 0.28)
+        self.assertAlmostEqual(command.angular_z, -0.45)
+        self.assertTrue(controller.active)
+
+    def test_storage_avoidance_releases_after_hold_and_three_clear_samples(self):
+        controller = StorageCurveAvoidanceController(
+            danger_threshold=0.20,
+            release_threshold=0.12,
+            linear_scale=0.70,
+            angular_speed=0.45,
+            direction_hold_s=0.8,
+        )
+        base = waypoint_command(0.0, 0.0, -math.pi / 2.0, 0.0, -1.0, 0.40)
+        controller.command(
+            now_s=1.0,
+            base_command=base,
+            nominal_speed=0.40,
+            avoid_left=0.80,
+            avoid_center=0.80,
+            avoid_right=0.0,
+            allow_start=True,
+        )
+        for now_s in (1.8, 1.9):
+            command = controller.command(
+                now_s=now_s,
+                base_command=base,
+                nominal_speed=0.40,
+                avoid_left=0.0,
+                avoid_center=0.0,
+                avoid_right=0.0,
+                allow_start=False,
+            )
+            self.assertTrue(controller.active)
+
+        command = controller.command(
+            now_s=2.0,
+            base_command=base,
+            nominal_speed=0.40,
+            avoid_left=0.0,
+            avoid_center=0.0,
+            avoid_right=0.0,
+            allow_start=False,
+        )
+
+        self.assertFalse(controller.active)
+        self.assertEqual(command, base)
+
+    def test_storage_avoidance_has_a_maximum_curve_duration(self):
+        controller = StorageCurveAvoidanceController(
+            danger_threshold=0.20,
+            release_threshold=0.12,
+            linear_scale=0.70,
+            angular_speed=0.45,
+            direction_hold_s=0.8,
+            max_duration_s=1.5,
+        )
+        base = waypoint_command(0.0, 0.0, -math.pi / 2.0, 0.0, -1.0, 0.40)
+        controller.command(
+            now_s=1.0,
+            base_command=base,
+            nominal_speed=0.40,
+            avoid_left=0.80,
+            avoid_center=0.80,
+            avoid_right=0.0,
+            allow_start=True,
+        )
+
+        command = controller.command(
+            now_s=2.5,
+            base_command=base,
+            nominal_speed=0.40,
+            avoid_left=0.80,
+            avoid_center=0.80,
+            avoid_right=0.0,
+            allow_start=True,
+        )
+
+        self.assertFalse(controller.active)
+        self.assertEqual(command, base)
 
     def test_fourth_pickup_triggers_capacity_return(self):
         for index in range(3):
