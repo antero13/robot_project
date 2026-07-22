@@ -309,7 +309,7 @@ class MissionCoordinator:
             return ReturnReason.TIME_LIMIT
         return None
 
-    def update_time(self, now_s):
+    def update_time(self, now_s, defer_storage_return=False):
         if self.started_at_s is None:
             return None
         if self.remaining_s(now_s) <= 0.0 and self.phase not in (
@@ -318,7 +318,7 @@ class MissionCoordinator:
         ):
             self.set_phase(MissionPhase.TIMEOUT, now_s)
             return MissionPhase.TIMEOUT
-        if self.phase == MissionPhase.COLLECTING:
+        if self.phase == MissionPhase.COLLECTING and not defer_storage_return:
             reason = self.return_reason_for_progress(now_s)
             if reason is not None:
                 self.begin_return(reason, now_s)

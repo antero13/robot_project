@@ -369,7 +369,7 @@ TRACKING -> OPENING -> FINAL_FORWARD -> CLOSING -> GRABBED
 닫힘 위치: 300
 수거 중앙 허용 오차: 0.18
 수거 영역 비율: 0.70
-최종 전진: 0.20 m/s로 1.2초
+최종 전진: 0.22 m/s로 1.2초
 수거 뒤 정지: false
 ```
 
@@ -382,7 +382,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   gripper_open_position:=1000 \
   gripper_closed_position:=300 \
   grab_area_ratio:=0.70 \
-  final_forward_linear_x:=0.20 \
+  final_forward_linear_x:=0.22 \
   final_forward_duration_s:=1.2
 ```
 

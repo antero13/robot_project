@@ -248,6 +248,31 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(self.mission.phase, MissionPhase.COLLECTING)
 
+    def test_thirty_second_return_waits_for_pickup_sequence_to_finish(self):
+        self.mission.onboard_objects.append("already-stored")
+
+        result = self.mission.update_time(
+            160.0,
+            defer_storage_return=True,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(self.mission.phase, MissionPhase.COLLECTING)
+        reason = self.mission.record_pickup("current-target", 160.1)
+        self.assertEqual(reason, ReturnReason.TIME_LIMIT)
+        self.assertTrue(self.mission.is_storage_phase())
+
+    def test_pickup_deferral_does_not_override_mission_timeout(self):
+        self.mission.onboard_objects.append("already-stored")
+
+        result = self.mission.update_time(
+            190.0,
+            defer_storage_return=True,
+        )
+
+        self.assertEqual(result, MissionPhase.TIMEOUT)
+        self.assertEqual(self.mission.phase, MissionPhase.TIMEOUT)
+
     def test_storage_return_starts_with_main_road_waypoint(self):
         self.assertEqual(
             storage_return_start_phase(),

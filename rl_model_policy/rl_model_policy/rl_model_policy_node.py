@@ -308,7 +308,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("grab_center_tolerance", 0.18)
         self.declare_parameter("grab_area_ratio", 0.70)
         self.declare_parameter("grab_detection_timeout_s", 0.25)
-        self.declare_parameter("final_forward_linear_x", 0.20)
+        self.declare_parameter("final_forward_linear_x", 0.22)
         self.declare_parameter("final_forward_duration_s", 1.2)
         self.declare_parameter("grab_duration_s", 1.0)
         self.declare_parameter("stop_after_grab", False)
@@ -780,7 +780,11 @@ class DeterministicMissionControllerNode(Node):
         pickup_bins = self.avoid_bins(pickup_objects)[:3]
         if self.active and self.full_mission_is_enabled():
             previous_phase = self.mission.phase
-            self.mission.update_time(now_s)
+            pickup_in_progress = self.grab_state != self.GRAB_TRACKING
+            self.mission.update_time(
+                now_s,
+                defer_storage_return=pickup_in_progress,
+            )
             if (
                 self.mission.is_storage_phase()
                 and previous_phase not in MissionPhase.STORAGE_PHASES
