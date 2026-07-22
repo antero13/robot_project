@@ -19,7 +19,13 @@ class MissionPhase:
     ALIGN_STORAGE_DASH = "ALIGN_STORAGE_DASH"
     ENTER_STORAGE = "ENTER_STORAGE"
     EXIT_STORAGE = "EXIT_STORAGE"
+    CLOSE_STORAGE_REPUSH = "CLOSE_STORAGE_REPUSH"
+    REPUSH_STORAGE = "REPUSH_STORAGE"
+    EXIT_STORAGE_REPUSH = "EXIT_STORAGE_REPUSH"
     ALIGN_STORAGE_EXIT_WEST = "ALIGN_STORAGE_EXIT_WEST"
+    ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH = (
+        "ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH"
+    )
     CORRECT_STORAGE_EXIT_X = "CORRECT_STORAGE_EXIT_X"
     CLOSE_STORAGE_EXIT = "CLOSE_STORAGE_EXIT"
     RETURN_FROM_STORAGE = "RETURN_FROM_STORAGE"
@@ -43,7 +49,11 @@ class MissionPhase:
             ALIGN_STORAGE_DASH,
             ENTER_STORAGE,
             EXIT_STORAGE,
+            CLOSE_STORAGE_REPUSH,
+            REPUSH_STORAGE,
+            EXIT_STORAGE_REPUSH,
             ALIGN_STORAGE_EXIT_WEST,
+            ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH,
             CORRECT_STORAGE_EXIT_X,
             CLOSE_STORAGE_EXIT,
             RETURN_FROM_STORAGE,
@@ -102,11 +112,18 @@ def storage_visit_dash_heading(visit_number, first_heading_deg, second_heading_d
     return (math.radians(float(heading_deg)) + math.pi) % (2.0 * math.pi) - math.pi
 
 
+def storage_second_repush_required(visit_number):
+    """Run the extra closed-gripper push only on the second storage visit."""
+    return int(visit_number) == 2
+
+
 def storage_pose_bounds_required(phase):
     """Only require bounded x/y while storage motion depends on waypoints."""
     return phase not in {
         MissionPhase.ENTER_STORAGE,
         MissionPhase.EXIT_STORAGE,
+        MissionPhase.REPUSH_STORAGE,
+        MissionPhase.EXIT_STORAGE_REPUSH,
     }
 
 

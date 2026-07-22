@@ -26,6 +26,7 @@ from rl_model_policy.mission_coordinator import (
     MissionPhase,
     ReturnReason,
     storage_pose_bounds_required,
+    storage_second_repush_required,
     StorageCurveAvoidanceController,
     storage_phase_after_staging_x,
     storage_return_start_phase,
@@ -265,11 +266,13 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_x_entry_speed", 0.40)
         self.declare_parameter("storage_exit_reverse_speed", 0.40)
         self.declare_parameter("storage_entry_dash_duration_s", 1.70)
-        self.declare_parameter("storage_second_entry_dash_duration_s", 1.40)
+        self.declare_parameter("storage_second_entry_dash_duration_s", 1.20)
         self.declare_parameter("storage_entry_dash_heading_deg", -165.0)
         self.declare_parameter("storage_second_entry_dash_heading_deg", -113.0)
         self.declare_parameter("storage_exit_dash_duration_s", 1.50)
         self.declare_parameter("storage_second_exit_dash_duration_s", 1.10)
+        self.declare_parameter("storage_second_repush_speed", 0.25)
+        self.declare_parameter("storage_second_repush_duration_s", 1.00)
         self.declare_parameter("storage_contact_settle_duration_s", 0.20)
         self.declare_parameter("storage_dash_heading_tolerance", 0.05)
         self.declare_parameter("storage_dash_max_angular_speed", 0.30)
@@ -1514,10 +1517,75 @@ class DeterministicMissionControllerNode(Node):
             )
             if command.reached:
                 self.reset_storage_dash_timer()
+                if storage_second_repush_required(self.storage_visit_number):
+                    return self.begin_storage_second_repush_close(now_s)
                 return self.begin_storage_exit_west_alignment(now_s)
             return (command.linear_x, command.angular_z)
 
-        if phase == MissionPhase.ALIGN_STORAGE_EXIT_WEST:
+        if phase == MissionPhase.CLOSE_STORAGE_REPUSH:
+            self.set_control_mode(self.MODE_EXIT_STORAGE)
+            self.mission_waypoint = (
+                self.get_float("storage_center_x"),
+                self.get_float("storage_center_y"),
+            )
+            if self.mission.phase_age_s(now_s) < self.get_float(
+                "gripper_move_duration_s"
+            ):
+                return (0.0, 0.0)
+            self.reset_storage_dash_timer()
+            self.mission.set_phase(MissionPhase.REPUSH_STORAGE, now_s)
+            self.get_logger().info(
+                "Second storage gripper close complete; starting slow repush"
+            )
+            return (0.0, 0.0)
+
+        if phase == MissionPhase.REPUSH_STORAGE:
+            self.set_control_mode(self.MODE_ENTER_STORAGE)
+            self.mission_waypoint = (
+                self.get_float("storage_center_x"),
+                self.get_float("storage_center_y"),
+            )
+            elapsed_s = self.update_storage_dash_timer(phase, now_s)
+            command = fixed_heading_dash_command(
+                robot_yaw=self.robot_yaw,
+                desired_yaw=self.storage_entry_dash_yaw(),
+                speed=abs(self.get_float("storage_second_repush_speed")),
+                elapsed_s=elapsed_s,
+                duration_s=self.get_float("storage_second_repush_duration_s"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_dash_max_angular_speed"),
+            )
+            if command.reached:
+                self.reset_storage_dash_timer()
+                self.mission.set_phase(MissionPhase.EXIT_STORAGE_REPUSH, now_s)
+                return (0.0, 0.0)
+            return (command.linear_x, command.angular_z)
+
+        if phase == MissionPhase.EXIT_STORAGE_REPUSH:
+            self.set_control_mode(self.MODE_EXIT_STORAGE)
+            self.mission_waypoint = (staging_x, staging_y)
+            elapsed_s = self.update_storage_dash_timer(phase, now_s)
+            command = fixed_heading_dash_command(
+                robot_yaw=self.robot_yaw,
+                desired_yaw=self.storage_entry_dash_yaw(),
+                speed=-abs(self.get_float("storage_second_repush_speed")),
+                elapsed_s=elapsed_s,
+                duration_s=self.get_float("storage_second_repush_duration_s"),
+                heading_gain=self.get_float("storage_heading_gain"),
+                max_angular_speed=self.get_float("storage_dash_max_angular_speed"),
+            )
+            if command.reached:
+                self.reset_storage_dash_timer()
+                return self.begin_storage_exit_west_alignment(
+                    now_s,
+                    gripper_already_closed=True,
+                )
+            return (command.linear_x, command.angular_z)
+
+        if phase in (
+            MissionPhase.ALIGN_STORAGE_EXIT_WEST,
+            MissionPhase.ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH,
+        ):
             self.set_control_mode(self.MODE_EXIT_STORAGE)
             self.mission_waypoint = (self.robot_x, self.robot_y)
             command = waypoint_command(
@@ -1537,6 +1605,12 @@ class DeterministicMissionControllerNode(Node):
                 ),
             )
             if command.reached:
+                if phase == MissionPhase.ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH:
+                    self.get_logger().info(
+                        "Second storage repush return complete; west-facing "
+                        "odometry alignment complete"
+                    )
+                    return self.continue_storage_exit_after_close(now_s)
                 self.get_logger().info(
                     "Storage reverse complete; west-facing odometry alignment "
                     "complete, closing gripper"
@@ -1557,18 +1631,7 @@ class DeterministicMissionControllerNode(Node):
                 "gripper_move_duration_s"
             ):
                 return (0.0, 0.0)
-            if bool(self.get_parameter("storage_tof_correction_enabled").value):
-                self.storage_exit_tof_missing_started_at = None
-                self.storage_exit_tof_angle_alignment_active = False
-                self.storage_exit_tof_coarse_heading_aligned = False
-                self.mission.set_phase(MissionPhase.CORRECT_STORAGE_EXIT_X, now_s)
-            else:
-                self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
-            self.mission_waypoint = (
-                self.get_float("storage_exit_x"),
-                staging_y,
-            )
-            return (0.0, 0.0)
+            return self.continue_storage_exit_after_close(now_s)
 
         if phase == MissionPhase.RETURN_FROM_STORAGE:
             self.set_control_mode(self.MODE_RETURN_TO_STORAGE)
@@ -1956,14 +2019,57 @@ class DeterministicMissionControllerNode(Node):
         )
         return (0.0, 0.0)
 
-    def begin_storage_exit_west_alignment(self, now_s):
+    def begin_storage_second_repush_close(self, now_s):
         self.publish_cmd(0.0, 0.0)
-        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_EXIT_WEST, now_s)
-        self.mission_waypoint = (self.robot_x, self.robot_y)
-        self.get_logger().info(
-            "Storage reverse complete; rotating toward west with odometry "
-            "before closing gripper"
+        self.command_gripper(open_gripper=False)
+        self.mission.set_phase(MissionPhase.CLOSE_STORAGE_REPUSH, now_s)
+        self.mission_waypoint = (
+            self.get_float("storage_center_x"),
+            self.get_float("storage_center_y"),
         )
+        self.get_logger().info(
+            "Second storage reverse complete; closing gripper before slow repush"
+        )
+        return (0.0, 0.0)
+
+    def continue_storage_exit_after_close(self, now_s):
+        _, staging_y = self.active_storage_staging()
+        if bool(self.get_parameter("storage_tof_correction_enabled").value):
+            self.storage_exit_tof_missing_started_at = None
+            self.storage_exit_tof_angle_alignment_active = False
+            self.storage_exit_tof_coarse_heading_aligned = False
+            self.mission.set_phase(MissionPhase.CORRECT_STORAGE_EXIT_X, now_s)
+        else:
+            self.mission.set_phase(MissionPhase.RETURN_FROM_STORAGE, now_s)
+        self.mission_waypoint = (
+            self.get_float("storage_exit_x"),
+            staging_y,
+        )
+        return (0.0, 0.0)
+
+    def begin_storage_exit_west_alignment(
+        self,
+        now_s,
+        gripper_already_closed=False,
+    ):
+        self.publish_cmd(0.0, 0.0)
+        phase = (
+            MissionPhase.ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH
+            if gripper_already_closed
+            else MissionPhase.ALIGN_STORAGE_EXIT_WEST
+        )
+        self.mission.set_phase(phase, now_s)
+        self.mission_waypoint = (self.robot_x, self.robot_y)
+        if gripper_already_closed:
+            self.get_logger().info(
+                "Second storage repush return complete; rotating toward west "
+                "with gripper closed"
+            )
+        else:
+            self.get_logger().info(
+                "Storage reverse complete; rotating toward west with odometry "
+                "before closing gripper"
+            )
         return (0.0, 0.0)
 
     def complete_storage_entry(self, now_s):
@@ -3091,6 +3197,12 @@ class DeterministicMissionControllerNode(Node):
                     ),
                     "storage_exit_dash_duration_s": (
                         self.active_storage_exit_dash_duration()
+                    ),
+                    "storage_second_repush_speed": self.get_float(
+                        "storage_second_repush_speed"
+                    ),
+                    "storage_second_repush_duration_s": self.get_float(
+                        "storage_second_repush_duration_s"
                     ),
                     "waypoint": (
                         None

@@ -551,9 +551,10 @@ COLLECTING
 보관소 접촉점:     (-1.80, -1.80) m
 출구 ToF yaw:      180도(서쪽)
 1차 고속 진입:     1차 기준점에서 -165도, 0.40 m/s, 1.70초
-2차 고속 진입:     2차 기준점에서 -113도, 0.40 m/s, 1.40초
+2차 고속 진입:     2차 기준점에서 -113도, 0.40 m/s, 1.20초
 1차 후진:          접촉점 -> 1차 기준점, -0.40 m/s, 1.50초
 2차 후진:          접촉점 -> 2차 기준점, -0.40 m/s, 1.10초
+2차 재밀기:        집게를 닫고 0.25 m/s로 1.00초 전진 후 동일하게 후진
 역순 탐색 yaw:     90도(북쪽)
 ```
 
@@ -575,12 +576,14 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_x:=-1.25 \
   storage_x_entry_speed:=0.40 \
   storage_entry_dash_duration_s:=1.70 \
-  storage_second_entry_dash_duration_s:=1.40 \
+  storage_second_entry_dash_duration_s:=1.20 \
   storage_entry_dash_heading_deg:=-165.0 \
   storage_second_entry_dash_heading_deg:=-113.0 \
   storage_exit_reverse_speed:=0.40 \
   storage_exit_dash_duration_s:=1.50 \
   storage_second_exit_dash_duration_s:=1.10 \
+  storage_second_repush_speed:=0.25 \
+  storage_second_repush_duration_s:=1.00 \
   storage_contact_settle_duration_s:=0.20 \
   storage_tof_left_wall_x_m:=-2.0 \
   storage_tof_sensor_forward_offset_m:=0.09 \
@@ -590,7 +593,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 ```
 
 보관소 시간제 진입 중에도 pose tracker는 `cmd_vel`과 IMU를 이용해 x/y와 yaw를
-계속 갱신한다. 1차는 1.7초, 2차는 1.4초 전진한 뒤 pose x/y를
+계속 갱신한다. 1차는 1.7초, 2차는 1.2초 전진한 뒤 pose x/y를
 `(-1.80, -1.80)`으로 보정하고, 보정 반영을 확인한 다음 후진한다.
 
 보관소 진입 방향은 방문 차수별 고정값을 사용한다. 1차는
@@ -605,8 +608,14 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 `storage_second_exit_dash_duration_s` 동안 후진한다. 실제 로봇 속도에 따라
 두 시간을 현장에서 조정한다.
 
-후진이 끝나면 먼저 odometry yaw로 서쪽 180도를 바라보도록 제자리 회전하고,
-회전 완료 후 서보를 닫는다. 그다음 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
+2차 방문은 첫 후진이 끝난 자리에서 집게를 닫고 동작 완료를 기다린다. 이후
+`storage_second_repush_speed`로 `storage_second_repush_duration_s` 동안 기존
+진입각을 유지하며 다시 전진해 물체를 민 다음, 같은 속도와 시간으로 후진해
+첫 후진이 끝난 자리로 복귀한다.
+
+1차 후진이나 2차 재밀기 왕복이 끝나면 odometry yaw로 서쪽 180도를 바라보도록
+제자리 회전한다. 1차는 회전 완료 후 서보를 닫고, 2차는 이미 닫힌 상태를 유지한다.
+그다음 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
 각도가 10도 이상일 때만 회전을 시작하고, 시작된 회전은 5도 이하까지 계속한
 다음 pose yaw를 180도로 재설정한다.
 

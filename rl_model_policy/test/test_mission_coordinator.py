@@ -10,6 +10,7 @@ from rl_model_policy.mission_coordinator import (
     reverse_storage_x_exit_command,
     storage_dash_heading,
     storage_pose_bounds_required,
+    storage_second_repush_required,
     storage_phase_after_staging_x,
     storage_return_start_phase,
     storage_staging_coordinates,
@@ -319,12 +320,22 @@ class MissionCoordinatorTest(unittest.TestCase):
     def test_timed_storage_motion_does_not_require_bounded_xy(self):
         self.assertFalse(storage_pose_bounds_required(MissionPhase.ENTER_STORAGE))
         self.assertFalse(storage_pose_bounds_required(MissionPhase.EXIT_STORAGE))
+        self.assertFalse(
+            storage_pose_bounds_required(MissionPhase.REPUSH_STORAGE)
+        )
+        self.assertFalse(
+            storage_pose_bounds_required(MissionPhase.EXIT_STORAGE_REPUSH)
+        )
         self.assertTrue(
             storage_pose_bounds_required(MissionPhase.ALIGN_STORAGE_DASH)
         )
         self.assertTrue(
             storage_pose_bounds_required(MissionPhase.RETURN_STAGING)
         )
+
+    def test_slow_closed_gripper_repush_only_runs_on_second_visit(self):
+        self.assertFalse(storage_second_repush_required(1))
+        self.assertTrue(storage_second_repush_required(2))
 
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)

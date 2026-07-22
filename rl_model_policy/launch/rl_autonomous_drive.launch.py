@@ -246,6 +246,12 @@ def generate_launch_description():
     storage_second_exit_dash_duration_s = LaunchConfiguration(
         "storage_second_exit_dash_duration_s"
     )
+    storage_second_repush_speed = LaunchConfiguration(
+        "storage_second_repush_speed"
+    )
+    storage_second_repush_duration_s = LaunchConfiguration(
+        "storage_second_repush_duration_s"
+    )
     storage_contact_settle_duration_s = LaunchConfiguration(
         "storage_contact_settle_duration_s"
     )
@@ -540,6 +546,10 @@ def generate_launch_description():
             "storage_exit_dash_duration_s": storage_exit_dash_duration_s,
             "storage_second_exit_dash_duration_s": (
                 storage_second_exit_dash_duration_s
+            ),
+            "storage_second_repush_speed": storage_second_repush_speed,
+            "storage_second_repush_duration_s": (
+                storage_second_repush_duration_s
             ),
             "storage_contact_settle_duration_s": (
                 storage_contact_settle_duration_s
@@ -1053,7 +1063,7 @@ def generate_launch_description():
         DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="1.70"),
         DeclareLaunchArgument(
             "storage_second_entry_dash_duration_s",
-            default_value="1.40",
+            default_value="1.20",
         ),
         DeclareLaunchArgument(
             "storage_entry_dash_heading_deg",
@@ -1067,6 +1077,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "storage_second_exit_dash_duration_s",
             default_value="1.10",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_repush_speed",
+            default_value="0.25",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_repush_duration_s",
+            default_value="1.00",
         ),
         DeclareLaunchArgument(
             "storage_contact_settle_duration_s",

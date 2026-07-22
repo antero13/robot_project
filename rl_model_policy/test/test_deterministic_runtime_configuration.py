@@ -117,6 +117,8 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             "storage_second_entry_dash_heading_deg",
             "storage_second_entry_dash_duration_s",
             "storage_second_exit_dash_duration_s",
+            "storage_second_repush_speed",
+            "storage_second_repush_duration_s",
         }
         self.assertTrue(
             required.issubset(self.declared_launch_arguments(self.policy_launch_source))
