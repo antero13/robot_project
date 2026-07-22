@@ -138,6 +138,12 @@ def generate_launch_description():
         "coverage_reacquire_reverse_after_s"
     )
     coverage_reacquire_angular_z = LaunchConfiguration("coverage_reacquire_angular_z")
+    storage_repickup_guard_enabled = LaunchConfiguration(
+        "storage_repickup_guard_enabled"
+    )
+    storage_repickup_guard_start_y = LaunchConfiguration(
+        "storage_repickup_guard_start_y"
+    )
     lane_tof_correction_enabled = LaunchConfiguration("lane_tof_correction_enabled")
     lane_tof_left_wall_x_m = LaunchConfiguration("lane_tof_left_wall_x_m")
     lane_tof_right_wall_x_m = LaunchConfiguration("lane_tof_right_wall_x_m")
@@ -430,6 +436,8 @@ def generate_launch_description():
             "coverage_reacquire_duration_s": coverage_reacquire_duration_s,
             "coverage_reacquire_reverse_after_s": (coverage_reacquire_reverse_after_s),
             "coverage_reacquire_angular_z": coverage_reacquire_angular_z,
+            "storage_repickup_guard_enabled": storage_repickup_guard_enabled,
+            "storage_repickup_guard_start_y": storage_repickup_guard_start_y,
             "lane_tof_correction_enabled": lane_tof_correction_enabled,
             "wall_distance_angle_topic": wall_distance_angle_topic,
             "tof_wall_angle_sign": tof_wall_angle_sign,
@@ -880,6 +888,14 @@ def generate_launch_description():
             default_value="0.75",
         ),
         DeclareLaunchArgument("coverage_reacquire_angular_z", default_value="0.35"),
+        DeclareLaunchArgument(
+            "storage_repickup_guard_enabled",
+            default_value="true",
+        ),
+        DeclareLaunchArgument(
+            "storage_repickup_guard_start_y",
+            default_value="-0.95",
+        ),
         DeclareLaunchArgument(
             "lane_tof_correction_enabled",
             default_value="true",

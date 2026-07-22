@@ -62,6 +62,7 @@ from rl_model_policy.target_reacquisition import reacquire_angular_velocity
 from rl_model_policy.target_confirmation import target_is_confirmed
 from rl_model_policy.target_activation import (
     coverage_phase_allows_target_search,
+    storage_repickup_guard_is_active,
     target_is_eligible,
 )
 
@@ -161,6 +162,8 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("coverage_reacquire_duration_s", 1.5)
         self.declare_parameter("coverage_reacquire_reverse_after_s", 0.75)
         self.declare_parameter("coverage_reacquire_angular_z", 0.35)
+        self.declare_parameter("storage_repickup_guard_enabled", True)
+        self.declare_parameter("storage_repickup_guard_start_y", -0.95)
         self.declare_parameter("lane_tof_correction_enabled", True)
         self.declare_parameter("wall_distance_angle_topic", "/wall/distance_angle")
         self.declare_parameter("pose_x_correction_topic", "/robot_pose/correct_x")
@@ -2081,12 +2084,25 @@ class DeterministicMissionControllerNode(Node):
 
     def target_search_is_allowed(self):
         """Block YOLO target pursuit on the main road until lane scanning starts."""
-        return coverage_phase_allows_target_search(
-            self.coverage_controller.current_leg.phase,
+        leg = self.coverage_controller.current_leg
+        coverage_allowed = coverage_phase_allows_target_search(
+            leg.phase,
             coverage_enabled=self.coverage_is_enabled(),
             leave_start_active=self.leave_start_active,
             rejoin_active=self.coverage_controller.rejoin_active,
             main_road_alignment_active=self.main_road_tof_alignment_active,
+        )
+        return coverage_allowed and not self.storage_repickup_guard_is_active()
+
+    def storage_repickup_guard_is_active(self):
+        leg = self.coverage_controller.current_leg
+        return storage_repickup_guard_is_active(
+            enabled=self.get_parameter("storage_repickup_guard_enabled").value,
+            delivered_count=self.mission.delivered_count,
+            lane_number=leg.lane_number,
+            coverage_phase=leg.phase,
+            robot_y=self.robot_y,
+            start_y=self.get_float("storage_repickup_guard_start_y"),
         )
 
     def begin_leave_start(self):
@@ -2920,6 +2936,9 @@ class DeterministicMissionControllerNode(Node):
                         "target_tracking_timeout_s"
                         if self.control_mode == self.MODE_TRACK_TARGET
                         else "target_timeout_s"
+                    ),
+                    "storage_repickup_guard_active": (
+                        self.storage_repickup_guard_is_active()
                     ),
                 },
                 "pickup_controller": {

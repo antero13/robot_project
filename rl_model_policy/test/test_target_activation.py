@@ -2,6 +2,7 @@ import unittest
 
 from rl_model_policy.target_activation import (
     coverage_phase_allows_target_search,
+    storage_repickup_guard_is_active,
     target_is_close_enough,
     target_is_eligible,
 )
@@ -43,6 +44,52 @@ class TargetActivationTest(unittest.TestCase):
     def test_tracking_threshold_must_not_exceed_entry_threshold(self):
         with self.assertRaises(ValueError):
             target_is_eligible(0.5, 0.30, 0.31, True)
+
+    def test_storage_guard_blocks_lane_four_descent_after_delivery(self):
+        self.assertTrue(
+            storage_repickup_guard_is_active(
+                enabled=True,
+                delivered_count=4,
+                lane_number=4,
+                coverage_phase="SCAN_LANE_DOWN",
+                robot_y=-1.05,
+                start_y=-0.95,
+            )
+        )
+
+    def test_storage_guard_does_not_block_before_first_delivery(self):
+        self.assertFalse(
+            storage_repickup_guard_is_active(
+                enabled=True,
+                delivered_count=0,
+                lane_number=4,
+                coverage_phase="SCAN_LANE_DOWN",
+                robot_y=-1.05,
+                start_y=-0.95,
+            )
+        )
+
+    def test_storage_guard_does_not_block_other_lanes_or_upper_lane_four(self):
+        common = {
+            "enabled": True,
+            "delivered_count": 4,
+            "coverage_phase": "SCAN_LANE_DOWN",
+            "start_y": -0.95,
+        }
+        self.assertFalse(
+            storage_repickup_guard_is_active(
+                lane_number=3,
+                robot_y=-1.05,
+                **common,
+            )
+        )
+        self.assertFalse(
+            storage_repickup_guard_is_active(
+                lane_number=4,
+                robot_y=-0.90,
+                **common,
+            )
+        )
 
 
 if __name__ == "__main__":

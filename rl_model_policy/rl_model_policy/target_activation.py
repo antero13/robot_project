@@ -49,3 +49,22 @@ def coverage_phase_allows_target_search(
     if not bool(coverage_enabled):
         return True
     return str(coverage_phase) in ("SCAN_LANE_UP", "SCAN_LANE_DOWN")
+
+
+def storage_repickup_guard_is_active(
+    *,
+    enabled,
+    delivered_count,
+    lane_number,
+    coverage_phase,
+    robot_y,
+    start_y,
+):
+    """Block deposited objects once lane 4 passes the final legal object row."""
+    return (
+        bool(enabled)
+        and int(delivered_count) > 0
+        and int(lane_number) == 4
+        and str(coverage_phase) == "SCAN_LANE_DOWN"
+        and float(robot_y) <= float(start_y)
+    )

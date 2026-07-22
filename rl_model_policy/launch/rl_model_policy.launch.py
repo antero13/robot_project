@@ -79,6 +79,12 @@ def generate_launch_description():
         'coverage_reacquire_reverse_after_s'
     )
     coverage_reacquire_angular_z = LaunchConfiguration('coverage_reacquire_angular_z')
+    storage_repickup_guard_enabled = LaunchConfiguration(
+        'storage_repickup_guard_enabled'
+    )
+    storage_repickup_guard_start_y = LaunchConfiguration(
+        'storage_repickup_guard_start_y'
+    )
     lane_tof_correction_enabled = LaunchConfiguration('lane_tof_correction_enabled')
     wall_distance_angle_topic = LaunchConfiguration('wall_distance_angle_topic')
     pose_x_correction_topic = LaunchConfiguration('pose_x_correction_topic')
@@ -324,6 +330,14 @@ def generate_launch_description():
             default_value='0.75',
         ),
         DeclareLaunchArgument('coverage_reacquire_angular_z', default_value='0.35'),
+        DeclareLaunchArgument(
+            'storage_repickup_guard_enabled',
+            default_value='true',
+        ),
+        DeclareLaunchArgument(
+            'storage_repickup_guard_start_y',
+            default_value='-0.95',
+        ),
         DeclareLaunchArgument(
             'lane_tof_correction_enabled',
             default_value='true',
@@ -667,6 +681,14 @@ def generate_launch_description():
                 ),
                 'coverage_reacquire_angular_z': ParameterValue(
                     coverage_reacquire_angular_z,
+                    value_type=float,
+                ),
+                'storage_repickup_guard_enabled': ParameterValue(
+                    storage_repickup_guard_enabled,
+                    value_type=bool,
+                ),
+                'storage_repickup_guard_start_y': ParameterValue(
+                    storage_repickup_guard_start_y,
                     value_type=float,
                 ),
                 'lane_tof_correction_enabled': ParameterValue(

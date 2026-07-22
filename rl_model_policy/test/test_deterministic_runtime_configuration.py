@@ -95,6 +95,20 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_launches_expose_storage_repickup_guard(self):
+        required = {
+            "storage_repickup_guard_enabled",
+            "storage_repickup_guard_start_y",
+        }
+        self.assertTrue(
+            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        )
+        self.assertTrue(
+            required.issubset(
+                self.declared_launch_arguments(self.autonomous_launch_source)
+            )
+        )
+
     def test_launches_expose_pickup_vfh_motion_parameters(self):
         required = {
             "avoid_forward_linear_x",
