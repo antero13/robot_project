@@ -573,7 +573,10 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_center_x:=-1.80 storage_center_y:=-1.80 \
   storage_exit_x:=-1.25 \
   storage_x_entry_speed:=0.40 \
-  storage_entry_dash_duration_s:=2.00 \
+  storage_entry_dash_duration_s:=1.80 \
+  storage_second_entry_dash_duration_s:=1.40 \
+  storage_entry_dash_heading_deg:=-165.0 \
+  storage_second_entry_dash_heading_deg:=-108.0 \
   storage_exit_reverse_speed:=0.40 \
   storage_exit_dash_duration_s:=1.50 \
   storage_second_exit_dash_duration_s:=1.10 \
@@ -585,15 +588,16 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_tof_angle_release_rad:=0.0872664626
 ```
 
-보관소 시간제 진입 중에는 `/robot_pose/lock_position`을 켜서 x/y 적분을
-정지한다. yaw는 IMU로 계속 갱신한다. 2초 전진이 끝나면 pose x/y를
-`(-1.80, -1.80)`으로 보정한 뒤 위치 적분을 다시 켜고 후진한다.
+보관소 시간제 진입 중에도 pose tracker는 `cmd_vel`과 IMU를 이용해 x/y와 yaw를
+계속 갱신한다. 1차는 1.8초, 2차는 1.4초 전진한 뒤 pose x/y를
+`(-1.80, -1.80)`으로 보정하고, 보정 반영을 확인한 다음 후진한다.
 
-보관소 진입 방향은 방문 차수에 맞는 진입 기준점에서 접촉점 `(-1.80, -1.80)`을
-향하도록 한 번 계산해 정렬한다. 기본 진입각은 1차 약 `-169.7 deg`, 2차 약
-`-104.0 deg`이다.
+보관소 진입 방향은 방문 차수별 고정값을 사용한다. 1차는
+`storage_entry_dash_heading_deg=-165 deg`, 2차는
+`storage_second_entry_dash_heading_deg=-108 deg`로 정렬한다.
 그 뒤에는 pose x/y로 목표 방향을 다시 계산하지 않고 IMU yaw만 유지하면서
-`storage_entry_dash_duration_s` 동안 연속 전진한다. 정지 및 접촉 안정화 후
+1차는 `storage_entry_dash_duration_s`, 2차는
+`storage_second_entry_dash_duration_s` 동안 연속 전진한다. 정지 및 접촉 안정화 후
 `storage_center_x/y`를 `/robot_pose/correct_x`, `/robot_pose/correct_y`로 동시에
 발행하며, 보정 반영을 확인한 다음 같은 yaw로
 1차는 `storage_exit_dash_duration_s`, 2차는

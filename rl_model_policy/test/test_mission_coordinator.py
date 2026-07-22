@@ -8,11 +8,11 @@ from rl_model_policy.mission_coordinator import (
     ReturnReason,
     reverse_storage_x_exit_command,
     storage_dash_heading,
-    storage_dash_heading_between,
     storage_pose_bounds_required,
     storage_phase_after_staging_x,
     storage_return_start_phase,
     storage_staging_coordinates,
+    storage_visit_dash_heading,
     storage_visit_number,
     waypoint_avoidance_required,
     waypoint_command,
@@ -147,22 +147,12 @@ class MissionCoordinatorTest(unittest.TestCase):
             (-1.70, -1.40),
         )
 
-    def test_storage_dash_headings_point_from_each_staging_to_center(self):
-        first_heading = storage_dash_heading_between(
-            -1.25,
-            -1.70,
-            -1.80,
-            -1.80,
-        )
-        second_heading = storage_dash_heading_between(
-            -1.70,
-            -1.40,
-            -1.80,
-            -1.80,
-        )
+    def test_storage_dash_headings_are_selected_by_visit(self):
+        first_heading = storage_visit_dash_heading(1, -165.0, -108.0)
+        second_heading = storage_visit_dash_heading(2, -165.0, -108.0)
 
-        self.assertAlmostEqual(math.degrees(first_heading), -169.695, places=3)
-        self.assertAlmostEqual(math.degrees(second_heading), -104.036, places=3)
+        self.assertAlmostEqual(math.degrees(first_heading), -165.0)
+        self.assertAlmostEqual(math.degrees(second_heading), -108.0)
 
     def test_timed_storage_motion_does_not_require_bounded_xy(self):
         self.assertFalse(storage_pose_bounds_required(MissionPhase.ENTER_STORAGE))

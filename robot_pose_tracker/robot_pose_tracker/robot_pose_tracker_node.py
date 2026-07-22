@@ -6,7 +6,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
-from std_msgs.msg import Bool, Float64, String
+from std_msgs.msg import Float64, String
 from std_srvs.srv import Trigger
 from tf2_ros import TransformBroadcaster
 
@@ -25,10 +25,6 @@ class RobotPoseTracker(Node):
         self.declare_parameter('x_correction_topic', '/robot_pose/correct_x')
         self.declare_parameter('y_correction_topic', '/robot_pose/correct_y')
         self.declare_parameter('yaw_correction_topic', '/robot_pose/correct_yaw')
-        self.declare_parameter(
-            'position_lock_topic',
-            '/robot_pose/lock_position',
-        )
         self.declare_parameter('reset_service', '/robot_pose/reset')
         self.declare_parameter('recalibrate_service', '/robot_pose/recalibrate_gyro')
         self.declare_parameter('odom_frame', 'odom')
@@ -75,7 +71,6 @@ class RobotPoseTracker(Node):
         self.latest_cmd_time = None
         self.latest_gyro_z = 0.0
         self.latest_imu_time = None
-        self.position_locked = False
         self.last_update_time = self.get_clock().now()
 
         self.gyro_calibrated = self.gyro_calibration_duration <= 0.0
@@ -118,12 +113,6 @@ class RobotPoseTracker(Node):
             Float64,
             self.get_parameter('yaw_correction_topic').value,
             self.yaw_correction_callback,
-            10,
-        )
-        self.position_lock_sub = self.create_subscription(
-            Bool,
-            self.get_parameter('position_lock_topic').value,
-            self.position_lock_callback,
             10,
         )
         self.reset_srv = self.create_service(
@@ -240,22 +229,6 @@ class RobotPoseTracker(Node):
             f'yaw={math.degrees(self.estimator.yaw):.1f} deg'
         )
 
-    def position_lock_callback(self, msg):
-        locked = bool(msg.data)
-        if locked == self.position_locked:
-            return
-        self.position_locked = locked
-        # Do not carry a command received on one side of the lock transition
-        # into the other side.
-        self.latest_cmd = Twist()
-        self.latest_cmd_time = None
-        self.last_update_time = self.get_clock().now()
-        self.get_logger().info(
-            'Pose x/y integration locked'
-            if locked
-            else 'Pose x/y integration resumed'
-        )
-
     def update(self):
         now = self.get_clock().now()
         dt = self.seconds_between(now, self.last_update_time)
@@ -271,16 +244,8 @@ class RobotPoseTracker(Node):
             command_angular_velocity,
         )
 
-        integrated_linear_velocity = (
-            0.0 if self.position_locked else linear_velocity
-        )
-        self.estimator.step(
-            dt,
-            linear_velocity,
-            angular_velocity,
-            integrate_position=not self.position_locked,
-        )
-        self.publish_pose(now, integrated_linear_velocity, angular_velocity)
+        self.estimator.step(dt, linear_velocity, angular_velocity)
+        self.publish_pose(now, linear_velocity, angular_velocity)
         self.publish_status(status)
 
     def current_command(self, now):

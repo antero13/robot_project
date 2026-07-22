@@ -76,7 +76,6 @@ def generate_launch_description():
     pose_x_correction_topic = LaunchConfiguration("pose_x_correction_topic")
     pose_y_correction_topic = LaunchConfiguration("pose_y_correction_topic")
     pose_yaw_correction_topic = LaunchConfiguration("pose_yaw_correction_topic")
-    pose_position_lock_topic = LaunchConfiguration("pose_position_lock_topic")
     launch_wall_distance_sensor = LaunchConfiguration("launch_wall_distance_sensor")
     wall_driver_backend = LaunchConfiguration("wall_driver_backend")
     wall_left_i2c_bus = LaunchConfiguration("wall_left_i2c_bus")
@@ -232,6 +231,15 @@ def generate_launch_description():
     storage_entry_dash_duration_s = LaunchConfiguration(
         "storage_entry_dash_duration_s"
     )
+    storage_second_entry_dash_duration_s = LaunchConfiguration(
+        "storage_second_entry_dash_duration_s"
+    )
+    storage_entry_dash_heading_deg = LaunchConfiguration(
+        "storage_entry_dash_heading_deg"
+    )
+    storage_second_entry_dash_heading_deg = LaunchConfiguration(
+        "storage_second_entry_dash_heading_deg"
+    )
     storage_exit_dash_duration_s = LaunchConfiguration(
         "storage_exit_dash_duration_s"
     )
@@ -343,7 +351,6 @@ def generate_launch_description():
             "x_correction_topic": pose_x_correction_topic,
             "y_correction_topic": pose_y_correction_topic,
             "yaw_correction_topic": pose_yaw_correction_topic,
-            "position_lock_topic": pose_position_lock_topic,
             "initial_x": initial_x,
             "initial_y": initial_y,
             "initial_yaw_deg": initial_yaw_deg,
@@ -455,7 +462,6 @@ def generate_launch_description():
             "pose_x_correction_topic": pose_x_correction_topic,
             "pose_y_correction_topic": pose_y_correction_topic,
             "pose_yaw_correction_topic": pose_yaw_correction_topic,
-            "pose_position_lock_topic": pose_position_lock_topic,
             "lane_tof_left_wall_x_m": lane_tof_left_wall_x_m,
             "lane_tof_right_wall_x_m": lane_tof_right_wall_x_m,
             "lane_tof_sensor_forward_offset_m": (lane_tof_sensor_forward_offset_m),
@@ -524,6 +530,13 @@ def generate_launch_description():
             "storage_x_entry_speed": storage_x_entry_speed,
             "storage_exit_reverse_speed": storage_exit_reverse_speed,
             "storage_entry_dash_duration_s": storage_entry_dash_duration_s,
+            "storage_second_entry_dash_duration_s": (
+                storage_second_entry_dash_duration_s
+            ),
+            "storage_entry_dash_heading_deg": storage_entry_dash_heading_deg,
+            "storage_second_entry_dash_heading_deg": (
+                storage_second_entry_dash_heading_deg
+            ),
             "storage_exit_dash_duration_s": storage_exit_dash_duration_s,
             "storage_second_exit_dash_duration_s": (
                 storage_second_exit_dash_duration_s
@@ -803,10 +816,6 @@ def generate_launch_description():
             default_value="/robot_pose/correct_yaw",
         ),
         DeclareLaunchArgument(
-            "pose_position_lock_topic",
-            default_value="/robot_pose/lock_position",
-        ),
-        DeclareLaunchArgument(
             "launch_wall_distance_sensor",
             default_value="true",
             description="Start the two-VL53L1X wall distance node.",
@@ -1041,7 +1050,19 @@ def generate_launch_description():
             "storage_exit_reverse_speed",
             default_value="0.40",
         ),
-        DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="2.00"),
+        DeclareLaunchArgument("storage_entry_dash_duration_s", default_value="1.80"),
+        DeclareLaunchArgument(
+            "storage_second_entry_dash_duration_s",
+            default_value="1.40",
+        ),
+        DeclareLaunchArgument(
+            "storage_entry_dash_heading_deg",
+            default_value="-165.0",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_entry_dash_heading_deg",
+            default_value="-108.0",
+        ),
         DeclareLaunchArgument("storage_exit_dash_duration_s", default_value="1.50"),
         DeclareLaunchArgument(
             "storage_second_exit_dash_duration_s",

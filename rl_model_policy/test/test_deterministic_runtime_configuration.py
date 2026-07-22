@@ -113,6 +113,9 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
         required = {
             "storage_second_staging_x",
             "storage_second_staging_y",
+            "storage_entry_dash_heading_deg",
+            "storage_second_entry_dash_heading_deg",
+            "storage_second_entry_dash_duration_s",
             "storage_second_exit_dash_duration_s",
         }
         self.assertTrue(

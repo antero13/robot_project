@@ -92,13 +92,14 @@ def storage_staging_coordinates(
     return (float(second_x), float(second_y))
 
 
-def storage_dash_heading_between(staging_x, staging_y, center_x, center_y):
-    """Point the timed storage dash from its corrected staging point to storage."""
-    dx = float(center_x) - float(staging_x)
-    dy = float(center_y) - float(staging_y)
-    if math.hypot(dx, dy) <= 1e-9:
-        raise ValueError("storage staging and center coordinates must differ")
-    return math.atan2(dy, dx)
+def storage_visit_dash_heading(visit_number, first_heading_deg, second_heading_deg):
+    """Return the configured fixed storage dash heading for a visit."""
+    if int(visit_number) <= 0:
+        raise ValueError("storage visit number must be positive")
+    heading_deg = (
+        first_heading_deg if int(visit_number) == 1 else second_heading_deg
+    )
+    return (math.radians(float(heading_deg)) + math.pi) % (2.0 * math.pi) - math.pi
 
 
 def storage_pose_bounds_required(phase):

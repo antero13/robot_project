@@ -90,7 +90,6 @@ def generate_launch_description():
     pose_x_correction_topic = LaunchConfiguration('pose_x_correction_topic')
     pose_y_correction_topic = LaunchConfiguration('pose_y_correction_topic')
     pose_yaw_correction_topic = LaunchConfiguration('pose_yaw_correction_topic')
-    pose_position_lock_topic = LaunchConfiguration('pose_position_lock_topic')
     lane_tof_left_wall_x_m = LaunchConfiguration('lane_tof_left_wall_x_m')
     lane_tof_right_wall_x_m = LaunchConfiguration('lane_tof_right_wall_x_m')
     lane_tof_sensor_forward_offset_m = LaunchConfiguration(
@@ -174,6 +173,15 @@ def generate_launch_description():
     storage_exit_reverse_speed = LaunchConfiguration('storage_exit_reverse_speed')
     storage_entry_dash_duration_s = LaunchConfiguration(
         'storage_entry_dash_duration_s'
+    )
+    storage_second_entry_dash_duration_s = LaunchConfiguration(
+        'storage_second_entry_dash_duration_s'
+    )
+    storage_entry_dash_heading_deg = LaunchConfiguration(
+        'storage_entry_dash_heading_deg'
+    )
+    storage_second_entry_dash_heading_deg = LaunchConfiguration(
+        'storage_second_entry_dash_heading_deg'
     )
     storage_exit_dash_duration_s = LaunchConfiguration(
         'storage_exit_dash_duration_s'
@@ -366,10 +374,6 @@ def generate_launch_description():
             'pose_yaw_correction_topic',
             default_value='/robot_pose/correct_yaw',
         ),
-        DeclareLaunchArgument(
-            'pose_position_lock_topic',
-            default_value='/robot_pose/lock_position',
-        ),
         DeclareLaunchArgument('lane_tof_left_wall_x_m', default_value='-2.0'),
             DeclareLaunchArgument('lane_tof_right_wall_x_m', default_value='2.0'),
         DeclareLaunchArgument(
@@ -454,7 +458,19 @@ def generate_launch_description():
             DeclareLaunchArgument('storage_entry_speed', default_value='0.30'),
             DeclareLaunchArgument('storage_x_entry_speed', default_value='0.40'),
             DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.40'),
-        DeclareLaunchArgument('storage_entry_dash_duration_s', default_value='2.00'),
+        DeclareLaunchArgument('storage_entry_dash_duration_s', default_value='1.80'),
+        DeclareLaunchArgument(
+            'storage_second_entry_dash_duration_s',
+            default_value='1.40',
+        ),
+        DeclareLaunchArgument(
+            'storage_entry_dash_heading_deg',
+            default_value='-165.0',
+        ),
+        DeclareLaunchArgument(
+            'storage_second_entry_dash_heading_deg',
+            default_value='-108.0',
+        ),
         DeclareLaunchArgument('storage_exit_dash_duration_s', default_value='1.50'),
         DeclareLaunchArgument(
             'storage_second_exit_dash_duration_s',
@@ -713,7 +729,6 @@ def generate_launch_description():
                 'pose_x_correction_topic': pose_x_correction_topic,
                         'pose_y_correction_topic': pose_y_correction_topic,
                 'pose_yaw_correction_topic': pose_yaw_correction_topic,
-                'pose_position_lock_topic': pose_position_lock_topic,
                 'lane_tof_left_wall_x_m': ParameterValue(
                     lane_tof_left_wall_x_m,
                     value_type=float,
@@ -931,6 +946,18 @@ def generate_launch_description():
                 ),
                 'storage_entry_dash_duration_s': ParameterValue(
                     storage_entry_dash_duration_s,
+                    value_type=float,
+                ),
+                'storage_second_entry_dash_duration_s': ParameterValue(
+                    storage_second_entry_dash_duration_s,
+                    value_type=float,
+                ),
+                'storage_entry_dash_heading_deg': ParameterValue(
+                    storage_entry_dash_heading_deg,
+                    value_type=float,
+                ),
+                'storage_second_entry_dash_heading_deg': ParameterValue(
+                    storage_second_entry_dash_heading_deg,
                     value_type=float,
                 ),
                 'storage_exit_dash_duration_s': ParameterValue(

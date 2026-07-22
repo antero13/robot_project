@@ -27,10 +27,6 @@ def generate_launch_description():
             'yaw_correction_topic',
             default_value='/robot_pose/correct_yaw',
         ),
-        DeclareLaunchArgument(
-            'position_lock_topic',
-            default_value='/robot_pose/lock_position',
-        ),
         DeclareLaunchArgument('linear_scale', default_value='1.0'),
         DeclareLaunchArgument('imu_yaw_sign', default_value='1.0'),
         DeclareLaunchArgument('gyro_calibration_duration_s', default_value='2.0'),
@@ -47,9 +43,6 @@ def generate_launch_description():
                 'y_correction_topic': LaunchConfiguration('y_correction_topic'),
                 'yaw_correction_topic': LaunchConfiguration(
                     'yaw_correction_topic'
-                ),
-                'position_lock_topic': LaunchConfiguration(
-                    'position_lock_topic'
                 ),
                 'initial_x': ParameterValue(
                     LaunchConfiguration('initial_x'),
