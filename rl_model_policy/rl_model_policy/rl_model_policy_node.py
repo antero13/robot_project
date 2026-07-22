@@ -56,6 +56,7 @@ from rl_model_policy.lane_tof_correction import (
 )
 from rl_model_policy.main_road_tof_correction import make_main_road_tof_command
 from rl_model_policy.storage_tof_correction import (
+    desired_yaw_for_storage_axis,
     make_storage_tof_command,
     measurement_gap_timed_out,
     storage_coarse_heading_is_aligned,
@@ -1760,6 +1761,8 @@ class DeterministicMissionControllerNode(Node):
                 self.pose_y_correction_pub.publish(correction)
                 self.pending_pose_y_correction = correction.data
                 self.pending_pose_y_correction_time = self.get_clock().now()
+        corrected_yaw = desired_yaw_for_storage_axis(axis)
+        self.publish_pose_yaw_correction(corrected_yaw)
 
         if axis == "y" and not staging_y_alignment:
             self.mission.set_phase(MissionPhase.ALIGN_STORAGE_ENTRY, now_s)
@@ -1767,7 +1770,8 @@ class DeterministicMissionControllerNode(Node):
             f"Storage ToF {axis} alignment complete: "
             f"measured_{axis}={command.measured_coordinate:.3f}, "
             f"wall_angle={math.degrees(wall_angle_rad):.2f} deg, "
-            f"pose_{axis}->{correction.data:.3f}"
+            f"pose_{axis}->{correction.data:.3f}, "
+            f"pose_yaw->{math.degrees(corrected_yaw):.1f} deg"
         )
         if axis == "x":
             return self.complete_storage_staging_x_alignment(now_s)

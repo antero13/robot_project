@@ -68,7 +68,7 @@ state_preprocessor.running_variance: (10,)
 - `/rl_estimated_objects` (`std_msgs/String`): GUI 지도 물체 마커
 - `/robot_pose/correct_x` (`std_msgs/Float64`): 레인 또는 보관소 x 보정
 - `/robot_pose/correct_y` (`std_msgs/Float64`): 보관소 y 보정
-- `/robot_pose/correct_yaw` (`std_msgs/Float64`): 남쪽 주도로 ToF 보정 후 yaw `-90도` 재설정(rad)
+- `/robot_pose/correct_yaw` (`std_msgs/Float64`): 성공한 ToF 벽 보정 후 동쪽 `0도`, 남쪽 `-90도`, 서쪽 `180도` 재설정(rad)
 
 ## 기본 실행
 
@@ -522,14 +522,14 @@ COLLECTING
      역순 탐색을 시작한다.
    - Coverage를 4→3→2→1번 역순으로 다시 시작한다. 4→3은 서쪽을 보고
      후진하며, 3→2와 2→1은 동쪽을 보고 전진한다. 각 이동은 waypoint 도착
-     뒤 현재 바라보는 벽의 ToF로 벽 각도를 0도 근처로 정렬하고 x만 보정한다.
+     뒤 현재 바라보는 벽의 ToF로 벽 각도를 0도 근처로 정렬하고 x와 yaw를 보정한다.
 
 7. **pose와 GUI 갱신**
-   - 동·서쪽 벽 보정 완료 시 `/robot_pose/correct_x`만 발행한다.
-   - 남쪽 주도로 보정 완료 시 `/robot_pose/correct_y`와 yaw `-90도`를
-     `/robot_pose/correct_yaw`로 발행한다.
-   - 1·2번 레인의 최종 입구 y 보정 완료 시 `/robot_pose/correct_y`를 다시
-     발행한다.
+   - 동·서쪽 벽 보정 완료 시 `/robot_pose/correct_x`와 벽 방향 yaw를 함께
+     발행한다. 동쪽은 `0도`, 서쪽은 `180도`다.
+   - 남쪽 주도로와 보관소 남쪽 벽 보정 완료 시 `/robot_pose/correct_y`와
+     yaw `-90도`를 `/robot_pose/correct_yaw`로 함께 발행한다.
+   - ToF 측정 또는 watchdog이 실패한 fallback에서는 위치와 yaw를 재설정하지 않는다.
    - Pose tracker는 해당 위치 축과 yaw 기준값만 바꾸고 누적 이동량을 유지한다.
    - GUI의 `mission.waypoint`는 노란색 `W` 목표 마커이고, 로봇 마커는
      보정된 pose를 사용한다. 경기장 표시에는 centered-frame x/y에

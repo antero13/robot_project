@@ -109,6 +109,16 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_storage_tof_completion_resets_yaw_for_the_corrected_axis(self):
+        self.assertIn(
+            "corrected_yaw = desired_yaw_for_storage_axis(axis)",
+            self.node_source,
+        )
+        self.assertIn(
+            "self.publish_pose_yaw_correction(corrected_yaw)",
+            self.node_source,
+        )
+
     def test_launches_expose_second_storage_visit_route(self):
         required = {
             "storage_second_staging_x",

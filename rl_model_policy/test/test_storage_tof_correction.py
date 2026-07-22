@@ -2,6 +2,7 @@ import math
 import unittest
 
 from rl_model_policy.storage_tof_correction import (
+    desired_yaw_for_storage_axis,
     make_storage_tof_command,
     measurement_gap_timed_out,
     robot_coordinate_from_min_wall_distance,
@@ -36,6 +37,13 @@ def make_command(**overrides):
 
 
 class StorageTofCorrectionTest(unittest.TestCase):
+    def test_successful_axis_corrections_have_cardinal_yaw_resets(self):
+        self.assertAlmostEqual(desired_yaw_for_storage_axis("x"), math.pi)
+        self.assertAlmostEqual(
+            desired_yaw_for_storage_axis("y"),
+            -math.pi / 2.0,
+        )
+
     def test_measurement_gap_timeout_requires_one_continuous_second(self):
         self.assertFalse(measurement_gap_timed_out(None, 11.0, 1.0))
         self.assertFalse(measurement_gap_timed_out(10.0, 10.99, 1.0))
