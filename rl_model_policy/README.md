@@ -506,7 +506,7 @@ COLLECTING
      생략하고 바로 보관소 진입을 시작한다.
 
 4. **서보 개방과 보관소 진입**
-   - 필요한 입구 x/y 보정이 끝난 뒤 서보를 열고 기본 0.5초 기다린다.
+   - 필요한 입구 x/y 보정이 끝나면 서보 열림 명령과 동시에 다음 정렬을 시작한다.
    - 방문별 진입 기준점에서 보관소 접촉점 `(-1.80, -1.80) m`을 향하는
      yaw로 먼저 정렬한 뒤 `0.40 m/s`로 2.50초 연속 진입한다.
      이 구간에서는 pose x/y로 방향을 다시 계산하거나 ToF로 중단하지 않는다.
@@ -516,7 +516,8 @@ COLLECTING
    - pose 보정 반영을 확인한 뒤 서보를 연 상태로 같은 IMU yaw를 유지하며
      `-0.40 m/s`로 1차 1.50초, 2차 1.10초 후진한다.
    - 후진이 끝나면 서보를 연 상태로 odometry yaw를 사용해 서쪽 180도로
-     제자리 회전한다. 서쪽 정렬이 끝난 뒤 서보를 닫고 기본 0.5초 기다린다.
+     제자리 회전한다. 서쪽 정렬이 끝나면 서보 닫힘 명령과 동시에 다음 보정을
+     시작한다.
    - 서쪽 벽 ToF 거리로 `x=-1.25 m`를 먼저 보정한다. 거리 완료 후 벽 각도가
      4도를 초과하면 정렬을 시작하고 4도 이내에서 멈춘 뒤 yaw를 180도로
      재설정한다. 신선한 ToF 값이 연속 1초 동안 없으면 x를 `-1.25 m`로
@@ -555,7 +556,7 @@ COLLECTING
 2차 진입 기준점:   (-1.60, -1.40) m
 보관소 접촉점:     (-1.80, -1.80) m
 출구 ToF yaw:      180도(서쪽)
-1차 고속 진입:     1차 기준점에서 -165도, 0.40 m/s, 1.70초
+1차 고속 진입:     1차 기준점에서 -165도, 0.40 m/s, 1.60초
 2차 고속 진입:     2차 기준점에서 -113도, 0.40 m/s, 1.20초
 1차 후진:          접촉점 -> 1차 기준점, -0.40 m/s, 1.50초
 2차 후진:          접촉점 -> 2차 기준점, -0.40 m/s, 1.10초
@@ -580,7 +581,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_center_x:=-1.80 storage_center_y:=-1.80 \
   storage_exit_x:=-1.25 \
   storage_x_entry_speed:=0.40 \
-  storage_entry_dash_duration_s:=1.70 \
+  storage_entry_dash_duration_s:=1.60 \
   storage_second_entry_dash_duration_s:=1.20 \
   storage_entry_dash_heading_deg:=-165.0 \
   storage_second_entry_dash_heading_deg:=-113.0 \
@@ -590,8 +591,8 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_second_repush_speed:=0.13 \
   storage_second_side_shift_speed:=0.40 \
   storage_second_side_reverse_duration_s:=0.70 \
-  storage_second_side_target_x:=-1.52 \
-  storage_second_side_target_y:=-1.75 \
+  storage_second_side_target_x:=-1.57 \
+  storage_second_side_target_y:=-1.83 \
   storage_second_side_slowdown_distance_m:=0.20 \
   storage_second_side_align_max_angular_speed:=1.00 \
   storage_second_side_curve_control_distance_m:=0.20 \
@@ -606,7 +607,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 ```
 
 보관소 시간제 진입 중에도 pose tracker는 `cmd_vel`과 IMU를 이용해 x/y와 yaw를
-계속 갱신한다. 1차는 1.7초, 2차는 1.2초 전진한 뒤 pose x/y를
+계속 갱신한다. 1차는 1.6초, 2차는 1.2초 전진한 뒤 pose x/y를
 `(-1.80, -1.80)`으로 보정하고, 보정 반영을 확인한 다음 후진한다.
 
 보관소 진입 방향은 방문 차수별 고정값을 사용한다. 1차는
@@ -637,7 +638,7 @@ yaw가 180도가 된다. 곡선 모양과 전방 추종 거리는 각각
 `storage_second_side_curve_control_distance_m`,
 `storage_second_side_curve_lookahead_distance_m`로 조정한다. 기본값은 서쪽
 회전 최대 `1.0 rad/s`, `0.4 m/s`로 `0.7초` 후진, 목표점
-`(-1.52, -1.75)`, 마지막 `0.20 m`에서 `0.40 m/s`부터 `0.13 m/s`까지
+`(-1.57, -1.83)`, 마지막 `0.20 m`에서 `0.40 m/s`부터 `0.13 m/s`까지
 감속하며 곡선 제어 거리 `0.20 m`, 전방 추종 거리 `0.08 m`이다.
 
 1차 후진이나 2차 waypoint 이동이 끝나면 odometry yaw로 서쪽 180도를 바라보도록

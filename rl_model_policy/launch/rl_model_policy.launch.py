@@ -508,7 +508,7 @@ def generate_launch_description():
             DeclareLaunchArgument('storage_entry_speed', default_value='0.30'),
             DeclareLaunchArgument('storage_x_entry_speed', default_value='0.40'),
             DeclareLaunchArgument('storage_exit_reverse_speed', default_value='0.40'),
-        DeclareLaunchArgument('storage_entry_dash_duration_s', default_value='1.70'),
+        DeclareLaunchArgument('storage_entry_dash_duration_s', default_value='1.60'),
         DeclareLaunchArgument(
             'storage_second_entry_dash_duration_s',
             default_value='1.20',
@@ -540,11 +540,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'storage_second_side_target_x',
-            default_value='-1.52',
+            default_value='-1.57',
         ),
         DeclareLaunchArgument(
             'storage_second_side_target_y',
-            default_value='-1.75',
+            default_value='-1.83',
         ),
         DeclareLaunchArgument(
             'storage_second_side_slowdown_distance_m',
@@ -622,7 +622,7 @@ def generate_launch_description():
         DeclareLaunchArgument('gripper_closed_position', default_value='300'),
         DeclareLaunchArgument('gripper_move_duration_s', default_value='0.5'),
         DeclareLaunchArgument('gripper_open_before_start', default_value='true'),
-        DeclareLaunchArgument('start_gripper_close_delay_s', default_value='0.5'),
+        DeclareLaunchArgument('start_gripper_close_delay_s', default_value='0.0'),
         DeclareLaunchArgument('grab_center_tolerance', default_value='0.18'),
         DeclareLaunchArgument('grab_area_ratio', default_value='0.70'),
         DeclareLaunchArgument('grab_detection_timeout_s', default_value='0.25'),

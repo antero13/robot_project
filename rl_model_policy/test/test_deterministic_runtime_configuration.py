@@ -250,8 +250,8 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
         expected_defaults = {
             "storage_second_side_shift_speed": "0.40",
             "storage_second_side_reverse_duration_s": "0.70",
-            "storage_second_side_target_x": "-1.52",
-            "storage_second_side_target_y": "-1.75",
+            "storage_second_side_target_x": "-1.57",
+            "storage_second_side_target_y": "-1.83",
             "storage_second_side_slowdown_distance_m": "0.20",
             "storage_second_side_align_max_angular_speed": "1.00",
             "storage_second_side_curve_control_distance_m": "0.20",
@@ -323,39 +323,6 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             self.node_source,
         )
 
-    def test_storage_gripper_motion_overlaps_robot_motion(self):
-        entry_open = self.source_between(
-            self.node_source,
-            "if phase == MissionPhase.OPEN_STORAGE_ENTRY:",
-            "if phase == MissionPhase.ALIGN_STORAGE_DASH:",
-        )
-        repush_close = self.source_between(
-            self.node_source,
-            "if phase == MissionPhase.CLOSE_STORAGE_REPUSH:",
-            "if phase == MissionPhase.REPUSH_STORAGE:",
-        )
-        exit_close = self.source_between(
-            self.node_source,
-            "if phase == MissionPhase.CLOSE_STORAGE_EXIT:",
-            "if phase == MissionPhase.RETURN_FROM_STORAGE:",
-        )
-        for legacy_phase in (entry_open, repush_close, exit_close):
-            self.assertNotIn("gripper_move_duration_s", legacy_phase)
-
-        self.assertIn(
-            "self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, now_s)",
-            entry_open,
-        )
-        self.assertIn(
-            "self.mission.set_phase(MissionPhase.REPUSH_STORAGE, now_s)",
-            repush_close,
-        )
-        self.assertIn(
-            "if not gripper_already_closed:\n"
-            "            self.command_gripper(open_gripper=False)",
-            self.node_source,
-        )
-
     def test_launches_expose_pickup_vfh_motion_parameters(self):
         required = {
             "avoid_forward_linear_x",
@@ -372,19 +339,76 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
-    def test_launches_expose_prestart_gripper_controls(self):
+    def test_only_start_and_storage_entry_exit_skip_gripper_waits(self):
         required = {
             "gripper_open_before_start",
             "start_gripper_close_delay_s",
+            "grab_duration_s",
         }
-        self.assertTrue(
-            required.issubset(self.declared_launch_arguments(self.policy_launch_source))
+        for source in (
+            self.policy_launch_source,
+            self.autonomous_launch_source,
+        ):
+            self.assertTrue(required.issubset(self.declared_launch_arguments(source)))
+            defaults = self.declared_launch_defaults(source)
+            self.assertEqual(defaults["start_gripper_close_delay_s"], "0.0")
+            self.assertEqual(defaults["grab_duration_s"], "1.0")
+        self.assertIn(
+            'declare_parameter("start_gripper_close_delay_s", 0.0)',
+            self.node_source,
         )
-        self.assertTrue(
-            required.issubset(
-                self.declared_launch_arguments(self.autonomous_launch_source)
-            )
+        self.assertIn(
+            'declare_parameter("grab_duration_s", 1.0)',
+            self.node_source,
         )
+        self.assertNotIn(
+            'get_float("start_gripper_close_delay_s")',
+            self.node_source,
+        )
+        self.assertIn(
+            'grab_state_age_s() < self.get_float("gripper_move_duration_s")',
+            self.node_source,
+        )
+        self.assertIn(
+            'grab_state_age_s() < self.get_float("grab_duration_s")',
+            self.node_source,
+        )
+        self.assertIn(
+            "Storage gripper open commanded; continuing without waiting",
+            self.node_source,
+        )
+        self.assertIn(
+            "Storage gripper close commanded; continuing without waiting",
+            self.node_source,
+        )
+        self.assertIn(
+            "Second storage gripper close complete; starting slow repush",
+            self.node_source,
+        )
+        entry_open = self.source_between(
+            self.node_source,
+            "if phase == MissionPhase.OPEN_STORAGE_ENTRY:",
+            "if phase == MissionPhase.ALIGN_STORAGE_DASH:",
+        )
+        repush_close = self.source_between(
+            self.node_source,
+            "if phase == MissionPhase.CLOSE_STORAGE_REPUSH:",
+            "if phase == MissionPhase.REPUSH_STORAGE:",
+        )
+        exit_close = self.source_between(
+            self.node_source,
+            "if phase == MissionPhase.CLOSE_STORAGE_EXIT:",
+            "if phase == MissionPhase.RETURN_FROM_STORAGE:",
+        )
+        self.assertNotIn("gripper_move_duration_s", entry_open)
+        self.assertIn("gripper_move_duration_s", repush_close)
+        self.assertNotIn("gripper_move_duration_s", exit_close)
+        west_alignment = self.source_between(
+            self.node_source,
+            "def begin_storage_exit_west_alignment(",
+            "def complete_storage_entry(",
+        )
+        self.assertNotIn("command_gripper", west_alignment)
         self.assertIn("def open_gripper_before_start", self.node_source)
         self.assertIn("def start_motion_is_held", self.node_source)
 
