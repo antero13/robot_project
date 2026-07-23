@@ -1529,7 +1529,10 @@ class DeterministicMissionControllerNode(Node):
             )
             if command.reached:
                 self.command_gripper(open_gripper=True)
-                self.mission.set_phase(MissionPhase.OPEN_STORAGE_ENTRY, now_s)
+                self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, now_s)
+                self.get_logger().info(
+                    "Opening gripper while aligning the storage entry dash"
+                )
                 return (0.0, 0.0)
             return (command.linear_x, command.angular_z)
 
@@ -1539,10 +1542,6 @@ class DeterministicMissionControllerNode(Node):
                 self.get_float("storage_center_x"),
                 self.get_float("storage_center_y"),
             )
-            if self.mission.phase_age_s(now_s) < self.get_float(
-                "gripper_move_duration_s"
-            ):
-                return (0.0, 0.0)
             self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, now_s)
             return (0.0, 0.0)
 
@@ -1629,14 +1628,10 @@ class DeterministicMissionControllerNode(Node):
                 self.get_float("storage_center_x"),
                 self.get_float("storage_center_y"),
             )
-            if self.mission.phase_age_s(now_s) < self.get_float(
-                "gripper_move_duration_s"
-            ):
-                return (0.0, 0.0)
             self.reset_storage_dash_timer()
             self.mission.set_phase(MissionPhase.REPUSH_STORAGE, now_s)
             self.get_logger().info(
-                "Second storage gripper close complete; starting slow repush"
+                "Closing gripper while starting the second storage slow repush"
             )
             return (0.0, 0.0)
 
@@ -1720,9 +1715,9 @@ class DeterministicMissionControllerNode(Node):
                     return self.continue_storage_exit_after_close(now_s)
                 self.get_logger().info(
                     "Storage reverse complete; west-facing odometry alignment "
-                    "complete, closing gripper"
+                    "complete with gripper closed"
                 )
-                return self.begin_storage_exit_close(now_s)
+                return self.continue_storage_exit_after_close(now_s)
             return (command.linear_x, command.angular_z)
 
         if phase == MissionPhase.CORRECT_STORAGE_EXIT_X:
@@ -1734,10 +1729,6 @@ class DeterministicMissionControllerNode(Node):
                 self.get_float("storage_exit_x"),
                 staging_y,
             )
-            if self.mission.phase_age_s(now_s) < self.get_float(
-                "gripper_move_duration_s"
-            ):
-                return (0.0, 0.0)
             return self.continue_storage_exit_after_close(now_s)
 
         if phase == MissionPhase.RETURN_FROM_STORAGE:
@@ -2111,34 +2102,32 @@ class DeterministicMissionControllerNode(Node):
         self.storage_tof_coarse_heading_aligned = False
         self.publish_cmd(0.0, 0.0)
         self.command_gripper(open_gripper=True)
-        self.mission.set_phase(MissionPhase.OPEN_STORAGE_ENTRY, now_s)
-        self.mission_waypoint = (
-            self.get_float("storage_center_x"),
-            self.get_float("storage_center_y"),
-        )
-        return (0.0, 0.0)
-
-    def begin_storage_exit_close(self, now_s):
-        _, staging_y = self.active_storage_staging()
-        self.publish_cmd(0.0, 0.0)
-        self.command_gripper(open_gripper=False)
-        self.mission.set_phase(MissionPhase.CLOSE_STORAGE_EXIT, now_s)
-        self.mission_waypoint = (
-            self.get_float("storage_exit_x"),
-            staging_y,
-        )
-        return (0.0, 0.0)
-
-    def begin_storage_second_repush_close(self, now_s):
-        self.publish_cmd(0.0, 0.0)
-        self.command_gripper(open_gripper=False)
-        self.mission.set_phase(MissionPhase.CLOSE_STORAGE_REPUSH, now_s)
+        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, now_s)
         self.mission_waypoint = (
             self.get_float("storage_center_x"),
             self.get_float("storage_center_y"),
         )
         self.get_logger().info(
-            "Second storage reverse complete; closing gripper before slow repush"
+            "Opening gripper while aligning the storage entry dash"
+        )
+        return (0.0, 0.0)
+
+    def begin_storage_exit_close(self, now_s):
+        self.publish_cmd(0.0, 0.0)
+        self.command_gripper(open_gripper=False)
+        return self.continue_storage_exit_after_close(now_s)
+
+    def begin_storage_second_repush_close(self, now_s):
+        self.publish_cmd(0.0, 0.0)
+        self.command_gripper(open_gripper=False)
+        self.reset_storage_dash_timer()
+        self.mission.set_phase(MissionPhase.REPUSH_STORAGE, now_s)
+        self.mission_waypoint = (
+            self.get_float("storage_center_x"),
+            self.get_float("storage_center_y"),
+        )
+        self.get_logger().info(
+            "Second storage reverse complete; closing gripper during slow repush"
         )
         return (0.0, 0.0)
 
@@ -2290,6 +2279,8 @@ class DeterministicMissionControllerNode(Node):
         gripper_already_closed=False,
     ):
         self.publish_cmd(0.0, 0.0)
+        if not gripper_already_closed:
+            self.command_gripper(open_gripper=False)
         phase = (
             MissionPhase.ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH
             if gripper_already_closed
@@ -2304,8 +2295,8 @@ class DeterministicMissionControllerNode(Node):
             )
         else:
             self.get_logger().info(
-                "Storage reverse complete; rotating toward west with odometry "
-                "before closing gripper"
+                "Storage reverse complete; closing gripper while rotating "
+                "toward west with odometry"
             )
         return (0.0, 0.0)
 

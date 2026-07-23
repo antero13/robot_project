@@ -57,6 +57,10 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
                         pass
         return defaults
 
+    @staticmethod
+    def source_between(source, start, end):
+        return source.split(start, 1)[1].split(end, 1)[0]
+
     def test_runtime_has_no_rl_model_loading_or_inference(self):
         for forbidden in (
             "import torch",
@@ -316,6 +320,39 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
         )
         self.assertIn(
             "command = curved_pose_waypoint_command(",
+            self.node_source,
+        )
+
+    def test_storage_gripper_motion_overlaps_robot_motion(self):
+        entry_open = self.source_between(
+            self.node_source,
+            "if phase == MissionPhase.OPEN_STORAGE_ENTRY:",
+            "if phase == MissionPhase.ALIGN_STORAGE_DASH:",
+        )
+        repush_close = self.source_between(
+            self.node_source,
+            "if phase == MissionPhase.CLOSE_STORAGE_REPUSH:",
+            "if phase == MissionPhase.REPUSH_STORAGE:",
+        )
+        exit_close = self.source_between(
+            self.node_source,
+            "if phase == MissionPhase.CLOSE_STORAGE_EXIT:",
+            "if phase == MissionPhase.RETURN_FROM_STORAGE:",
+        )
+        for legacy_phase in (entry_open, repush_close, exit_close):
+            self.assertNotIn("gripper_move_duration_s", legacy_phase)
+
+        self.assertIn(
+            "self.mission.set_phase(MissionPhase.ALIGN_STORAGE_DASH, now_s)",
+            entry_open,
+        )
+        self.assertIn(
+            "self.mission.set_phase(MissionPhase.REPUSH_STORAGE, now_s)",
+            repush_close,
+        )
+        self.assertIn(
+            "if not gripper_already_closed:\n"
+            "            self.command_gripper(open_gripper=False)",
             self.node_source,
         )
 
