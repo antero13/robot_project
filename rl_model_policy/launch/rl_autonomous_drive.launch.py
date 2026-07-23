@@ -263,6 +263,27 @@ def generate_launch_description():
     storage_second_side_shift_speed = LaunchConfiguration(
         "storage_second_side_shift_speed"
     )
+    storage_second_side_reverse_duration_s = LaunchConfiguration(
+        "storage_second_side_reverse_duration_s"
+    )
+    storage_second_side_target_x = LaunchConfiguration(
+        "storage_second_side_target_x"
+    )
+    storage_second_side_target_y = LaunchConfiguration(
+        "storage_second_side_target_y"
+    )
+    storage_second_side_slowdown_distance_m = LaunchConfiguration(
+        "storage_second_side_slowdown_distance_m"
+    )
+    storage_second_side_align_max_angular_speed = LaunchConfiguration(
+        "storage_second_side_align_max_angular_speed"
+    )
+    storage_second_side_curve_control_distance_m = LaunchConfiguration(
+        "storage_second_side_curve_control_distance_m"
+    )
+    storage_second_side_curve_lookahead_distance_m = LaunchConfiguration(
+        "storage_second_side_curve_lookahead_distance_m"
+    )
     storage_second_repush_duration_s = LaunchConfiguration(
         "storage_second_repush_duration_s"
     )
@@ -573,6 +594,23 @@ def generate_launch_description():
             "storage_second_repush_speed": storage_second_repush_speed,
             "storage_second_side_shift_speed": (
                 storage_second_side_shift_speed
+            ),
+            "storage_second_side_reverse_duration_s": (
+                storage_second_side_reverse_duration_s
+            ),
+            "storage_second_side_target_x": storage_second_side_target_x,
+            "storage_second_side_target_y": storage_second_side_target_y,
+            "storage_second_side_slowdown_distance_m": (
+                storage_second_side_slowdown_distance_m
+            ),
+            "storage_second_side_align_max_angular_speed": (
+                storage_second_side_align_max_angular_speed
+            ),
+            "storage_second_side_curve_control_distance_m": (
+                storage_second_side_curve_control_distance_m
+            ),
+            "storage_second_side_curve_lookahead_distance_m": (
+                storage_second_side_curve_lookahead_distance_m
             ),
             "storage_second_repush_duration_s": (
                 storage_second_repush_duration_s
@@ -1119,7 +1157,35 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "storage_second_side_shift_speed",
-            default_value="0.25",
+            default_value="0.40",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_side_reverse_duration_s",
+            default_value="0.70",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_side_target_x",
+            default_value="-1.52",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_side_target_y",
+            default_value="-1.75",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_side_slowdown_distance_m",
+            default_value="0.20",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_side_align_max_angular_speed",
+            default_value="1.00",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_side_curve_control_distance_m",
+            default_value="0.20",
+        ),
+        DeclareLaunchArgument(
+            "storage_second_side_curve_lookahead_distance_m",
+            default_value="0.08",
         ),
         DeclareLaunchArgument(
             "storage_second_repush_duration_s",

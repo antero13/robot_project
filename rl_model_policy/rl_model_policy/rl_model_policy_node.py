@@ -21,14 +21,14 @@ from rl_model_policy.deterministic_pickup_controller import (
     DeterministicPickupController,
 )
 from rl_model_policy.mission_coordinator import (
+    curved_pose_waypoint_command,
     fixed_heading_dash_command,
     MissionCoordinator,
     MissionPhase,
     ReturnReason,
     storage_pose_bounds_required,
-    storage_mirrored_repush_heading,
     storage_second_repush_required,
-    storage_side_shift_heading,
+    tapered_waypoint_speed,
     StorageCurveAvoidanceController,
     storage_phase_after_staging_x,
     storage_return_start_phase,
@@ -289,7 +289,22 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_exit_dash_duration_s", 1.50)
         self.declare_parameter("storage_second_exit_dash_duration_s", 1.10)
         self.declare_parameter("storage_second_repush_speed", 0.13)
-        self.declare_parameter("storage_second_side_shift_speed", 0.25)
+        self.declare_parameter("storage_second_side_shift_speed", 0.40)
+        self.declare_parameter("storage_second_side_reverse_duration_s", 0.70)
+        self.declare_parameter("storage_second_side_target_x", -1.52)
+        self.declare_parameter("storage_second_side_target_y", -1.75)
+        self.declare_parameter(
+            "storage_second_side_slowdown_distance_m", 0.20
+        )
+        self.declare_parameter(
+            "storage_second_side_align_max_angular_speed", 1.00
+        )
+        self.declare_parameter(
+            "storage_second_side_curve_control_distance_m", 0.20
+        )
+        self.declare_parameter(
+            "storage_second_side_curve_lookahead_distance_m", 0.08
+        )
         self.declare_parameter("storage_second_repush_duration_s", 1.00)
         self.declare_parameter("storage_contact_settle_duration_s", 0.20)
         self.declare_parameter("storage_dash_heading_tolerance", 0.05)
@@ -443,6 +458,7 @@ class DeterministicMissionControllerNode(Node):
         self.storage_dash_elapsed_s = 0.0
         self.storage_dash_last_update_s = None
         self.mission_waypoint = None
+        self.storage_side_curve_start = None
         self.return_lane_x = 0.0
         self.return_lane_number = 0
         self.storage_visit_number = 1
@@ -1661,23 +1677,17 @@ class DeterministicMissionControllerNode(Node):
             )
             if command.reached:
                 self.reset_storage_dash_timer()
-                return self.begin_storage_side_repush_sequence(now_s)
+                return self.begin_storage_side_waypoint_route(now_s)
             return (command.linear_x, command.angular_z)
 
-        if phase in (
-            MissionPhase.ALIGN_STORAGE_SIDE_RIGHT,
-            MissionPhase.ALIGN_STORAGE_SIDE_FORWARD,
-            MissionPhase.ALIGN_STORAGE_SIDE_REPUSH_RIGHT,
-        ):
-            return self.storage_side_alignment_command(phase, now_s)
+        if phase == MissionPhase.ALIGN_STORAGE_SIDE_WEST:
+            return self.storage_side_west_alignment_command(now_s)
 
-        if phase in (
-            MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD,
-            MissionPhase.SHIFT_STORAGE_SIDE_FORWARD,
-            MissionPhase.REPUSH_STORAGE_SIDE,
-            MissionPhase.EXIT_STORAGE_SIDE_REPUSH,
-        ):
-            return self.storage_side_motion_command(phase, now_s)
+        if phase == MissionPhase.REVERSE_STORAGE_SIDE_CLEARANCE:
+            return self.storage_side_clearance_reverse_command(now_s)
+
+        if phase == MissionPhase.MOVE_STORAGE_SIDE_WAYPOINT:
+            return self.storage_side_waypoint_command(now_s)
 
         if phase in (
             MissionPhase.ALIGN_STORAGE_EXIT_WEST,
@@ -2132,38 +2142,18 @@ class DeterministicMissionControllerNode(Node):
         )
         return (0.0, 0.0)
 
-    def begin_storage_side_repush_sequence(self, now_s):
+    def begin_storage_side_waypoint_route(self, now_s):
         self.publish_cmd(0.0, 0.0)
-        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_SIDE_RIGHT, now_s)
+        self.storage_side_curve_start = None
+        self.mission.set_phase(MissionPhase.ALIGN_STORAGE_SIDE_WEST, now_s)
         self.mission_waypoint = (self.robot_x, self.robot_y)
         self.get_logger().info(
-            "Second storage upper repush return complete; rotating right "
-            "90 degrees to start the side-repush route"
+            "Second storage upper repush return complete; rotating west "
+            "before the side-waypoint route"
         )
         return (0.0, 0.0)
 
-    def storage_side_alignment_command(self, phase, now_s):
-        entry_yaw = self.storage_entry_dash_yaw()
-        shift_yaw = storage_side_shift_heading(entry_yaw)
-        repush_yaw = storage_mirrored_repush_heading(entry_yaw)
-        alignment_steps = {
-            MissionPhase.ALIGN_STORAGE_SIDE_RIGHT: (
-                shift_yaw,
-                MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD,
-                "right 90-degree rotation complete; starting side shift in reverse",
-            ),
-            MissionPhase.ALIGN_STORAGE_SIDE_FORWARD: (
-                entry_yaw,
-                MissionPhase.SHIFT_STORAGE_SIDE_FORWARD,
-                "left 90-degree rotation complete; starting forward side shift",
-            ),
-            MissionPhase.ALIGN_STORAGE_SIDE_REPUSH_RIGHT: (
-                repush_yaw,
-                MissionPhase.REPUSH_STORAGE_SIDE,
-                "mirrored right-side angle acquired; starting side repush",
-            ),
-        }
-        desired_yaw, next_phase, completion_log = alignment_steps[phase]
+    def storage_side_west_alignment_command(self, now_s):
         self.set_control_mode(self.MODE_EXIT_STORAGE)
         self.mission_waypoint = (self.robot_x, self.robot_y)
         command = waypoint_command(
@@ -2176,8 +2166,10 @@ class DeterministicMissionControllerNode(Node):
             waypoint_tolerance=self.get_float("storage_entry_tolerance"),
             heading_tolerance=self.get_float("storage_heading_tolerance"),
             heading_gain=self.get_float("storage_heading_gain"),
-            max_angular_speed=self.get_float("storage_max_angular_speed"),
-            final_yaw=desired_yaw,
+            max_angular_speed=self.get_float(
+                "storage_second_side_align_max_angular_speed"
+            ),
+            final_yaw=math.pi,
             final_yaw_tolerance=self.get_float(
                 "storage_final_yaw_tolerance"
             ),
@@ -2185,70 +2177,97 @@ class DeterministicMissionControllerNode(Node):
         if not command.reached:
             return (command.linear_x, command.angular_z)
         self.reset_storage_dash_timer()
-        self.mission.set_phase(next_phase, now_s)
-        self.get_logger().info(completion_log)
+        self.mission.set_phase(MissionPhase.REVERSE_STORAGE_SIDE_CLEARANCE, now_s)
+        self.get_logger().info(
+            "West alignment complete; reversing for 0.7 seconds before "
+            "the side waypoint"
+        )
         return (0.0, 0.0)
 
-    def storage_side_motion_command(self, phase, now_s):
-        entry_yaw = self.storage_entry_dash_yaw()
-        shift_yaw = storage_side_shift_heading(entry_yaw)
-        repush_yaw = storage_mirrored_repush_heading(entry_yaw)
-        repush_speed = abs(self.get_float("storage_second_repush_speed"))
-        shift_speed = abs(self.get_float("storage_second_side_shift_speed"))
-        motion_steps = {
-            MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD: (
-                shift_yaw,
-                -shift_speed,
-                MissionPhase.ALIGN_STORAGE_SIDE_FORWARD,
-                "Side reverse shift complete; rotating left 90 degrees",
-            ),
-            MissionPhase.SHIFT_STORAGE_SIDE_FORWARD: (
-                entry_yaw,
-                shift_speed,
-                MissionPhase.ALIGN_STORAGE_SIDE_REPUSH_RIGHT,
-                "Side forward shift complete; rotating right 90 degrees",
-            ),
-            MissionPhase.REPUSH_STORAGE_SIDE: (
-                repush_yaw,
-                repush_speed,
-                MissionPhase.EXIT_STORAGE_SIDE_REPUSH,
-                "Second storage side repush complete; reversing by the same distance",
-            ),
-            MissionPhase.EXIT_STORAGE_SIDE_REPUSH: (
-                repush_yaw,
-                -repush_speed,
-                None,
-                "Second storage side repush return complete",
-            ),
-        }
-        desired_yaw, signed_speed, next_phase, completion_log = motion_steps[phase]
-        self.set_control_mode(
-            self.MODE_ENTER_STORAGE
-            if phase == MissionPhase.REPUSH_STORAGE_SIDE
-            else self.MODE_EXIT_STORAGE
-        )
+    def storage_side_clearance_reverse_command(self, now_s):
+        self.set_control_mode(self.MODE_EXIT_STORAGE)
         self.mission_waypoint = (self.robot_x, self.robot_y)
-        elapsed_s = self.update_storage_dash_timer(phase, now_s)
+        elapsed_s = self.update_storage_dash_timer(
+            MissionPhase.REVERSE_STORAGE_SIDE_CLEARANCE,
+            now_s,
+        )
         command = fixed_heading_dash_command(
             robot_yaw=self.robot_yaw,
-            desired_yaw=desired_yaw,
-            speed=signed_speed,
+            desired_yaw=math.pi,
+            speed=-abs(self.get_float("storage_second_side_shift_speed")),
             elapsed_s=elapsed_s,
-            duration_s=self.get_float("storage_second_repush_duration_s"),
+            duration_s=self.get_float(
+                "storage_second_side_reverse_duration_s"
+            ),
             heading_gain=self.get_float("storage_heading_gain"),
             max_angular_speed=self.get_float("storage_dash_max_angular_speed"),
         )
         if not command.reached:
             return (command.linear_x, command.angular_z)
         self.reset_storage_dash_timer()
-        self.get_logger().info(completion_log)
-        if next_phase is None:
-            return self.begin_storage_exit_west_alignment(
-                now_s,
-                gripper_already_closed=True,
-            )
-        self.mission.set_phase(next_phase, now_s)
+        self.storage_side_curve_start = (self.robot_x, self.robot_y)
+        self.mission.set_phase(MissionPhase.MOVE_STORAGE_SIDE_WAYPOINT, now_s)
+        self.get_logger().info(
+            "Timed west-facing reverse complete; moving to the side waypoint"
+        )
         return (0.0, 0.0)
+
+    def storage_side_waypoint_command(self, now_s):
+        target_x = self.get_float("storage_second_side_target_x")
+        target_y = self.get_float("storage_second_side_target_y")
+        if self.storage_side_curve_start is None:
+            self.storage_side_curve_start = (self.robot_x, self.robot_y)
+        start_x, start_y = self.storage_side_curve_start
+        waypoint_tolerance = self.get_float("storage_entry_tolerance")
+        distance = math.hypot(
+            target_x - self.robot_x,
+            target_y - self.robot_y,
+        )
+        speed = tapered_waypoint_speed(
+            distance=distance,
+            fast_speed=self.get_float("storage_second_side_shift_speed"),
+            slow_speed=self.get_float("storage_second_repush_speed"),
+            slowdown_distance=self.get_float(
+                "storage_second_side_slowdown_distance_m"
+            ),
+            waypoint_tolerance=waypoint_tolerance,
+        )
+        self.set_control_mode(self.MODE_EXIT_STORAGE)
+        self.mission_waypoint = (target_x, target_y)
+        command = curved_pose_waypoint_command(
+            robot_x=self.robot_x,
+            robot_y=self.robot_y,
+            robot_yaw=self.robot_yaw,
+            start_x=start_x,
+            start_y=start_y,
+            target_x=target_x,
+            target_y=target_y,
+            speed=speed,
+            final_yaw=math.pi,
+            waypoint_tolerance=waypoint_tolerance,
+            heading_tolerance=self.get_float("storage_heading_tolerance"),
+            heading_gain=self.get_float("storage_heading_gain"),
+            max_angular_speed=self.get_float("storage_max_angular_speed"),
+            final_yaw_tolerance=self.get_float(
+                "storage_dash_heading_tolerance"
+            ),
+            control_distance=self.get_float(
+                "storage_second_side_curve_control_distance_m"
+            ),
+            lookahead_distance=self.get_float(
+                "storage_second_side_curve_lookahead_distance_m"
+            ),
+        )
+        if not command.reached:
+            return (command.linear_x, command.angular_z)
+        self.get_logger().info(
+            "Second storage side waypoint reached; starting the existing "
+            "west alignment and ToF x correction"
+        )
+        return self.begin_storage_exit_west_alignment(
+            now_s,
+            gripper_already_closed=True,
+        )
 
     def continue_storage_exit_after_close(self, now_s):
         _, staging_y = self.active_storage_staging()
@@ -3451,6 +3470,27 @@ class DeterministicMissionControllerNode(Node):
                     ),
                     "storage_second_side_shift_speed": self.get_float(
                         "storage_second_side_shift_speed"
+                    ),
+                    "storage_second_side_reverse_duration_s": self.get_float(
+                        "storage_second_side_reverse_duration_s"
+                    ),
+                    "storage_second_side_target_x": self.get_float(
+                        "storage_second_side_target_x"
+                    ),
+                    "storage_second_side_target_y": self.get_float(
+                        "storage_second_side_target_y"
+                    ),
+                    "storage_second_side_slowdown_distance_m": self.get_float(
+                        "storage_second_side_slowdown_distance_m"
+                    ),
+                    "storage_second_side_align_max_angular_speed": self.get_float(
+                        "storage_second_side_align_max_angular_speed"
+                    ),
+                    "storage_second_side_curve_control_distance_m": self.get_float(
+                        "storage_second_side_curve_control_distance_m"
+                    ),
+                    "storage_second_side_curve_lookahead_distance_m": self.get_float(
+                        "storage_second_side_curve_lookahead_distance_m"
                     ),
                     "storage_second_repush_duration_s": self.get_float(
                         "storage_second_repush_duration_s"

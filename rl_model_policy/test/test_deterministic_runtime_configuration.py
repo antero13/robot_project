@@ -238,20 +238,28 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
             self.assertEqual(ast.literal_eval(default_value), "0.13")
 
-    def test_second_storage_side_shift_speed_is_point_twenty_five(self):
+    def test_second_storage_side_route_defaults(self):
         self.assertIn(
-            'declare_parameter("storage_second_side_shift_speed", 0.25)',
+            'declare_parameter("storage_second_side_shift_speed", 0.40)',
             self.node_source,
         )
+        expected_defaults = {
+            "storage_second_side_shift_speed": "0.40",
+            "storage_second_side_reverse_duration_s": "0.70",
+            "storage_second_side_target_x": "-1.52",
+            "storage_second_side_target_y": "-1.75",
+            "storage_second_side_slowdown_distance_m": "0.20",
+            "storage_second_side_align_max_angular_speed": "1.00",
+            "storage_second_side_curve_control_distance_m": "0.20",
+            "storage_second_side_curve_lookahead_distance_m": "0.08",
+        }
         for source in (
             self.policy_launch_source,
             self.autonomous_launch_source,
         ):
             defaults = self.declared_launch_defaults(source)
-            self.assertEqual(
-                defaults["storage_second_side_shift_speed"],
-                "0.25",
-            )
+            for name, expected in expected_defaults.items():
+                self.assertEqual(defaults[name], expected)
 
     def test_launches_expose_second_storage_visit_route(self):
         required = {
@@ -263,6 +271,13 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             "storage_second_exit_dash_duration_s",
             "storage_second_repush_speed",
             "storage_second_side_shift_speed",
+            "storage_second_side_reverse_duration_s",
+            "storage_second_side_target_x",
+            "storage_second_side_target_y",
+            "storage_second_side_slowdown_distance_m",
+            "storage_second_side_align_max_angular_speed",
+            "storage_second_side_curve_control_distance_m",
+            "storage_second_side_curve_lookahead_distance_m",
             "storage_second_repush_duration_s",
         }
         self.assertTrue(
@@ -274,29 +289,33 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
-    def test_second_storage_visit_adds_right_side_repush_route(self):
+    def test_second_storage_visit_adds_side_waypoint_route(self):
         required_phases = {
-            "ALIGN_STORAGE_SIDE_RIGHT",
-            "SHIFT_STORAGE_SIDE_BACKWARD",
-            "ALIGN_STORAGE_SIDE_FORWARD",
-            "SHIFT_STORAGE_SIDE_FORWARD",
-            "ALIGN_STORAGE_SIDE_REPUSH_RIGHT",
-            "REPUSH_STORAGE_SIDE",
-            "EXIT_STORAGE_SIDE_REPUSH",
+            "ALIGN_STORAGE_SIDE_WEST",
+            "REVERSE_STORAGE_SIDE_CLEARANCE",
+            "MOVE_STORAGE_SIDE_WAYPOINT",
         }
         self.assertTrue(
             all(phase in self.node_source for phase in required_phases)
         )
         self.assertIn(
-            "return self.begin_storage_side_repush_sequence(now_s)",
+            "return self.begin_storage_side_waypoint_route(now_s)",
             self.node_source,
         )
         self.assertIn(
-            'duration_s=self.get_float("storage_second_repush_duration_s")',
+            '"storage_second_side_reverse_duration_s"',
             self.node_source,
         )
         self.assertIn(
-            'shift_speed = abs(self.get_float("storage_second_side_shift_speed"))',
+            'target_x = self.get_float("storage_second_side_target_x")',
+            self.node_source,
+        )
+        self.assertIn(
+            'target_y = self.get_float("storage_second_side_target_y")',
+            self.node_source,
+        )
+        self.assertIn(
+            "command = curved_pose_waypoint_command(",
             self.node_source,
         )
 

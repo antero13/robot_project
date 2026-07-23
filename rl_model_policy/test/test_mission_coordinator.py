@@ -2,23 +2,22 @@ import math
 import unittest
 
 from rl_model_policy.mission_coordinator import (
+    curved_pose_waypoint_command,
     fixed_heading_dash_command,
     MissionCoordinator,
     MissionPhase,
-    normalize_angle,
     ReturnReason,
     StorageCurveAvoidanceController,
     reverse_storage_x_exit_command,
     storage_dash_heading,
-    storage_mirrored_repush_heading,
     storage_pose_bounds_required,
     storage_second_repush_required,
-    storage_side_shift_heading,
     storage_phase_after_staging_x,
     storage_return_start_phase,
     storage_staging_coordinates,
     storage_visit_dash_heading,
     storage_visit_number,
+    tapered_waypoint_speed,
     waypoint_avoidance_required,
     waypoint_command,
 )
@@ -330,19 +329,15 @@ class MissionCoordinatorTest(unittest.TestCase):
             storage_pose_bounds_required(MissionPhase.EXIT_STORAGE_REPUSH)
         )
         self.assertFalse(
-            storage_pose_bounds_required(MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD)
-        )
-        self.assertFalse(
-            storage_pose_bounds_required(MissionPhase.SHIFT_STORAGE_SIDE_FORWARD)
-        )
-        self.assertFalse(
-            storage_pose_bounds_required(MissionPhase.REPUSH_STORAGE_SIDE)
-        )
-        self.assertFalse(
-            storage_pose_bounds_required(MissionPhase.EXIT_STORAGE_SIDE_REPUSH)
+            storage_pose_bounds_required(
+                MissionPhase.REVERSE_STORAGE_SIDE_CLEARANCE
+            )
         )
         self.assertTrue(
             storage_pose_bounds_required(MissionPhase.ALIGN_STORAGE_DASH)
+        )
+        self.assertTrue(
+            storage_pose_bounds_required(MissionPhase.MOVE_STORAGE_SIDE_WAYPOINT)
         )
         self.assertTrue(
             storage_pose_bounds_required(MissionPhase.RETURN_STAGING)
@@ -352,55 +347,102 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertFalse(storage_second_repush_required(1))
         self.assertTrue(storage_second_repush_required(2))
 
-    def test_side_shift_is_right_ninety_and_repush_is_mirrored(self):
-        entry_heading = storage_visit_dash_heading(2, -165.0, -113.0)
-        shift_heading = storage_side_shift_heading(entry_heading)
-        repush_heading = storage_mirrored_repush_heading(entry_heading)
+    def test_side_waypoint_speed_tapers_from_fast_to_slow(self):
+        speed_args = {
+            "fast_speed": 0.40,
+            "slow_speed": 0.13,
+            "slowdown_distance": 0.20,
+            "waypoint_tolerance": 0.04,
+        }
+        self.assertAlmostEqual(
+            tapered_waypoint_speed(distance=0.50, **speed_args),
+            0.40,
+        )
+        self.assertAlmostEqual(
+            tapered_waypoint_speed(distance=0.20, **speed_args),
+            0.40,
+        )
+        self.assertAlmostEqual(
+            tapered_waypoint_speed(distance=0.12, **speed_args),
+            0.265,
+        )
+        self.assertAlmostEqual(
+            tapered_waypoint_speed(distance=0.04, **speed_args),
+            0.13,
+        )
 
-        self.assertAlmostEqual(math.degrees(shift_heading), 157.0)
-        self.assertAlmostEqual(
-            normalize_angle(shift_heading - entry_heading),
-            -math.pi / 2.0,
+    def test_side_waypoint_speed_rejects_invalid_configuration(self):
+        with self.assertRaises(ValueError):
+            tapered_waypoint_speed(
+                distance=0.2,
+                fast_speed=0.13,
+                slow_speed=0.40,
+                slowdown_distance=0.20,
+                waypoint_tolerance=0.04,
+            )
+        with self.assertRaises(ValueError):
+            tapered_waypoint_speed(
+                distance=0.2,
+                fast_speed=0.40,
+                slow_speed=0.13,
+                slowdown_distance=0.04,
+                waypoint_tolerance=0.04,
+            )
+
+    def test_side_waypoint_curve_finishes_facing_west(self):
+        curve_args = {
+            "start_x": -1.35,
+            "start_y": -1.40,
+            "target_x": -1.60,
+            "target_y": -1.75,
+            "speed": 0.13,
+            "final_yaw": math.pi,
+            "waypoint_tolerance": 0.04,
+            "heading_tolerance": 0.14,
+            "heading_gain": 2.4,
+            "max_angular_speed": 0.80,
+            "final_yaw_tolerance": 0.05,
+            "control_distance": 0.20,
+            "lookahead_distance": 0.08,
+        }
+        final_approach = curved_pose_waypoint_command(
+            robot_x=-1.52,
+            robot_y=-1.75,
+            robot_yaw=math.pi,
+            **curve_args,
         )
-        self.assertAlmostEqual(math.degrees(repush_heading), -157.0)
-        self.assertAlmostEqual(
-            math.cos(repush_heading),
-            math.sin(entry_heading),
+        reached = curved_pose_waypoint_command(
+            robot_x=-1.60,
+            robot_y=-1.75,
+            robot_yaw=math.pi,
+            **curve_args,
         )
-        self.assertAlmostEqual(
-            math.sin(repush_heading),
-            math.cos(entry_heading),
+
+        self.assertAlmostEqual(final_approach.linear_x, 0.13)
+        self.assertAlmostEqual(final_approach.angular_z, 0.0)
+        self.assertFalse(final_approach.reached)
+        self.assertTrue(reached.reached)
+
+    def test_side_waypoint_curve_aligns_west_inside_position_tolerance(self):
+        command = curved_pose_waypoint_command(
+            robot_x=-1.58,
+            robot_y=-1.75,
+            robot_yaw=-math.pi / 2.0,
+            start_x=-1.35,
+            start_y=-1.40,
+            target_x=-1.60,
+            target_y=-1.75,
+            speed=0.13,
+            final_yaw=math.pi,
+            waypoint_tolerance=0.04,
+            final_yaw_tolerance=0.05,
+            heading_gain=2.4,
+            max_angular_speed=0.80,
         )
-        right_turn = waypoint_command(
-            robot_x=0.0,
-            robot_y=0.0,
-            robot_yaw=entry_heading,
-            target_x=0.0,
-            target_y=0.0,
-            speed=0.0,
-            final_yaw=shift_heading,
-        )
-        left_turn = waypoint_command(
-            robot_x=0.0,
-            robot_y=0.0,
-            robot_yaw=shift_heading,
-            target_x=0.0,
-            target_y=0.0,
-            speed=0.0,
-            final_yaw=entry_heading,
-        )
-        mirrored_right_turn = waypoint_command(
-            robot_x=0.0,
-            robot_y=0.0,
-            robot_yaw=entry_heading,
-            target_x=0.0,
-            target_y=0.0,
-            speed=0.0,
-            final_yaw=repush_heading,
-        )
-        self.assertLess(right_turn.angular_z, 0.0)
-        self.assertGreater(left_turn.angular_z, 0.0)
-        self.assertLess(mirrored_right_turn.angular_z, 0.0)
+
+        self.assertEqual(command.linear_x, 0.0)
+        self.assertLess(command.angular_z, 0.0)
+        self.assertFalse(command.reached)
 
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)

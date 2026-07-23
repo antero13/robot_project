@@ -559,7 +559,7 @@ COLLECTING
 2차 고속 진입:     2차 기준점에서 -113도, 0.40 m/s, 1.20초
 1차 후진:          접촉점 -> 1차 기준점, -0.40 m/s, 1.50초
 2차 후진:          접촉점 -> 2차 기준점, -0.40 m/s, 1.10초
-2차 재밀기:        집게를 닫고 0.25 m/s로 1.00초 전진 후 동일하게 후진
+2차 재밀기:        집게를 닫고 0.13 m/s로 1.00초 전진 후 동일하게 후진
 역순 탐색 yaw:     90도(북쪽)
 ```
 
@@ -588,7 +588,14 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_dash_duration_s:=1.50 \
   storage_second_exit_dash_duration_s:=1.10 \
   storage_second_repush_speed:=0.13 \
-  storage_second_side_shift_speed:=0.25 \
+  storage_second_side_shift_speed:=0.40 \
+  storage_second_side_reverse_duration_s:=0.70 \
+  storage_second_side_target_x:=-1.52 \
+  storage_second_side_target_y:=-1.75 \
+  storage_second_side_slowdown_distance_m:=0.20 \
+  storage_second_side_align_max_angular_speed:=1.00 \
+  storage_second_side_curve_control_distance_m:=0.20 \
+  storage_second_side_curve_lookahead_distance_m:=0.08 \
   storage_second_repush_duration_s:=1.00 \
   storage_contact_settle_duration_s:=0.20 \
   storage_tof_left_wall_x_m:=-2.0 \
@@ -617,16 +624,23 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 2차 방문은 첫 후진이 끝난 자리에서 집게를 닫고 동작 완료를 기다린다. 이후
 `storage_second_repush_speed`로 `storage_second_repush_duration_s` 동안 기존
 진입각을 유지하며 다시 전진해 물체를 민 다음, 같은 속도와 시간으로 후진해
-첫 후진이 끝난 자리로 복귀한다. 이어서 진입각 기준 오른쪽으로 90도 회전하고
-`storage_second_side_shift_speed`로 후진한 뒤, 왼쪽으로 90도 회전해 같은
-속도와 시간으로 전진한다.
-다시 오른쪽으로 회전하되 위쪽 `-113 deg` 밀기 방향을 보관소 대각선 기준으로
-대칭시킨 `-157 deg`로 정렬한다. 보관소 오른쪽에서 같은 거리만큼 물체를 밀고,
-같은 거리만큼 후진해 빠져나온다. 기본값 기준 재재밀기 위치로 가는 후진·전진만
-`0.25 m/s * 1.0 s`, 약 `0.25 m`이고, 위쪽 및 오른쪽 재밀기 왕복은
-`0.13 m/s * 1.0 s`, 약 `0.13 m`를 유지한다.
+첫 후진이 끝난 자리로 복귀한다. 이어서 서쪽을 바라보며 회전 속도는
+`storage_second_side_align_max_angular_speed`로 제한한다. 정렬이 끝나면
+`storage_second_side_shift_speed`로
+`storage_second_side_reverse_duration_s` 동안 후진하고,
+`(storage_second_side_target_x, storage_second_side_target_y)` waypoint로
+이동한다. waypoint 이동은 멀리 있을 때 `storage_second_side_shift_speed`를
+사용하고, 남은 거리가 `storage_second_side_slowdown_distance_m`보다 작아지면
+`storage_second_repush_speed`까지 선형 감속한다. 이 구간은 cubic 곡선을
+추종하므로 초반에는 목표점을 향하고 후반에는 서쪽으로 휘어, 목표점 도착 시
+yaw가 180도가 된다. 곡선 모양과 전방 추종 거리는 각각
+`storage_second_side_curve_control_distance_m`,
+`storage_second_side_curve_lookahead_distance_m`로 조정한다. 기본값은 서쪽
+회전 최대 `1.0 rad/s`, `0.4 m/s`로 `0.7초` 후진, 목표점
+`(-1.52, -1.75)`, 마지막 `0.20 m`에서 `0.40 m/s`부터 `0.13 m/s`까지
+감속하며 곡선 제어 거리 `0.20 m`, 전방 추종 거리 `0.08 m`이다.
 
-1차 후진이나 2차 오른쪽 재밀기 왕복이 끝나면 odometry yaw로 서쪽 180도를 바라보도록
+1차 후진이나 2차 waypoint 이동이 끝나면 odometry yaw로 서쪽 180도를 바라보도록
 제자리 회전한다. 1차는 회전 완료 후 서보를 닫고, 2차는 이미 닫힌 상태를 유지한다.
 그다음 서쪽 벽 ToF는 x 거리부터 보정한다. 거리 완료 후
 각도가 4도를 초과할 때 회전을 시작하고, 시작된 회전은 4도 이내까지 계속한

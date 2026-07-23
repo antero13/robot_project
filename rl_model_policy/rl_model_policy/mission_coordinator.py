@@ -22,13 +22,9 @@ class MissionPhase:
     CLOSE_STORAGE_REPUSH = "CLOSE_STORAGE_REPUSH"
     REPUSH_STORAGE = "REPUSH_STORAGE"
     EXIT_STORAGE_REPUSH = "EXIT_STORAGE_REPUSH"
-    ALIGN_STORAGE_SIDE_RIGHT = "ALIGN_STORAGE_SIDE_RIGHT"
-    SHIFT_STORAGE_SIDE_BACKWARD = "SHIFT_STORAGE_SIDE_BACKWARD"
-    ALIGN_STORAGE_SIDE_FORWARD = "ALIGN_STORAGE_SIDE_FORWARD"
-    SHIFT_STORAGE_SIDE_FORWARD = "SHIFT_STORAGE_SIDE_FORWARD"
-    ALIGN_STORAGE_SIDE_REPUSH_RIGHT = "ALIGN_STORAGE_SIDE_REPUSH_RIGHT"
-    REPUSH_STORAGE_SIDE = "REPUSH_STORAGE_SIDE"
-    EXIT_STORAGE_SIDE_REPUSH = "EXIT_STORAGE_SIDE_REPUSH"
+    ALIGN_STORAGE_SIDE_WEST = "ALIGN_STORAGE_SIDE_WEST"
+    REVERSE_STORAGE_SIDE_CLEARANCE = "REVERSE_STORAGE_SIDE_CLEARANCE"
+    MOVE_STORAGE_SIDE_WAYPOINT = "MOVE_STORAGE_SIDE_WAYPOINT"
     ALIGN_STORAGE_EXIT_WEST = "ALIGN_STORAGE_EXIT_WEST"
     ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH = (
         "ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH"
@@ -59,13 +55,9 @@ class MissionPhase:
             CLOSE_STORAGE_REPUSH,
             REPUSH_STORAGE,
             EXIT_STORAGE_REPUSH,
-            ALIGN_STORAGE_SIDE_RIGHT,
-            SHIFT_STORAGE_SIDE_BACKWARD,
-            ALIGN_STORAGE_SIDE_FORWARD,
-            SHIFT_STORAGE_SIDE_FORWARD,
-            ALIGN_STORAGE_SIDE_REPUSH_RIGHT,
-            REPUSH_STORAGE_SIDE,
-            EXIT_STORAGE_SIDE_REPUSH,
+            ALIGN_STORAGE_SIDE_WEST,
+            REVERSE_STORAGE_SIDE_CLEARANCE,
+            MOVE_STORAGE_SIDE_WAYPOINT,
             ALIGN_STORAGE_EXIT_WEST,
             ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH,
             CORRECT_STORAGE_EXIT_X,
@@ -131,14 +123,165 @@ def storage_second_repush_required(visit_number):
     return int(visit_number) == 2
 
 
-def storage_side_shift_heading(entry_heading):
-    """Return the heading used to shift 90 degrees right of the entry path."""
-    return normalize_angle(float(entry_heading) - math.pi / 2.0)
+def tapered_waypoint_speed(
+    distance,
+    fast_speed,
+    slow_speed,
+    slowdown_distance,
+    waypoint_tolerance,
+):
+    """Blend from fast to slow speed near a waypoint."""
+    distance = max(0.0, float(distance))
+    fast_speed = float(fast_speed)
+    slow_speed = float(slow_speed)
+    slowdown_distance = float(slowdown_distance)
+    waypoint_tolerance = max(0.0, float(waypoint_tolerance))
+    if slow_speed < 0.0 or fast_speed < slow_speed:
+        raise ValueError("waypoint speeds must satisfy 0 <= slow <= fast")
+    if slowdown_distance <= waypoint_tolerance:
+        raise ValueError("slowdown distance must exceed waypoint tolerance")
+    scale = clamp(
+        (distance - waypoint_tolerance)
+        / (slowdown_distance - waypoint_tolerance),
+        0.0,
+        1.0,
+    )
+    return slow_speed + (fast_speed - slow_speed) * scale
 
 
-def storage_mirrored_repush_heading(entry_heading):
-    """Mirror the upper repush heading to approach from the storage right."""
-    return normalize_angle(math.pi / 2.0 - float(entry_heading))
+def curved_pose_waypoint_command(
+    robot_x,
+    robot_y,
+    robot_yaw,
+    start_x,
+    start_y,
+    target_x,
+    target_y,
+    speed,
+    final_yaw,
+    waypoint_tolerance=0.10,
+    heading_tolerance=0.14,
+    heading_gain=1.5,
+    max_angular_speed=0.40,
+    final_yaw_tolerance=0.12,
+    control_distance=0.20,
+    lookahead_distance=0.08,
+    sample_count=40,
+):
+    """Follow a cubic curve whose final tangent matches final_yaw."""
+    robot_x = float(robot_x)
+    robot_y = float(robot_y)
+    robot_yaw = float(robot_yaw)
+    start_x = float(start_x)
+    start_y = float(start_y)
+    target_x = float(target_x)
+    target_y = float(target_y)
+    final_yaw = float(final_yaw)
+    waypoint_tolerance = float(waypoint_tolerance)
+    final_yaw_tolerance = float(final_yaw_tolerance)
+    control_distance = float(control_distance)
+    lookahead_distance = float(lookahead_distance)
+    sample_count = int(sample_count)
+    if waypoint_tolerance <= 0.0:
+        raise ValueError("waypoint tolerance must be positive")
+    if control_distance <= 0.0 or lookahead_distance <= 0.0:
+        raise ValueError("curve distances must be positive")
+    if sample_count < 4:
+        raise ValueError("curve sample count must be at least four")
+
+    goal_distance = math.hypot(target_x - robot_x, target_y - robot_y)
+    if goal_distance <= waypoint_tolerance:
+        final_error = normalize_angle(final_yaw - robot_yaw)
+        if abs(final_error) <= final_yaw_tolerance:
+            return NavigationCommand(0.0, 0.0, True)
+        return NavigationCommand(
+            0.0,
+            clamp(
+                float(heading_gain) * final_error,
+                -float(max_angular_speed),
+                float(max_angular_speed),
+            ),
+            False,
+        )
+
+    path_dx = target_x - start_x
+    path_dy = target_y - start_y
+    path_distance = math.hypot(path_dx, path_dy)
+    if path_distance <= waypoint_tolerance:
+        return waypoint_command(
+            robot_x=robot_x,
+            robot_y=robot_y,
+            robot_yaw=robot_yaw,
+            target_x=target_x,
+            target_y=target_y,
+            speed=speed,
+            waypoint_tolerance=waypoint_tolerance,
+            heading_tolerance=heading_tolerance,
+            heading_gain=heading_gain,
+            max_angular_speed=max_angular_speed,
+            final_yaw=final_yaw,
+            final_yaw_tolerance=final_yaw_tolerance,
+        )
+
+    path_unit_x = path_dx / path_distance
+    path_unit_y = path_dy / path_distance
+    start_handle = min(control_distance * 0.50, path_distance * 0.35)
+    final_handle = min(control_distance, path_distance * 0.50)
+    control_1_x = start_x + path_unit_x * start_handle
+    control_1_y = start_y + path_unit_y * start_handle
+    control_2_x = target_x - math.cos(final_yaw) * final_handle
+    control_2_y = target_y - math.sin(final_yaw) * final_handle
+
+    curve_points = []
+    for index in range(sample_count + 1):
+        progress = index / sample_count
+        remaining = 1.0 - progress
+        point_x = (
+            remaining**3 * start_x
+            + 3.0 * remaining**2 * progress * control_1_x
+            + 3.0 * remaining * progress**2 * control_2_x
+            + progress**3 * target_x
+        )
+        point_y = (
+            remaining**3 * start_y
+            + 3.0 * remaining**2 * progress * control_1_y
+            + 3.0 * remaining * progress**2 * control_2_y
+            + progress**3 * target_y
+        )
+        curve_points.append((point_x, point_y))
+
+    nearest_index = min(
+        range(len(curve_points)),
+        key=lambda index: math.hypot(
+            curve_points[index][0] - robot_x,
+            curve_points[index][1] - robot_y,
+        ),
+    )
+    guide_index = nearest_index
+    accumulated_distance = 0.0
+    while (
+        guide_index < sample_count
+        and accumulated_distance < lookahead_distance
+    ):
+        next_index = guide_index + 1
+        accumulated_distance += math.hypot(
+            curve_points[next_index][0] - curve_points[guide_index][0],
+            curve_points[next_index][1] - curve_points[guide_index][1],
+        )
+        guide_index = next_index
+
+    guide_x, guide_y = curve_points[guide_index]
+    desired_yaw = math.atan2(guide_y - robot_y, guide_x - robot_x)
+    heading_error = normalize_angle(desired_yaw - robot_yaw)
+    angular_z = clamp(
+        float(heading_gain) * heading_error,
+        -float(max_angular_speed),
+        float(max_angular_speed),
+    )
+    linear_x = (
+        0.0 if abs(heading_error) > float(heading_tolerance) else float(speed)
+    )
+    return NavigationCommand(linear_x, angular_z, False)
 
 
 def storage_pose_bounds_required(phase):
@@ -148,10 +291,7 @@ def storage_pose_bounds_required(phase):
         MissionPhase.EXIT_STORAGE,
         MissionPhase.REPUSH_STORAGE,
         MissionPhase.EXIT_STORAGE_REPUSH,
-        MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD,
-        MissionPhase.SHIFT_STORAGE_SIDE_FORWARD,
-        MissionPhase.REPUSH_STORAGE_SIDE,
-        MissionPhase.EXIT_STORAGE_SIDE_REPUSH,
+        MissionPhase.REVERSE_STORAGE_SIDE_CLEARANCE,
     }
 
 
