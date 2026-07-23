@@ -444,6 +444,31 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertLess(command.angular_z, 0.0)
         self.assertFalse(command.reached)
 
+    def test_side_waypoint_curve_keeps_moving_above_heading_tolerance(self):
+        command = curved_pose_waypoint_command(
+            robot_x=-1.23,
+            robot_y=-1.395,
+            robot_yaw=math.pi,
+            start_x=-1.23,
+            start_y=-1.395,
+            target_x=-1.57,
+            target_y=-1.83,
+            speed=0.40,
+            final_yaw=math.pi,
+            waypoint_tolerance=0.04,
+            heading_tolerance=0.14,
+            heading_gain=2.4,
+            max_angular_speed=0.80,
+            final_yaw_tolerance=0.05,
+            control_distance=0.20,
+            lookahead_distance=0.08,
+        )
+
+        self.assertGreater(command.linear_x, 0.0)
+        self.assertLess(command.linear_x, 0.40)
+        self.assertNotEqual(command.angular_z, 0.0)
+        self.assertFalse(command.reached)
+
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)
         self.assertEqual(reason, ReturnReason.TIME_LIMIT)

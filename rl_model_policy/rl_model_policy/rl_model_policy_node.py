@@ -290,7 +290,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_second_exit_dash_duration_s", 1.10)
         self.declare_parameter("storage_second_repush_speed", 0.13)
         self.declare_parameter("storage_second_side_shift_speed", 0.40)
-        self.declare_parameter("storage_second_side_reverse_duration_s", 0.70)
+        self.declare_parameter("storage_second_side_reverse_duration_s", 1.00)
         self.declare_parameter("storage_second_side_target_x", -1.57)
         self.declare_parameter("storage_second_side_target_y", -1.83)
         self.declare_parameter(
@@ -2154,8 +2154,9 @@ class DeterministicMissionControllerNode(Node):
         self.reset_storage_dash_timer()
         self.mission.set_phase(MissionPhase.REVERSE_STORAGE_SIDE_CLEARANCE, now_s)
         self.get_logger().info(
-            "West alignment complete; reversing for 0.7 seconds before "
-            "the side waypoint"
+            "West alignment complete; reversing for "
+            f"{self.get_float('storage_second_side_reverse_duration_s'):.2f} "
+            "seconds before the side waypoint"
         )
         return (0.0, 0.0)
 

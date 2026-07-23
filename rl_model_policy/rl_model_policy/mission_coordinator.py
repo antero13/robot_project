@@ -278,9 +278,15 @@ def curved_pose_waypoint_command(
         -float(max_angular_speed),
         float(max_angular_speed),
     )
-    linear_x = (
-        0.0 if abs(heading_error) > float(heading_tolerance) else float(speed)
+    # This curve is entered after a dedicated west alignment. Keep moving while
+    # correcting the changing curve tangent instead of repeatedly stopping when
+    # the heading error crosses the normal waypoint tolerance.
+    heading_speed_scale = clamp(
+        math.cos(min(abs(heading_error), math.pi / 2.0)),
+        0.25,
+        1.0,
     )
+    linear_x = float(speed) * heading_speed_scale
     return NavigationCommand(linear_x, angular_z, False)
 
 

@@ -249,7 +249,7 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
         )
         expected_defaults = {
             "storage_second_side_shift_speed": "0.40",
-            "storage_second_side_reverse_duration_s": "0.70",
+            "storage_second_side_reverse_duration_s": "1.00",
             "storage_second_side_target_x": "-1.57",
             "storage_second_side_target_y": "-1.83",
             "storage_second_side_slowdown_distance_m": "0.20",

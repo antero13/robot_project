@@ -536,7 +536,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'storage_second_side_reverse_duration_s',
-            default_value='0.70',
+            default_value='1.00',
         ),
         DeclareLaunchArgument(
             'storage_second_side_target_x',

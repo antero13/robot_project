@@ -590,7 +590,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_second_exit_dash_duration_s:=1.10 \
   storage_second_repush_speed:=0.13 \
   storage_second_side_shift_speed:=0.40 \
-  storage_second_side_reverse_duration_s:=0.70 \
+  storage_second_side_reverse_duration_s:=1.00 \
   storage_second_side_target_x:=-1.57 \
   storage_second_side_target_y:=-1.83 \
   storage_second_side_slowdown_distance_m:=0.20 \
@@ -634,10 +634,12 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 사용하고, 남은 거리가 `storage_second_side_slowdown_distance_m`보다 작아지면
 `storage_second_repush_speed`까지 선형 감속한다. 이 구간은 cubic 곡선을
 추종하므로 초반에는 목표점을 향하고 후반에는 서쪽으로 휘어, 목표점 도착 시
-yaw가 180도가 된다. 곡선 모양과 전방 추종 거리는 각각
+yaw가 180도가 된다. 곡선 중에는 방향 오차가 일반 waypoint의 8도 기준을
+넘어도 정지하지 않고, 오차에 따라 전진속도를 낮추면서 회전과 전진을 계속한다.
+곡선 모양과 전방 추종 거리는 각각
 `storage_second_side_curve_control_distance_m`,
 `storage_second_side_curve_lookahead_distance_m`로 조정한다. 기본값은 서쪽
-회전 최대 `1.0 rad/s`, `0.4 m/s`로 `0.7초` 후진, 목표점
+회전 최대 `1.0 rad/s`, `0.4 m/s`로 `1.0초` 후진, 목표점
 `(-1.57, -1.83)`, 마지막 `0.20 m`에서 `0.40 m/s`부터 `0.13 m/s`까지
 감속하며 곡선 제어 거리 `0.20 m`, 전방 추종 거리 `0.08 m`이다.
 
