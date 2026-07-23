@@ -289,6 +289,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("storage_exit_dash_duration_s", 1.50)
         self.declare_parameter("storage_second_exit_dash_duration_s", 1.10)
         self.declare_parameter("storage_second_repush_speed", 0.13)
+        self.declare_parameter("storage_second_side_shift_speed", 0.25)
         self.declare_parameter("storage_second_repush_duration_s", 1.00)
         self.declare_parameter("storage_contact_settle_duration_s", 0.20)
         self.declare_parameter("storage_dash_heading_tolerance", 0.05)
@@ -2192,29 +2193,30 @@ class DeterministicMissionControllerNode(Node):
         entry_yaw = self.storage_entry_dash_yaw()
         shift_yaw = storage_side_shift_heading(entry_yaw)
         repush_yaw = storage_mirrored_repush_heading(entry_yaw)
-        speed = abs(self.get_float("storage_second_repush_speed"))
+        repush_speed = abs(self.get_float("storage_second_repush_speed"))
+        shift_speed = abs(self.get_float("storage_second_side_shift_speed"))
         motion_steps = {
             MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD: (
                 shift_yaw,
-                -speed,
+                -shift_speed,
                 MissionPhase.ALIGN_STORAGE_SIDE_FORWARD,
                 "Side reverse shift complete; rotating left 90 degrees",
             ),
             MissionPhase.SHIFT_STORAGE_SIDE_FORWARD: (
                 entry_yaw,
-                speed,
+                shift_speed,
                 MissionPhase.ALIGN_STORAGE_SIDE_REPUSH_RIGHT,
                 "Side forward shift complete; rotating right 90 degrees",
             ),
             MissionPhase.REPUSH_STORAGE_SIDE: (
                 repush_yaw,
-                speed,
+                repush_speed,
                 MissionPhase.EXIT_STORAGE_SIDE_REPUSH,
                 "Second storage side repush complete; reversing by the same distance",
             ),
             MissionPhase.EXIT_STORAGE_SIDE_REPUSH: (
                 repush_yaw,
-                -speed,
+                -repush_speed,
                 None,
                 "Second storage side repush return complete",
             ),
@@ -3446,6 +3448,9 @@ class DeterministicMissionControllerNode(Node):
                     ),
                     "storage_second_repush_speed": self.get_float(
                         "storage_second_repush_speed"
+                    ),
+                    "storage_second_side_shift_speed": self.get_float(
+                        "storage_second_side_shift_speed"
                     ),
                     "storage_second_repush_duration_s": self.get_float(
                         "storage_second_repush_duration_s"

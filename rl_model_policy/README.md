@@ -588,6 +588,7 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
   storage_exit_dash_duration_s:=1.50 \
   storage_second_exit_dash_duration_s:=1.10 \
   storage_second_repush_speed:=0.13 \
+  storage_second_side_shift_speed:=0.25 \
   storage_second_repush_duration_s:=1.00 \
   storage_contact_settle_duration_s:=0.20 \
   storage_tof_left_wall_x_m:=-2.0 \
@@ -617,12 +618,13 @@ ros2 launch rl_model_policy rl_autonomous_drive.launch.py \
 `storage_second_repush_speed`로 `storage_second_repush_duration_s` 동안 기존
 진입각을 유지하며 다시 전진해 물체를 민 다음, 같은 속도와 시간으로 후진해
 첫 후진이 끝난 자리로 복귀한다. 이어서 진입각 기준 오른쪽으로 90도 회전하고
-같은 속도와 시간으로 후진한 뒤, 왼쪽으로 90도 회전해 같은 거리만큼 전진한다.
+`storage_second_side_shift_speed`로 후진한 뒤, 왼쪽으로 90도 회전해 같은
+속도와 시간으로 전진한다.
 다시 오른쪽으로 회전하되 위쪽 `-113 deg` 밀기 방향을 보관소 대각선 기준으로
 대칭시킨 `-157 deg`로 정렬한다. 보관소 오른쪽에서 같은 거리만큼 물체를 밀고,
-같은 거리만큼 후진해 빠져나온다. 따라서 위쪽 재밀기, 측면 위치 이동 및
-오른쪽 재밀기의 각 직선 구간은 기본값 기준 모두 `0.25 m/s * 1.0 s`, 약
-`0.25 m`로 동일하다.
+같은 거리만큼 후진해 빠져나온다. 기본값 기준 재재밀기 위치로 가는 후진·전진만
+`0.25 m/s * 1.0 s`, 약 `0.25 m`이고, 위쪽 및 오른쪽 재밀기 왕복은
+`0.13 m/s * 1.0 s`, 약 `0.13 m`를 유지한다.
 
 1차 후진이나 2차 오른쪽 재밀기 왕복이 끝나면 odometry yaw로 서쪽 180도를 바라보도록
 제자리 회전한다. 1차는 회전 완료 후 서보를 닫고, 2차는 이미 닫힌 상태를 유지한다.

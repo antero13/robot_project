@@ -203,6 +203,9 @@ def generate_launch_description():
     storage_second_repush_speed = LaunchConfiguration(
         'storage_second_repush_speed'
     )
+    storage_second_side_shift_speed = LaunchConfiguration(
+        'storage_second_side_shift_speed'
+    )
     storage_second_repush_duration_s = LaunchConfiguration(
         'storage_second_repush_duration_s'
     )
@@ -505,6 +508,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'storage_second_repush_speed',
             default_value='0.13',
+        ),
+        DeclareLaunchArgument(
+            'storage_second_side_shift_speed',
+            default_value='0.25',
         ),
         DeclareLaunchArgument(
             'storage_second_repush_duration_s',
@@ -1018,6 +1025,10 @@ def generate_launch_description():
                 ),
                 'storage_second_repush_speed': ParameterValue(
                     storage_second_repush_speed,
+                    value_type=float,
+                ),
+                'storage_second_side_shift_speed': ParameterValue(
+                    storage_second_side_shift_speed,
                     value_type=float,
                 ),
                 'storage_second_repush_duration_s': ParameterValue(

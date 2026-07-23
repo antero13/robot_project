@@ -238,6 +238,21 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
             self.assertEqual(ast.literal_eval(default_value), "0.13")
 
+    def test_second_storage_side_shift_speed_is_point_twenty_five(self):
+        self.assertIn(
+            'declare_parameter("storage_second_side_shift_speed", 0.25)',
+            self.node_source,
+        )
+        for source in (
+            self.policy_launch_source,
+            self.autonomous_launch_source,
+        ):
+            defaults = self.declared_launch_defaults(source)
+            self.assertEqual(
+                defaults["storage_second_side_shift_speed"],
+                "0.25",
+            )
+
     def test_launches_expose_second_storage_visit_route(self):
         required = {
             "storage_second_staging_x",
@@ -247,6 +262,7 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             "storage_second_entry_dash_duration_s",
             "storage_second_exit_dash_duration_s",
             "storage_second_repush_speed",
+            "storage_second_side_shift_speed",
             "storage_second_repush_duration_s",
         }
         self.assertTrue(
@@ -277,6 +293,10 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
         )
         self.assertIn(
             'duration_s=self.get_float("storage_second_repush_duration_s")',
+            self.node_source,
+        )
+        self.assertIn(
+            'shift_speed = abs(self.get_float("storage_second_side_shift_speed"))',
             self.node_source,
         )
 
