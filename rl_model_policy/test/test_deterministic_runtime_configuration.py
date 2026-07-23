@@ -352,13 +352,13 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             self.assertTrue(required.issubset(self.declared_launch_arguments(source)))
             defaults = self.declared_launch_defaults(source)
             self.assertEqual(defaults["start_gripper_close_delay_s"], "0.0")
-            self.assertEqual(defaults["grab_duration_s"], "1.0")
+            self.assertEqual(defaults["grab_duration_s"], "0.5")
         self.assertIn(
             'declare_parameter("start_gripper_close_delay_s", 0.0)',
             self.node_source,
         )
         self.assertIn(
-            'declare_parameter("grab_duration_s", 1.0)',
+            'declare_parameter("grab_duration_s", 0.5)',
             self.node_source,
         )
         self.assertNotIn(

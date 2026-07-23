@@ -350,7 +350,7 @@ class DeterministicMissionControllerNode(Node):
         self.declare_parameter("grab_detection_timeout_s", 0.25)
         self.declare_parameter("final_forward_linear_x", 0.22)
         self.declare_parameter("final_forward_duration_s", 1.2)
-        self.declare_parameter("grab_duration_s", 1.0)
+        self.declare_parameter("grab_duration_s", 0.5)
         self.declare_parameter("stop_after_grab", False)
 
         self.active = bool(self.get_parameter("active_on_start").value)
