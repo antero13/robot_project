@@ -5,12 +5,15 @@ from rl_model_policy.mission_coordinator import (
     fixed_heading_dash_command,
     MissionCoordinator,
     MissionPhase,
+    normalize_angle,
     ReturnReason,
     StorageCurveAvoidanceController,
     reverse_storage_x_exit_command,
     storage_dash_heading,
+    storage_mirrored_repush_heading,
     storage_pose_bounds_required,
     storage_second_repush_required,
+    storage_side_shift_heading,
     storage_phase_after_staging_x,
     storage_return_start_phase,
     storage_staging_coordinates,
@@ -326,6 +329,18 @@ class MissionCoordinatorTest(unittest.TestCase):
         self.assertFalse(
             storage_pose_bounds_required(MissionPhase.EXIT_STORAGE_REPUSH)
         )
+        self.assertFalse(
+            storage_pose_bounds_required(MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD)
+        )
+        self.assertFalse(
+            storage_pose_bounds_required(MissionPhase.SHIFT_STORAGE_SIDE_FORWARD)
+        )
+        self.assertFalse(
+            storage_pose_bounds_required(MissionPhase.REPUSH_STORAGE_SIDE)
+        )
+        self.assertFalse(
+            storage_pose_bounds_required(MissionPhase.EXIT_STORAGE_SIDE_REPUSH)
+        )
         self.assertTrue(
             storage_pose_bounds_required(MissionPhase.ALIGN_STORAGE_DASH)
         )
@@ -336,6 +351,56 @@ class MissionCoordinatorTest(unittest.TestCase):
     def test_slow_closed_gripper_repush_only_runs_on_second_visit(self):
         self.assertFalse(storage_second_repush_required(1))
         self.assertTrue(storage_second_repush_required(2))
+
+    def test_side_shift_is_right_ninety_and_repush_is_mirrored(self):
+        entry_heading = storage_visit_dash_heading(2, -165.0, -113.0)
+        shift_heading = storage_side_shift_heading(entry_heading)
+        repush_heading = storage_mirrored_repush_heading(entry_heading)
+
+        self.assertAlmostEqual(math.degrees(shift_heading), 157.0)
+        self.assertAlmostEqual(
+            normalize_angle(shift_heading - entry_heading),
+            -math.pi / 2.0,
+        )
+        self.assertAlmostEqual(math.degrees(repush_heading), -157.0)
+        self.assertAlmostEqual(
+            math.cos(repush_heading),
+            math.sin(entry_heading),
+        )
+        self.assertAlmostEqual(
+            math.sin(repush_heading),
+            math.cos(entry_heading),
+        )
+        right_turn = waypoint_command(
+            robot_x=0.0,
+            robot_y=0.0,
+            robot_yaw=entry_heading,
+            target_x=0.0,
+            target_y=0.0,
+            speed=0.0,
+            final_yaw=shift_heading,
+        )
+        left_turn = waypoint_command(
+            robot_x=0.0,
+            robot_y=0.0,
+            robot_yaw=shift_heading,
+            target_x=0.0,
+            target_y=0.0,
+            speed=0.0,
+            final_yaw=entry_heading,
+        )
+        mirrored_right_turn = waypoint_command(
+            robot_x=0.0,
+            robot_y=0.0,
+            robot_yaw=entry_heading,
+            target_x=0.0,
+            target_y=0.0,
+            speed=0.0,
+            final_yaw=repush_heading,
+        )
+        self.assertLess(right_turn.angular_z, 0.0)
+        self.assertGreater(left_turn.angular_z, 0.0)
+        self.assertLess(mirrored_right_turn.angular_z, 0.0)
 
     def test_pickup_inside_final_thirty_seconds_returns_immediately(self):
         reason = self.mission.record_pickup("target", 161.0)

@@ -258,6 +258,28 @@ class DeterministicRuntimeConfigurationTest(unittest.TestCase):
             )
         )
 
+    def test_second_storage_visit_adds_right_side_repush_route(self):
+        required_phases = {
+            "ALIGN_STORAGE_SIDE_RIGHT",
+            "SHIFT_STORAGE_SIDE_BACKWARD",
+            "ALIGN_STORAGE_SIDE_FORWARD",
+            "SHIFT_STORAGE_SIDE_FORWARD",
+            "ALIGN_STORAGE_SIDE_REPUSH_RIGHT",
+            "REPUSH_STORAGE_SIDE",
+            "EXIT_STORAGE_SIDE_REPUSH",
+        }
+        self.assertTrue(
+            all(phase in self.node_source for phase in required_phases)
+        )
+        self.assertIn(
+            "return self.begin_storage_side_repush_sequence(now_s)",
+            self.node_source,
+        )
+        self.assertIn(
+            'duration_s=self.get_float("storage_second_repush_duration_s")',
+            self.node_source,
+        )
+
     def test_launches_expose_pickup_vfh_motion_parameters(self):
         required = {
             "avoid_forward_linear_x",

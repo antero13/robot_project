@@ -22,6 +22,13 @@ class MissionPhase:
     CLOSE_STORAGE_REPUSH = "CLOSE_STORAGE_REPUSH"
     REPUSH_STORAGE = "REPUSH_STORAGE"
     EXIT_STORAGE_REPUSH = "EXIT_STORAGE_REPUSH"
+    ALIGN_STORAGE_SIDE_RIGHT = "ALIGN_STORAGE_SIDE_RIGHT"
+    SHIFT_STORAGE_SIDE_BACKWARD = "SHIFT_STORAGE_SIDE_BACKWARD"
+    ALIGN_STORAGE_SIDE_FORWARD = "ALIGN_STORAGE_SIDE_FORWARD"
+    SHIFT_STORAGE_SIDE_FORWARD = "SHIFT_STORAGE_SIDE_FORWARD"
+    ALIGN_STORAGE_SIDE_REPUSH_RIGHT = "ALIGN_STORAGE_SIDE_REPUSH_RIGHT"
+    REPUSH_STORAGE_SIDE = "REPUSH_STORAGE_SIDE"
+    EXIT_STORAGE_SIDE_REPUSH = "EXIT_STORAGE_SIDE_REPUSH"
     ALIGN_STORAGE_EXIT_WEST = "ALIGN_STORAGE_EXIT_WEST"
     ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH = (
         "ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH"
@@ -52,6 +59,13 @@ class MissionPhase:
             CLOSE_STORAGE_REPUSH,
             REPUSH_STORAGE,
             EXIT_STORAGE_REPUSH,
+            ALIGN_STORAGE_SIDE_RIGHT,
+            SHIFT_STORAGE_SIDE_BACKWARD,
+            ALIGN_STORAGE_SIDE_FORWARD,
+            SHIFT_STORAGE_SIDE_FORWARD,
+            ALIGN_STORAGE_SIDE_REPUSH_RIGHT,
+            REPUSH_STORAGE_SIDE,
+            EXIT_STORAGE_SIDE_REPUSH,
             ALIGN_STORAGE_EXIT_WEST,
             ALIGN_STORAGE_EXIT_WEST_AFTER_REPUSH,
             CORRECT_STORAGE_EXIT_X,
@@ -117,6 +131,16 @@ def storage_second_repush_required(visit_number):
     return int(visit_number) == 2
 
 
+def storage_side_shift_heading(entry_heading):
+    """Return the heading used to shift 90 degrees right of the entry path."""
+    return normalize_angle(float(entry_heading) - math.pi / 2.0)
+
+
+def storage_mirrored_repush_heading(entry_heading):
+    """Mirror the upper repush heading to approach from the storage right."""
+    return normalize_angle(math.pi / 2.0 - float(entry_heading))
+
+
 def storage_pose_bounds_required(phase):
     """Only require bounded x/y while storage motion depends on waypoints."""
     return phase not in {
@@ -124,6 +148,10 @@ def storage_pose_bounds_required(phase):
         MissionPhase.EXIT_STORAGE,
         MissionPhase.REPUSH_STORAGE,
         MissionPhase.EXIT_STORAGE_REPUSH,
+        MissionPhase.SHIFT_STORAGE_SIDE_BACKWARD,
+        MissionPhase.SHIFT_STORAGE_SIDE_FORWARD,
+        MissionPhase.REPUSH_STORAGE_SIDE,
+        MissionPhase.EXIT_STORAGE_SIDE_REPUSH,
     }
 
 
